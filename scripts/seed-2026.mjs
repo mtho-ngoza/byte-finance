@@ -28,6 +28,37 @@ const patch = (path, body) => req('PATCH',  path, body);
 const del   = (path)       => req('DELETE', path);
 
 // ---------------------------------------------------------------------------
+// GOALS - Savings targets, debt payoffs, investments
+// ---------------------------------------------------------------------------
+const GOALS = [
+  {
+    name: 'Sbonga School Fees',
+    type: 'debt_payoff',
+    targetAmount: 2400000, // R24,000 annual fees
+    monthlyTarget: 200000,
+    priority: 'high',
+    linkedCommitmentLabel: 'Sbonga Fees', // Will link this commitment
+  },
+  {
+    name: 'Emergency Fund',
+    type: 'savings',
+    targetAmount: 5000000, // R50,000 target
+    monthlyTarget: 100000,
+    priority: 'high',
+    linkedCommitmentLabel: 'Emergency',
+    allowWithdrawals: true,
+  },
+  {
+    name: 'Byte Fusion Business',
+    type: 'investment',
+    targetAmount: 10000000, // R100,000 business fund
+    monthlyTarget: 300000,
+    priority: 'medium',
+    linkedCommitmentLabel: 'Byte Fusion',
+  },
+];
+
+// ---------------------------------------------------------------------------
 // COMMITMENTS - Recurring monthly items (amounts in cents, using typical values)
 // ---------------------------------------------------------------------------
 const COMMITMENTS = [
@@ -251,7 +282,63 @@ async function resetAll() {
     // No commitments
   }
 
+  // Delete all goals
+  try {
+    const { goals } = await get('/api/goals');
+    for (const g of goals || []) {
+      await del(`/api/goals/${g.id}`);
+    }
+    console.log(`  ✓ Deleted ${goals?.length || 0} goals`);
+  } catch {
+    // No goals
+  }
+
   console.log('');
+}
+
+// Store goal IDs by linked commitment label for later use
+const goalIdsByCommitmentLabel = new Map();
+
+async function seedGoals() {
+  console.log('🎯 Creating goals...');
+
+  const { goals: existing } = await get('/api/goals');
+  const existingNames = new Set((existing || []).map(g => g.name));
+
+  let created = 0;
+  for (const g of GOALS) {
+    if (existingNames.has(g.name)) {
+      // Find existing goal to get its ID
+      const existingGoal = existing.find(eg => eg.name === g.name);
+      if (existingGoal && g.linkedCommitmentLabel) {
+        goalIdsByCommitmentLabel.set(g.linkedCommitmentLabel, existingGoal.id);
+      }
+      continue;
+    }
+
+    try {
+      const result = await post('/api/goals', {
+        name: g.name,
+        type: g.type,
+        targetAmount: g.targetAmount,
+        monthlyTarget: g.monthlyTarget,
+        priority: g.priority,
+        allowWithdrawals: g.allowWithdrawals || false,
+        status: 'active',
+      });
+      console.log(`  ✓ ${g.name}`);
+      created++;
+
+      // Store goal ID for commitment linking
+      if (g.linkedCommitmentLabel) {
+        goalIdsByCommitmentLabel.set(g.linkedCommitmentLabel, result.id);
+      }
+    } catch (err) {
+      console.error(`  ✗ ${g.name}: ${err.message}`);
+    }
+  }
+
+  console.log(`  → ${created} created, ${GOALS.length - created} already exist\n`);
 }
 
 async function seedCommitments() {
@@ -265,9 +352,17 @@ async function seedCommitments() {
     const c = COMMITMENTS[i];
     if (existingLabels.has(c.label)) continue;
 
+    // Check if this commitment should be linked to a goal
+    const linkedGoalId = goalIdsByCommitmentLabel.get(c.label);
+
     try {
-      await post('/api/commitments', { ...c, sortOrder: i, isActive: true });
-      console.log(`  ✓ ${c.label}`);
+      await post('/api/commitments', {
+        ...c,
+        sortOrder: i,
+        isActive: true,
+        ...(linkedGoalId && { linkedGoalId }),
+      });
+      console.log(`  ✓ ${c.label}${linkedGoalId ? ' (linked to goal)' : ''}`);
       created++;
     } catch (err) {
       console.error(`  ✗ ${c.label}: ${err.message}`);
@@ -310,6 +405,12 @@ async function seedCycle(cycleId, data) {
     if (itemData.status !== item.status) updates.status = itemData.status;
     if (itemData.amount && itemData.amount !== item.amount) updates.amount = itemData.amount;
 
+    // Also sync linkedGoalId from commitment
+    const linkedGoalId = goalIdsByCommitmentLabel.get(label);
+    if (linkedGoalId && item.linkedGoalId !== linkedGoalId) {
+      updates.linkedGoalId = linkedGoalId;
+    }
+
     if (Object.keys(updates).length > 0) {
       await patch(`/api/cycle-items/${item.id}`, updates);
       updated++;
@@ -335,6 +436,8 @@ async function seed() {
     await resetAll();
   }
 
+  // Goals first (so commitments can link to them)
+  await seedGoals();
   await seedCommitments();
 
   for (const [cycleId, data] of Object.entries(MONTHS)) {
@@ -343,6 +446,7 @@ async function seed() {
 
   console.log('🎉 Done! Open http://localhost:3000 to see your data.');
   console.log('   April 2026 is the active cycle with all items unpaid.');
+  console.log('   Linked commitments: Sbonga Fees, Emergency, Byte Fusion → Goals');
 }
 
 seed().catch(err => {

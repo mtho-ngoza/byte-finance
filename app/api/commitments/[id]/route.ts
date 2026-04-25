@@ -30,6 +30,26 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
   await ref.update(updateData);
 
+  // If linkedGoalId changed, propagate to unpaid cycle items
+  if ('linkedGoalId' in body) {
+    const cycleItemsRef = db.collection(`users/${userId}/cycleItems`);
+    const snapshot = await cycleItemsRef
+      .where('commitmentId', '==', id)
+      .where('status', 'in', ['upcoming', 'due'])
+      .get();
+
+    const batch = db.batch();
+    for (const itemDoc of snapshot.docs) {
+      batch.update(itemDoc.ref, {
+        linkedGoalId: body.linkedGoalId || null,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
+    if (!snapshot.empty) {
+      await batch.commit();
+    }
+  }
+
   const updated = await ref.get();
   return NextResponse.json({ id, ...updated.data() });
 }
