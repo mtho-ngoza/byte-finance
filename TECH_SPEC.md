@@ -1,53 +1,124 @@
-# ByteFinance AI - Technical Specification
+# ByteFinance - Technical Specification
 
-> Personal Financial Command Center for ZAR-based expense tracking, planning, and AI-powered advisory.
+> Personal financial command center for ZAR-based expense tracking, goal management, and AI-powered insights.
 
 ---
 
 ## 1. Overview
 
 ### 1.1 Problem Statement
-Manual expense tracking in Samsung Notes works but provides:
-- No trend visibility across 8+ years of data
-- No automated insights ("Emergency savings still dololo")
-- No forecasting for seasonal expenses
-- Manual calculation of totals and balances
+
+Manual expense tracking fails to provide:
+- Visibility into spending trends over time
+- Automatic progress tracking toward financial goals
+- Proactive insights about spending patterns
+- Quick understanding of current financial status
 
 ### 1.2 Solution
-A mobile-first web app that mirrors the familiar checkbox workflow while adding intelligence layers for trend analysis, goal tracking, and proactive financial guidance.
+
+A mobile-first web app built around **cash flow management** with three core concepts:
+
+1. **Commitments** - Your recurring financial obligations (what you pay every month)
+2. **Cycles** - Auto-generated pay periods (no manual folder creation)
+3. **Goals** - What you're building toward (savings, debt payoff, investments)
+
+The app surfaces your financial status at a glance via a **dashboard-first** design, with intelligent automation that tracks goal progress as you pay your commitments.
 
 ### 1.3 Design Principles
-1. **Modern & Usable** - Clean, intuitive UI optimized for quick updates (not a Samsung Notes clone)
-2. **Gentle Intelligence** - Suggestions, not warnings; insights, not judgments
-3. **Offline First** - Full functionality without internet, seamless sync when available
-4. **Data Ownership** - All data exportable, no vendor lock-in
+
+1. **Dashboard-First** - See your financial health immediately, not buried in menus
+2. **Zero Maintenance** - Cycles auto-generate, goals auto-track, no manual folder management
+3. **Gentle Intelligence** - Suggestions, not warnings; insights, not judgments
+4. **Offline-First** - Full functionality without internet, seamless sync when online
+5. **Data Ownership** - All data exportable, no vendor lock-in
 
 ---
 
 ## 2. Technical Stack
 
 ### 2.1 Core Stack
+
 | Layer | Technology | Rationale |
 |-------|------------|-----------|
 | Framework | Next.js 14+ (App Router) | SSR, API routes, excellent DX |
 | Styling | Tailwind CSS | Rapid UI development, dark mode support |
 | Database | Firebase Firestore | Real-time sync, offline persistence |
-| Auth | Firebase Auth | Simple, secure, supports multiple providers |
+| Auth | Firebase Auth | Simple, secure, Google Sign-In |
 | Hosting | Vercel | Edge functions, automatic deployments |
 | AI | Gemini API | Cost-effective, good at structured extraction |
 
 ### 2.2 Future Considerations
+
 | Feature | Technology | Phase |
 |---------|------------|-------|
 | Native App | Capacitor | Phase 3 |
-| Notifications | Firebase Cloud Messaging | Phase 2 |
-| Bank Import | Plaid/Stitch (SA) | Phase 4 |
+| Push Notifications | Firebase Cloud Messaging | Phase 2 |
+| Bank Integration | Plaid/Stitch (SA) | Phase 4 |
 
 ---
 
-## 3. Data Architecture
+## 3. Core Concepts
 
-### 3.1 Firestore Collections
+### 3.1 Mental Model
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      YOUR FINANCIAL PLAN                     │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│   COMMITMENTS                    GOALS                       │
+│   (What you pay monthly)         (What you're building)      │
+│   ────────────────────           ─────────────────────       │
+│   Bond           R9,000          Medical Fund    → R70k      │
+│   Medical Aid    R6,000   ──────→Emergency Fund  → R50k      │
+│   Car Insurance  R8,000          Byte Fusion     → R200k     │
+│   Grocery        R4,000          Pay off car     → R0 debt   │
+│                                                              │
+│   Commitments spawn into cycles automatically                │
+│   Goals update automatically when linked items are paid      │
+└─────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────┐
+│                    CURRENT CYCLE (April 2026)                │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│   Income: R84,000              Status: 18/24 paid            │
+│   Committed: R71,500           Remaining: R12,500            │
+│                                                              │
+│   Items auto-populated from commitments                      │
+│   You just update status: upcoming → due → paid              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 3.2 Key Entities
+
+| Entity | Purpose | Lifecycle |
+|--------|---------|-----------|
+| **Commitment** | Recurring monthly obligation template | Created once, spawns items each cycle |
+| **Goal** | Financial target (savings, debt, investment) | Created once, progress auto-tracked |
+| **Cycle** | Pay period container | Auto-generated on pay day |
+| **CycleItem** | Instance of commitment or one-off expense | Created per cycle, status changes over time |
+
+### 3.3 Status Flow
+
+Instead of checkboxes, items flow through statuses:
+
+```
+UPCOMING ──→ DUE ──→ PAID
+    │                  │
+    └──→ SKIPPED ←─────┘
+```
+
+- **Upcoming** - Not yet due (based on due date or cycle start)
+- **Due** - Due date reached or within due window
+- **Paid** - Marked as paid by user
+- **Skipped** - Intentionally skipped this cycle
+
+---
+
+## 4. Data Architecture
+
+### 4.1 Firestore Collections
 
 ```typescript
 // Collection: users/{userId}
@@ -56,8 +127,8 @@ interface UserProfile {
   email: string;
   displayName: string;
   preferences: {
-    payDayType: 'fixed' | 'last_working_day';  // Configurable pay day logic
-    payDayFixed?: number;                       // 1-31, used if type is 'fixed'
+    payDayType: 'fixed' | 'last_working_day';
+    payDayFixed?: number;                      // 1-28, used if type is 'fixed'
     currency: 'ZAR';
     theme: 'dark' | 'light';
     notificationsEnabled: boolean;
@@ -66,366 +137,209 @@ interface UserProfile {
   updatedAt: Timestamp;
 }
 
-// Helper: Calculate actual pay day for a given month
-// Last working day = last weekday (Mon-Fri) excluding SA public holidays
-function getPayDay(year: number, month: number, prefs: UserProfile['preferences']): Date {
-  if (prefs.payDayType === 'fixed') {
-    return new Date(year, month, prefs.payDayFixed);
-  }
-  // Last working day logic
-  const lastDay = new Date(year, month + 1, 0); // Last day of month
-  while (isWeekend(lastDay) || isPublicHoliday(lastDay)) {
-    lastDay.setDate(lastDay.getDate() - 1);
-  }
-  return lastDay;
-}
-
-// Collection: users/{userId}/folders/{folderId}
-interface Folder {
+// Collection: users/{userId}/commitments/{commitmentId}
+// Your recurring financial obligations - the "template" for monthly items
+interface Commitment {
   id: string;
-  name: string;                  // "Monthly 2026", "Sbonga School", "Year Plans"
-  type: 'monthly' | 'project' | 'savings' | 'goals';
-  icon?: string;
-  color?: string;
-  period?: {                     // For monthly folders
-    month: number;               // 1-12
-    year: number;
-  };
+  label: string;                    // "Bond", "Medical Aid", "Grocery"
+  amount: number;                   // Default amount in cents
+  category: Category;
+  accountType: 'personal' | 'business';
 
-  // Income for this period (entered manually, verified via statement)
-  income?: {
-    amount: number;              // In cents
-    source?: string;             // "Salary", "Business", etc.
-    receivedDate?: Timestamp;
-    verified: boolean;           // True once cross-checked with statement
-  };
+  // Smart linking - auto-contribute to goal when paid
+  linkedGoalId?: string;
 
-  sortOrder: number;
-  isArchived: boolean;
-  createdAt: Timestamp;
-  updatedAt: Timestamp;
-}
-
-// Collection: users/{userId}/baseExpenses/{baseExpenseId}
-// Template expenses that auto-populate each new month
-interface BaseExpense {
-  id: string;
-  label: string;                 // "Bond", "Medical aid"
-  amount: number;                // Default amount in cents
-  category: ExpenseCategory;
-  accountType: 'personal' | 'business';  // Separate tracking
-  linkedTo?: {
-    type: 'goal' | 'investment' | 'savings_pot';
-    id: string;
-  };
-  sortOrder: number;
-  isActive: boolean;             // Can disable without deleting
-  createdAt: Timestamp;
-  updatedAt: Timestamp;
-}
-
-// When creating a new monthly folder:
-// 1. Copy all active BaseExpenses as new Expense documents
-// 2. User can then modify amounts, add one-off expenses
-// 3. BaseExpense template can be updated anytime (affects future months only)
-
-// Collection: users/{userId}/expenses/{expenseId}
-interface Expense {
-  id: string;
-  folderId: string;
-
-  // Core fields (from your notes)
-  label: string;                 // "Bond", "Medical aid", "Sbonga fees"
-  amount: number;                // In cents to avoid float issues: 900000 = R9,000
-  status: 'pending' | 'paid';
-
-  // Categorization
-  category: ExpenseCategory;
-  subcategory?: string;
-  accountType: 'personal' | 'business';  // Separate personal vs business expenses
-
-  // === SMART LINKING ===
-  // Link expense to a goal, investment, or savings pot
-  linkedTo?: {
-    type: 'goal' | 'investment' | 'savings_pot';
-    id: string;                  // Reference to the goal/investment/savings_pot doc
-  };
-  // When this expense is marked "paid":
-  // - Goal: Adds contribution to goal progress
-  // - Investment: Adds contribution to investment
-  // - Savings Pot: Adds contribution (you can later record withdrawals separately)
-
-  // Timing
-  dueDate?: Timestamp;           // Optional: when it should be paid
-  paidDate?: Timestamp;          // When actually marked as paid
-
-  // Recurrence (for templates)
-  isRecurring: boolean;
-  recurrenceRule?: {
-    frequency: 'monthly' | 'yearly';
-    dayOfMonth?: number;
-  };
-
-  // Metadata
-  notes?: string;
-  tags?: string[];               // ["priority", "debit-order", "variable"]
-
-  // Tracking
-  sortOrder: number;
-  createdAt: Timestamp;
-  updatedAt: Timestamp;
-}
-
-// Enum for categories (derived from your actual data)
-type ExpenseCategory =
-  | 'housing'        // Bond, Levies, Rates, Electricity (personal)
-  | 'transport'      // Car Insurance, Petrol, Car track (personal)
-  | 'family'         // Sbonga, Nhloso, Spouse support, Family support (personal)
-  | 'business'       // PAYE, Accounting fees (business)
-  | 'living'         // Grocery, Fibre, DSTV, Mweb (personal)
-  | 'health'         // Medical aid (personal)
-  | 'education'      // UNISA, School fees (personal)
-  | 'savings'        // Emergency, Investments (personal)
-  | 'entertainment'  // Entertainment, Travel, Shopping (personal)
-  | 'subscriptions'  // Claude, streaming services (could be either)
-  | 'other';
-
-// Account type determines if expense shows in Personal or Business view
-// Dashboard filter: [All] [Personal] [Business]
-
-// Collection: users/{userId}/goals/{goalId}
-interface Goal {
-  id: string;
-  title: string;                 // "Pay off car", "MacBook", "70k Medical aid"
-  type: 'savings' | 'purchase' | 'debt_payoff' | 'milestone';
-
-  // Financial targets (optional - some goals aren't monetary)
-  targetAmount?: number;         // In cents: R70,000 = 7000000
-  currentAmount: number;         // Auto-updated via Smart Linking
-
-  // === DEBT PAYOFF TRACKING (for type: 'debt_payoff') ===
-  debtTracking?: {
-    originalBalance: number;     // Starting debt amount in cents
-    currentBalance: number;      // Remaining balance (originalBalance - totalPaid)
-    interestRate?: number;       // Annual interest rate (e.g., 0.105 for 10.5%)
-    minimumPayment?: number;     // Required monthly payment
-    lender?: string;             // "Absa", "MFC", "UNISA"
-    accountNumber?: string;
-    projectedPayoffDate?: Timestamp;  // Calculated based on payment rate
-  };
-
-  // Contribution tracking (for Smart Linking)
-  expectedMonthlyContribution?: number;  // R6,000 = 600000
-  linkedExpenseLabel?: string;           // "Medical aid" - for auto-linking
-  contributions: Array<{                 // Auto-populated when linked expense paid
-    date: Timestamp;
-    amount: number;
-    expenseId: string;                   // Reference to the expense that triggered this
-    folderId: string;                    // Which month it came from
-  }>;
-
-  // Timeline
-  startDate?: Timestamp;
-  targetDate?: Timestamp;
-
-  // Progress tracking
-  status: 'pending' | 'in_progress' | 'completed' | 'cancelled';
-  isOnTrack: boolean;            // Calculated: are contributions meeting expected pace?
-  monthsBehind: number;          // 0 = on track, 2 = missed 2 months of contributions
+  // Scheduling
+  dueDay?: number;                  // Day of month when typically due (1-31)
+  isVariable: boolean;              // True for expenses that vary (grocery, petrol)
 
   // Organization
-  year: number;                  // For yearly grouping like your "Year Plans"
+  sortOrder: number;
+  isActive: boolean;                // Can disable without deleting
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+// Collection: users/{userId}/goals/{goalId}
+// Financial targets - savings, debt payoff, investments
+interface Goal {
+  id: string;
+  name: string;                     // "Medical Fund", "Pay off car", "Byte Fusion"
+  type: 'savings' | 'debt_payoff' | 'investment';
+
+  // Target tracking
+  targetAmount: number;             // Target in cents (R70,000 = 7000000)
+  currentAmount: number;            // Current progress (auto-calculated)
+
+  // For debt_payoff type
+  debtTracking?: {
+    originalBalance: number;        // Starting debt amount
+    interestRate?: number;          // Annual rate (0.105 = 10.5%)
+    minimumPayment?: number;
+    lender?: string;
+    accountNumber?: string;
+  };
+
+  // For investment type
+  investmentTracking?: {
+    termMonths: number;
+    startDate: Timestamp;
+    maturityDate: Timestamp;
+    institution?: string;
+  };
+
+  // Contribution expectations
+  monthlyTarget?: number;           // Expected monthly contribution
+  linkedCommitmentLabel?: string;   // For auto-linking suggestions
+
+  // Contribution history
+  contributions: Array<{
+    id: string;
+    date: Timestamp;
+    amount: number;
+    cycleId: string;
+    cycleItemId?: string;
+    note?: string;
+  }>;
+
+  // For savings type with withdrawals (e.g., Medical Fund)
+  allowWithdrawals: boolean;
+  withdrawals?: Array<{
+    id: string;
+    date: Timestamp;
+    amount: number;
+    description: string;
+  }>;
+
+  // Status
+  status: 'active' | 'completed' | 'paused';
+  isOnTrack: boolean;               // Calculated: meeting expected pace?
+
+  // Metadata
   priority: 'high' | 'medium' | 'low';
   notes?: string;
-
   createdAt: Timestamp;
   updatedAt: Timestamp;
   completedAt?: Timestamp;
 }
 
-// Example: 70k Medical Aid Goal
-// {
-//   title: "70k Medical aid",
-//   type: "savings",
-//   targetAmount: 7000000,           // R70,000
-//   currentAmount: 4200000,          // R42,000 (auto-tracked)
-//   expectedMonthlyContribution: 600000,  // R6,000
-//   linkedExpenseLabel: "Medical aid",
-//   contributions: [
-//     { date: "2025-01-25", amount: 600000, expenseId: "...", folderId: "jan-2025" },
-//     { date: "2025-02-25", amount: 600000, expenseId: "...", folderId: "feb-2025" },
-//     // ... 7 months of auto-tracked contributions
-//   ],
-//   isOnTrack: true,
-//   monthsBehind: 0,
-//   status: "in_progress"
-// }
+// Collection: users/{userId}/cycles/{cycleId}
+// Auto-generated pay periods
+interface Cycle {
+  id: string;                       // Format: "2026-04"
 
-// Collection: users/{userId}/investments/{investmentId}
-// For tracking investments like Byte Fusion (separate from expenses)
-interface Investment {
-  id: string;
-  name: string;                  // "Byte Fusion"
-  type: 'fixed_term' | 'recurring' | 'stocks' | 'other';
+  // Period boundaries
+  startDate: Timestamp;             // Pay day of this cycle
+  endDate: Timestamp;               // Day before next pay day
 
-  // Terms
-  targetAmount: number;          // In cents: R200,000 = 20000000
-  monthlyContribution: number;   // In cents: R3,000 = 300000
-  termMonths: number;            // 24 months
-  startDate: Timestamp;
-  maturityDate: Timestamp;
-
-  // Progress
-  totalContributed: number;      // Running total of contributions
-  contributions: Array<{         // Individual contribution records
-    date: Timestamp;
+  // Income for this cycle
+  income?: {
     amount: number;
-    note?: string;
-  }>;
+    source?: string;
+    receivedDate?: Timestamp;
+    verified: boolean;
+  };
+
+  // Calculated totals (denormalized for fast reads)
+  totalCommitted: number;           // Sum of all item amounts
+  totalPaid: number;                // Sum of paid item amounts
+  itemCount: number;
+  paidCount: number;
 
   // Status
-  status: 'active' | 'matured' | 'withdrawn' | 'paused';
-
-  // Metadata
-  institution?: string;          // Bank/provider name
-  accountNumber?: string;
-  notes?: string;
+  status: 'active' | 'closed';
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
 
-// Example: Byte Fusion Investment
-// {
-//   name: "Byte Fusion",
-//   type: "fixed_term",
-//   targetAmount: 20000000,      // R200,000
-//   monthlyContribution: 300000, // R3,000
-//   termMonths: 24,
-//   startDate: "2025-01-25",
-//   maturityDate: "2027-01-25",
-//   totalContributed: 450000,    // R4,500 (after 1.5 months)
-//   status: "active"
-// }
-
-// Collection: users/{userId}/savingsPots/{potId}
-// For funds with money flowing IN and OUT (like Medical Aid fund)
-interface SavingsPot {
+// Collection: users/{userId}/cycleItems/{itemId}
+// Individual items within a cycle (spawned from commitments or one-offs)
+interface CycleItem {
   id: string;
-  name: string;                  // "Medical Aid Fund", "Emergency Fund", "Holiday Fund"
-  description?: string;
+  cycleId: string;
 
-  // Target (optional - some pots are just for tracking, no specific goal)
-  targetBalance?: number;        // In cents: R70,000 = 7000000
+  // Source tracking
+  commitmentId?: string;            // Null for one-off items
 
-  // Current state (calculated from transactions)
-  currentBalance: number;        // Sum of contributions - sum of withdrawals
-  totalContributed: number;      // Lifetime contributions
-  totalWithdrawn: number;        // Lifetime withdrawals
+  // Item details
+  label: string;
+  amount: number;
+  category: Category;
+  accountType: 'personal' | 'business';
 
-  // Linked expense for auto-contributions
-  linkedExpenseLabel?: string;   // "Medical aid" - auto-contribute when this expense is paid
-  expectedMonthlyContribution?: number;  // R6,000 = 600000
+  // Status flow
+  status: 'upcoming' | 'due' | 'paid' | 'skipped';
 
-  // Transactions (the key difference from Goals/Investments)
-  transactions: Array<{
-    id: string;
-    type: 'contribution' | 'withdrawal';
-    amount: number;              // Always positive, type determines direction
-    date: Timestamp;
-    description?: string;        // "Monthly contribution" or "Dr Naidoo visit"
+  // Timing
+  dueDate?: Timestamp;
+  paidDate?: Timestamp;
 
-    // For contributions linked to expenses
-    linkedExpenseId?: string;
-    linkedFolderId?: string;
-  }>;
-
-  // Tracking
-  isOnTrack: boolean;            // Based on contribution pace
-  monthsBehind: number;          // Missed contributions count
+  // Smart linking
+  linkedGoalId?: string;
 
   // Metadata
-  icon?: string;
-  color?: string;
+  notes?: string;
+  tags?: string[];
+  sortOrder: number;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
-
-// Example: Medical Aid Fund
-// {
-//   name: "Medical Aid Fund",
-//   targetBalance: 7000000,           // R70,000 goal
-//   currentBalance: 2345000,          // R23,450 actual balance
-//   totalContributed: 3600000,        // R36,000 (6 months × R6k)
-//   totalWithdrawn: 1255000,          // R12,550 (medical expenses)
-//   linkedExpenseLabel: "Medical aid",
-//   expectedMonthlyContribution: 600000,
-//   transactions: [
-//     { type: "contribution", amount: 600000, date: "2026-03-25", description: "Monthly" },
-//     { type: "withdrawal", amount: 120000, date: "2026-03-18", description: "Dr Naidoo" },
-//     { type: "withdrawal", amount: 45000, date: "2026-03-12", description: "Clicks pharmacy" },
-//     // ... more transactions
-//   ],
-//   isOnTrack: true,                  // Contributions on schedule
-//   monthsBehind: 0
-// }
-
-// KEY DIFFERENCE BETWEEN ENTITY TYPES:
-// ─────────────────────────────────────────────────────────────
-// Goal:        One-time target, money only goes IN
-//              Example: "Buy MacBook R35,000"
-//
-// Investment:  Fixed term, money only goes IN, has maturity date
-//              Example: "Byte Fusion 24mo R200k"
-//
-// SavingsPot:  Ongoing fund, money goes IN and OUT, tracks balance
-//              Example: "Medical Aid Fund" (contribute monthly, spend on medical)
-// ─────────────────────────────────────────────────────────────
 
 // Collection: users/{userId}/insights/{insightId}
-// AI-generated insights stored for reference
+// AI-generated insights and alerts
 interface Insight {
   id: string;
   type: 'trend' | 'alert' | 'suggestion' | 'achievement';
   title: string;
   message: string;
-  data?: Record<string, any>;    // Supporting data for the insight
+  data?: Record<string, unknown>;
   isRead: boolean;
   isDismissed: boolean;
   expiresAt?: Timestamp;
   createdAt: Timestamp;
 }
 
-// Collection: users/{userId}/history/{historyId}
-// Aggregated monthly snapshots for fast trend queries
+// Collection: users/{userId}/snapshots/{snapshotId}
+// Monthly aggregations for trend analysis
 interface MonthlySnapshot {
-  id: string;                    // Format: "2026-03"
+  id: string;                       // Format: "2026-04"
   year: number;
   month: number;
-  totalBudgeted: number;
+  totalCommitted: number;
   totalPaid: number;
-  categoryBreakdown: Record<ExpenseCategory, number>;
-  topExpenses: Array<{ label: string; amount: number }>;
-  goalsProgress: number;         // Percentage
+  categoryBreakdown: Record<Category, number>;
+  topItems: Array<{ label: string; amount: number }>;
+  goalsProgress: number;            // Overall goal progress percentage
   createdAt: Timestamp;
 }
+
+// Category enum
+type Category =
+  | 'housing'        // Bond, Levies, Rates, Electricity
+  | 'transport'      // Car Insurance, Petrol, Car tracker
+  | 'family'         // Support payments, school fees
+  | 'utilities'      // Fibre, DSTV, subscriptions
+  | 'health'         // Medical aid, pharmacy
+  | 'education'      // UNISA, courses
+  | 'savings'        // Emergency fund, investments
+  | 'lifestyle'      // Entertainment, dining, shopping
+  | 'business'       // PAYE, accounting, business expenses
+  | 'other';
 ```
 
-### 3.2 Firestore Security Rules
+### 4.2 Firestore Security Rules
 
 ```javascript
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Helper function
     function isOwner(userId) {
       return request.auth != null && request.auth.uid == userId;
     }
 
-    // User profile
     match /users/{userId} {
       allow read, write: if isOwner(userId);
 
-      // All subcollections
       match /{subcollection}/{docId} {
         allow read, write: if isOwner(userId);
       }
@@ -434,20 +348,20 @@ service cloud.firestore {
 }
 ```
 
-### 3.3 Indexes Required
+### 4.3 Indexes Required
 
 ```json
 {
   "indexes": [
     {
-      "collectionGroup": "expenses",
+      "collectionGroup": "cycleItems",
       "fields": [
-        { "fieldPath": "folderId", "order": "ASCENDING" },
+        { "fieldPath": "cycleId", "order": "ASCENDING" },
         { "fieldPath": "sortOrder", "order": "ASCENDING" }
       ]
     },
     {
-      "collectionGroup": "expenses",
+      "collectionGroup": "cycleItems",
       "fields": [
         { "fieldPath": "category", "order": "ASCENDING" },
         { "fieldPath": "paidDate", "order": "DESCENDING" }
@@ -456,8 +370,15 @@ service cloud.firestore {
     {
       "collectionGroup": "goals",
       "fields": [
-        { "fieldPath": "year", "order": "DESCENDING" },
-        { "fieldPath": "status", "order": "ASCENDING" }
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "priority", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "cycles",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "startDate", "order": "DESCENDING" }
       ]
     }
   ]
@@ -466,1073 +387,623 @@ service cloud.firestore {
 
 ---
 
-## 4. Feature Specifications
+## 5. Feature Specifications
 
-### 4.1 Phase 1: Core Tracking (MVP)
+### 5.1 Phase 1: Core Tracking (MVP)
 
 #### F1.1 Authentication
 - Google Sign-In (primary)
 - Email/Password (fallback)
 - Persistent session
-- Single user per account (no sharing in v1)
+- Auto-create UserProfile on first sign-in
 
-#### F1.2 Folder Management
+#### F1.2 Dashboard (Home)
 ```
-Features:
-- Create/edit/delete folders
-- Folder types: Monthly, Project, Savings, Goals
-- Auto-create monthly folder based on pay date
-- Archive old folders (not delete)
-- Folder progress ring (paid/total items)
-
-UI Reference:
 ┌─────────────────────────────────────────┐
-│  ◉ March 2026          ◉ February 2026  │
-│    ████████░░ 85%        ██████████ 100%│
-│    R71,500/R84,000       R83,090        │
+│  ByteFinance                      ⚙️    │
 ├─────────────────────────────────────────┤
-│  ◉ Sbonga School       ◉ Year Plans     │
-│    ██░░░░░░░░ 20%        ██████░░░░ 60% │
-│    R4,200/R21,000        12/20 goals    │
+│                                         │
+│  APRIL 2026              5 days left    │
+│                                         │
+│  R84,000                                │
+│  ████████████████░░░░░░░░ 85%           │
+│  R71,500 paid · R12,500 remaining       │
+│                                         │
+│  ┌─ NEEDS ATTENTION ──────────────────┐ │
+│  │ 🔴 Bond, Medical Aid    due today  │ │
+│  │ 🟡 Grocery              due Fri    │ │
+│  │                        [View all →]│ │
+│  └────────────────────────────────────┘ │
+│                                         │
+│  ┌─ GOALS ────────────────────────────┐ │
+│  │ Medical Fund   ████████░░  R42k    │ │
+│  │ Emergency      ██░░░░░░░░  R8k     │ │
+│  │ Byte Fusion    █████░░░░░  R90k    │ │
+│  │                        [View all →]│ │
+│  └────────────────────────────────────┘ │
+│                                         │
+│  ┌─ INSIGHT ──────────────────────────┐ │
+│  │ 💡 Grocery up 12% vs 3-month avg   │ │
+│  │                           [Dismiss]│ │
+│  └────────────────────────────────────┘ │
+│                                         │
+├─────────────────────────────────────────┤
+│    [Now]    [Plan]    [History]         │
 └─────────────────────────────────────────┘
 ```
 
-#### F1.3 Expense Management
-```
 Features:
-- Add/edit/delete expenses
-- Quick-tick to mark as paid (primary interaction)
-- Drag to reorder
-- Swipe actions (edit, delete)
-- Running total display
-- Balance calculation (income - total)
+- Current cycle progress bar (paid vs total)
+- Days until next pay day
+- Needs attention section (due/overdue items)
+- Goals summary with progress bars
+- Latest insight card
+- Quick add button for one-off items
 
-UI Reference:
+#### F1.3 Plan View (Commitments & Goals)
+```
 ┌─────────────────────────────────────────┐
-│ March 2026                    R84,000 ▼ │
-│ ═══════════════════════════════════════ │
-│ ☑ Bond ─────────────────────── R9,000  │
-│ ☑ Medical aid ──────────────── R6,000  │
-│ ☑ Car Insurance ────────────── R8,000  │
-│ ☐ Grocery ──────────────────── R4,000  │
-│ ☐ Emergency ────────────────── R1,000  │
-│ ─────────────────────────────────────── │
-│ Total: R83,990    Paid: R71,500        │
-│ Balance: R12,490                        │
+│  Your Financial Plan                    │
+├─────────────────────────────────────────┤
+│                                         │
+│  MONTHLY COMMITMENTS         R83,990    │
+│  ───────────────────────────────────────│
+│  Housing                        R24,000 │
+│  ├─ Bond ────────────────────── R9,000  │
+│  ├─ Levies ──────────────────── R3,500  │
+│  ├─ Rates ───────────────────── R2,500  │
+│  └─ Electricity ─────────────── R1,800  │
+│                                         │
+│  Transport                      R16,000 │
+│  ├─ Car Insurance ───────────── R8,000  │
+│  └─ Petrol ──────────────────── R4,000  │
+│                                         │
+│  [+ Add Commitment]                     │
+│                                         │
+│  ───────────────────────────────────────│
+│  GOALS                                  │
+│  ───────────────────────────────────────│
+│                                         │
+│  💰 Medical Fund ─────────── R6,000/mo  │
+│     ████████░░░░░░░░░░░░ R42k / R70k    │
+│                                         │
+│  🎯 Emergency Fund ───────── R1,000/mo  │
+│     ██░░░░░░░░░░░░░░░░░░ R8k / R50k     │
+│                                         │
+│  📈 Byte Fusion ──────────── R3,000/mo  │
+│     █████░░░░░░░░░░░░░░░ R90k / R200k   │
+│     Matures: Jan 2027 (9 months)        │
+│                                         │
+│  [+ Add Goal]                           │
+│                                         │
+├─────────────────────────────────────────┤
+│    [Now]    [Plan]    [History]         │
 └─────────────────────────────────────────┘
 ```
 
-#### F1.4 Pay Cycle Logic
-```
 Features:
-- Configurable pay day with two modes:
-  1. Fixed date (e.g., 25th of every month)
-  2. Last working day (excludes weekends + SA public holidays)
-- Monthly view resets on pay day, not 1st
-- "Days until pay day" indicator
-- Carry-over handling for unpaid items
-- Pay day setting changeable (for job changes)
+- All commitments grouped by category
+- Monthly total calculation
+- Goals with progress bars
+- Investment maturity dates
+- Add/edit/delete commitments and goals
+- Link commitments to goals
 
-Logic for Last Working Day:
-- Calculate last day of month
-- Walk backwards skipping Sat/Sun
-- Skip SA public holidays (Easter, Heritage Day, etc.)
-- Example: March 2026 last working day = March 31 (Tuesday)
+#### F1.4 Cycle View (Current Period Items)
 
-Cycle Boundaries:
-- "March 2026" cycle = Feb pay day → Mar pay day - 1
-- Current cycle determined dynamically based on calculated pay day
+Accessed by tapping "View all" from dashboard or navigating to current cycle:
+
+```
+┌─────────────────────────────────────────┐
+│  ← April 2026                   R84,000 │
+├─────────────────────────────────────────┤
+│                                         │
+│  Housing                                │
+│  ───────────────────────────────────────│
+│  ✓ Bond ─────────────────────── R9,000  │
+│  ✓ Levies ───────────────────── R3,500  │
+│  ○ Rates ────────────────────── R2,500  │
+│  ○ Electricity ──────────────── R1,800  │
+│                                         │
+│  Transport                              │
+│  ───────────────────────────────────────│
+│  ✓ Car Insurance ────────────── R8,000  │
+│  ○ Petrol ───────────────────── R4,000  │
+│                                         │
+│  [+ Add one-off item]                   │
+│                                         │
+├─────────────────────────────────────────┤
+│  Total: R83,990                         │
+│  Paid:  R71,500                         │
+│  ───────────────────────────────────────│
+│  Remaining: R12,500                     │
+└─────────────────────────────────────────┘
 ```
 
-#### F1.5 Base Expenses (Monthly Templates)
-```
-Purpose: Define recurring expenses that auto-populate each new month
+Features:
+- Items grouped by category
+- Tap to change status (upcoming → due → paid)
+- Swipe actions (edit amount, skip, delete)
+- One-off items (not from commitments)
+- Running totals
 
-How It Works:
+#### F1.5 Pay Cycle Logic
+
+```typescript
+// Configurable pay day with two modes:
+// 1. Fixed date (e.g., 25th of every month)
+// 2. Last working day (excludes weekends + SA public holidays)
+
+function getPayDay(year: number, month: number, prefs: UserPreferences): Date {
+  if (prefs.payDayType === 'fixed') {
+    return new Date(year, month - 1, prefs.payDayFixed);
+  }
+  // Last working day logic
+  const lastDay = new Date(year, month, 0);
+  while (isWeekend(lastDay) || isPublicHoliday(lastDay)) {
+    lastDay.setDate(lastDay.getDate() - 1);
+  }
+  return lastDay;
+}
+
+// Cycle boundaries:
+// - Start: Pay day of current month
+// - End: Day before pay day of next month
+```
+
+SA Public Holidays included:
+- New Year's Day (1 Jan)
+- Human Rights Day (21 Mar)
+- Good Friday & Easter Monday (calculated)
+- Freedom Day (27 Apr)
+- Workers' Day (1 May)
+- Youth Day (16 Jun)
+- National Women's Day (9 Aug)
+- Heritage Day (24 Sep)
+- Day of Reconciliation (16 Dec)
+- Christmas & Day of Goodwill (25-26 Dec)
+
+#### F1.6 Smart Linking (Auto Goal Tracking)
+
+When a commitment is linked to a goal:
+
+```
 ┌─────────────────────────────────────────────────────────────┐
-│  BASE EXPENSES (Your Template)                              │
-│  ═══════════════════════════════════════════════════════════│
-│  These auto-create in every new monthly folder:             │
-│                                                             │
-│  Personal:                                                  │
-│  ☑ Bond ────────────────────────────────────── R9,000      │
-│  ☑ Medical aid ─────────────────────────────── R6,000      │
-│  ☑ Car Insurance ───────────────────────────── R4,000      │
-│  ☑ Grocery ─────────────────────────────────── R4,000      │
-│  ...                                                        │
-│                                                             │
-│  Business:                                                  │
-│  ☑ PAYE ────────────────────────────────────── R1,800      │
-│  ☑ Accounting fees ─────────────────────────── R3,900      │
-│  ...                                                        │
-│                                                             │
-│  [+ Add Base Expense]                    [Edit Template]    │
+│ COMMITMENT                       LINKED GOAL                 │
+│ ─────────────────────────────────────────────────────────── │
+│ Medical Aid - R6,000      →      Medical Fund (savings)      │
+│ Byte Fusion - R3,000      →      Byte Fusion (investment)    │
+│ Emergency - R1,000        →      Emergency Fund (savings)    │
+│ Car Insurance - R4,048    →      Pay off car (debt_payoff)   │
 └─────────────────────────────────────────────────────────────┘
 
-Creating New Month:
-1. User clicks "New Month" or system auto-creates on pay day
-2. All active Base Expenses copied as new Expense items
-3. Amounts default to template values
-4. User can adjust amounts for this specific month
-5. User can add one-off expenses (e.g., "Trip to KZN R5,000")
-
-Updating Base Expenses:
-- Changes apply to FUTURE months only
-- Existing months keep their values
-- Can increase/decrease default amounts anytime
-- Can disable items without deleting (for temporary pauses)
-
-Personal vs Business:
-- Base Expenses tagged as 'personal' or 'business'
-- Dashboard can show: All | Personal Only | Business Only
-- Helps separate for tax purposes
+When cycle item is marked PAID:
+1. System checks: Is this item linked to a goal?
+2. If YES → Auto-record contribution to goal
+3. Goal progress updates automatically
+4. If goal completed → Achievement notification
 ```
 
-#### F1.6 Offline Support
-```
-Implementation:
-- Firestore persistence enabled
+#### F1.7 Offline Support
+
+- Firestore IndexedDB persistence enabled
 - Optimistic UI updates
 - Sync indicator in header
 - Conflict resolution: last-write-wins
 
-Code:
-import { enableIndexedDbPersistence } from 'firebase/firestore';
-enableIndexedDbPersistence(db);
-```
-
 ---
 
-### 4.2 Phase 2: Intelligence Layer
+### 5.2 Phase 2: Intelligence Layer
 
-#### F2.1 Dashboard
+#### F2.1 History View (Trends & Analysis)
+
 ```
-Components:
-1. Balance Ring - Visual income vs committed
-2. Category Breakdown - Pie/donut chart
-3. Month Comparison - vs last month, vs same month last year
-4. Upcoming - Items due in next 7 days
-5. Quick Stats - Total paid, pending, largest expense
-
-Data Flow:
-- Real-time subscription to current month expenses
-- Aggregated data from MonthlySnapshot collection
-```
-
-#### F2.2 Trend Analysis
-```
-Insights Generated:
-- "Medical aid increased 15% year-over-year"
-- "Your entertainment spending peaks in December"
-- "Sbonga fees have been consistent at R2,000 for 18 months"
-- "Electricity varies R800-R1,800 seasonally"
-
-Implementation:
-- Nightly Cloud Function aggregates data
-- Compare current month to: last month, 3-month average, same month last year
-- Store insights in /insights collection
-- Surface top 3 on dashboard
-```
-
-#### F2.3 Smart Linking (Core Feature)
-```
-Problem Solved:
-- You pay "Medical aid R6,000" every month
-- You have a goal "70k Medical aid savings"
-- These don't connect → goal shows R0 even after paying for years
-
-Solution:
-- Link recurring expenses to goals/investments/savings
-- When expense marked "paid" → target auto-updates
-- Progress tracked automatically across months/years
-
-How It Works:
-┌─────────────────────────────────────────────────────────────┐
-│ EXPENSE                          LINKED TARGET              │
-│ ─────────────────────────────────────────────────────────── │
-│ Medical aid - R6,000      →      Savings Pot: Medical Fund  │
-│                                  (tracks balance with ins/outs)
-│ Byte Fusion - R3,000      →      Investment: Byte Fusion    │
-│                                  (fixed term, contributions only)
-│ Emergency - R1,000        →      Savings Pot: Emergency Fund│
-│                                  (tracks balance with ins/outs)
-│ Sbonga fees - R2,000      →      Goal: Education Fund       │
-│                                  (one-time target, contributions only)
-└─────────────────────────────────────────────────────────────┘
-
-Choosing the Right Target Type:
-- Use SAVINGS POT when: Money goes in AND out (Medical, Emergency, Holiday)
-- Use INVESTMENT when: Fixed term with maturity date (Byte Fusion, Unit Trusts)
-- Use GOAL when: One-time purchase/milestone (MacBook, Pay off car)
-
-Flow When Marking Expense as Paid:
-1. User taps checkbox on "Medical aid - R6,000"
-2. System checks: Is this expense linked to a target?
-3. If YES → Auto-record R6,000 contribution to "70k Medical aid" goal
-4. Goal progress updates: R42,000 / R70,000 (60%)
-5. If goal complete → Celebration notification!
-
-Smart Suggestions:
-- "Medical aid" expense detected, no link exists
-- System suggests: "Link to '70k Medical aid' goal?"
-- One tap to connect
-
-Alerts & Notifications:
-- "You're 2 months behind on Emergency fund contributions"
-- "Byte Fusion on track: R45,000 / R200,000 (22.5%)"
-- "Medical aid goal reached! R70,000 achieved in 12 months"
-
-Backfill Historical Data:
-- When linking an expense to a target for the first time
-- Option: "Apply to previous months?"
-- System scans past folders for same expense label
-- Auto-calculates total contributed historically
-```
-
-#### F2.4 Savings Pots (Funds with In/Out Flow)
-```
-Purpose: Track funds where money flows BOTH in and out
-Examples: Medical Aid Fund, Emergency Fund, Holiday Savings, School Fund
-
-Key Difference from Goals:
-- Goal: "Save R70k for medical" → only track money IN
-- Savings Pot: "Medical fund" → track money IN and OUT, show real balance
-
-Features:
-- Create named savings pots
-- Link to monthly expense for auto-contributions
-- Quick-add withdrawals (spending from the pot)
-- Transaction history (all ins and outs)
-- Real balance calculation
-- Progress toward target balance (optional)
-
-UI Reference:
-┌─────────────────────────────────────────────────────────────┐
-│  Medical Aid Fund                                           │
-│  ───────────────────────────────────────────────────────────│
-│  Balance: R23,450              Target: R70,000              │
-│  ████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░ 33%              │
-│  ───────────────────────────────────────────────────────────│
-│  This Month:                                                │
-│  + R6,000   Contribution (auto from expense)                │
-│  - R1,200   Dr Naidoo                        [Mar 18]       │
-│  - R450     Clicks pharmacy                  [Mar 12]       │
-│  ───────────────────────────────────────────────────────────│
-│  Net this month: +R4,350                                    │
-│  ───────────────────────────────────────────────────────────│
-│  [+ Add Contribution]              [- Record Spending]      │
-└─────────────────────────────────────────────────────────────┘
-
-Withdrawal Entry:
-- Quick form: Amount + Description + Date
-- Optional: Categorize (doctor, pharmacy, hospital, etc.)
-- Receipt photo upload (future)
-
-Insights:
-- "You typically spend R4,200/month from Medical fund"
-- "At current pace, you'll reach R70k target in 18 months"
-- "December has highest medical spending (avg R6,800)"
-```
-
-#### F2.5 Investment Tracking
-```
-Purpose: Track fixed-term investments like Byte Fusion separately from expenses
-
-Features:
-- Investment portfolio overview
-- Monthly contribution tracking
-- Progress toward target (R200k for Byte Fusion)
-- Maturity date countdown
-- Contribution history log
-- Link monthly expense to investment (auto-record when "Byte Fusion" expense is paid)
-
-UI Reference:
 ┌─────────────────────────────────────────┐
-│ Investments                             │
-│ ═══════════════════════════════════════ │
-│ ┌─────────────────────────────────────┐ │
-│ │ Byte Fusion            24mo term   │ │
-│ │ ██████████░░░░░░░░░░░░ 45%         │ │
-│ │ R90,000 / R200,000                 │ │
-│ │ 11 months remaining                │ │
-│ │ Next: R3,000 due end of month      │ │
-│ └─────────────────────────────────────┘ │
-└─────────────────────────────────────────┘
-
-Integration with Expenses:
-- When "Byte Fusion - R3,000" is marked paid in monthly expenses
-- Auto-prompt: "Record this as Byte Fusion contribution?"
-- If yes: contribution added to investment tracker
-```
-
-#### F2.6 Goal Tracking
-```
-Features:
-- Yearly goal lists (like your Year Plans)
-- Progress tracking for monetary goals
-- Completion status with dates
-- Goal history across years
-- Achievement celebrations
-
-UI Reference:
-┌─────────────────────────────────────────┐
-│ 2025 Goals                    8/12 ✓    │
-│ ═══════════════════════════════════════ │
-│ ☑ Pay off UNISA ────────────── R10,000 │
-│ ☑ Upgrade laptop                        │
-│ ☐ Pay off car (BIG MAYBE)              │
-│ ☐ MacBook ──────────── R0/R35,000      │
-│ ☐ Emergency fund ───── R0/R50,000      │
-│   ░░░░░░░░░░░░░░░░░░░░ 0%              │
+│  History                                │
+├─────────────────────────────────────────┤
+│                                         │
+│  [This Year ▼]                          │
+│                                         │
+│  SPENDING TREND                         │
+│  ───────────────────────────────────────│
+│  [Monthly bar chart showing totals]     │
+│                                         │
+│  CATEGORY BREAKDOWN                     │
+│  ───────────────────────────────────────│
+│  [Donut chart with category %]          │
+│                                         │
+│  Housing      ████████████ 35%          │
+│  Transport    ██████████   28%          │
+│  Family       ████████     22%          │
+│  Other        ████         15%          │
+│                                         │
+│  PAST CYCLES                            │
+│  ───────────────────────────────────────│
+│  March 2026    ✓ R82,500 / R83,990      │
+│  February 2026 ✓ R79,200 / R81,000      │
+│  January 2026  ✓ R84,100 / R85,500      │
+│                                         │
+├─────────────────────────────────────────┤
+│    [Now]    [Plan]    [History]         │
 └─────────────────────────────────────────┘
 ```
 
-#### F2.7 Debt Payoff Tracking
-```
-Purpose: Track loan/debt balances for "Pay off X" goals
+#### F2.2 Trend Analysis (Cloud Function)
 
-Features:
-- Original balance tracking
-- Remaining balance calculation
-- Interest rate (optional)
-- Projected payoff date based on payment rate
-- Payment history via Smart Linking
+Runs nightly to:
+- Compare current month to previous month
+- Compare to 3-month rolling average
+- Compare to same month last year
+- Generate insights for significant changes (>10%)
 
-UI Reference:
-┌─────────────────────────────────────────────────────────────┐
-│  Pay Off Car                                    DEBT GOAL   │
-│  ═══════════════════════════════════════════════════════════│
-│                                                             │
-│  Original Loan:    R180,000                                 │
-│  Remaining:        R67,500                                  │
-│  ████████████████████░░░░░░░░░░ 62.5% paid                 │
-│                                                             │
-│  Monthly Payment:  R4,048 (Car Insurance line item)         │
-│  Interest Rate:    10.5%                                    │
-│  Lender:           MFC                                      │
-│                                                             │
-│  At current rate:  Paid off by March 2028 (18 months)       │
-│                                                             │
-│  Recent Payments:                                           │
-│  ✓ R4,048  Mar 2026                                         │
-│  ✓ R4,048  Feb 2026                                         │
-│  ✓ R4,048  Jan 2026                                         │
-└─────────────────────────────────────────────────────────────┘
+#### F2.3 Smart Advisor (Cloud Function)
 
-Integration:
-- Link "Car Insurance" expense to this debt goal
-- When paid → remaining balance decreases
-- System calculates new projected payoff date
-```
+Runs weekly to:
+- Analyze spending patterns
+- Identify savings opportunities
+- Check goal achievability
+- Suggest payment optimizations
 
-#### F2.5 Notifications (Gentle Reminders)
-```
-Trigger Rules:
+#### F2.4 Notifications
 
-PAY CYCLE ALERTS:
-1. 3 days before pay day:
-   "New cycle starting Friday. 4 items still pending from this month."
-
-2. Priority items unpaid after 48hrs post-payday:
-   "Gentle reminder: Bond and Medical aid not yet marked as paid."
-
-SMART LINKING ALERTS (Your Key Requirement):
-3. Missed contribution detected:
-   "Medical aid wasn't paid in March. You're now 1 month behind on your 70k goal."
-
-4. Falling behind trend:
-   "Emergency fund: 2 months of missed contributions. R2,000 behind target pace."
-
-5. Back on track:
-   "Great! Byte Fusion contribution recorded. You're back on track."
-
-6. Goal milestone reached:
-   "70k Medical aid: 50% milestone reached! R35,000 saved."
-
-7. Goal completed:
-   "Congratulations! 70k Medical aid goal achieved! Total time: 14 months."
-
-PROGRESS ALERTS:
-8. Investment maturity approaching:
-   "Byte Fusion matures in 3 months. Current value: R180,000"
-
-9. Spending anomaly:
-   "Heads up: Entertainment is R2,000 over your typical spend."
-
-10. Year-end summary:
-    "2025 Goals: 8/12 completed. 2 goals need attention."
-
-Implementation:
-- Firebase Cloud Functions (scheduled daily check)
-- Firebase Cloud Messaging for push
-- In-app notification center
-- All dismissible, no repeat within 7 days
-- "Snooze" option for goals you're intentionally pausing
-```
+Alerts include:
+- Pay cycle reminders (3 days before)
+- Overdue items (48hrs post-payday)
+- Missed goal contributions
+- Goal milestones (25%, 50%, 75%, 100%)
+- Spending anomalies
 
 ---
 
-### 4.3 Phase 3: AI Features
+### 5.3 Phase 3: AI Features
 
-#### F3.1 Legacy Data Importer (Samsung Notes)
-```
-Flow:
-1. User pastes text from Samsung Notes
-2. AI (Gemini) parses into structured data
-3. Preview shown for confirmation
-4. User adjusts any errors
-5. Bulk insert into Firestore
+#### F3.1 Data Importer
 
-Prompt Engineering:
-"""
-Parse this South African expense list. Extract:
-- label: expense name
-- amount: number in ZAR (R9000 = 9000)
-- status: "paid" if strikethrough/checked, "pending" otherwise
+Import from:
+- Plain text (AI parsing)
+- Bank statements (PDF/CSV)
+- Duplicate detection
 
-Input:
-☑ Bond - R9,000
-☐ Medical aid - R6,000
+#### F3.2 Natural Language Entry
 
-Output JSON array.
-"""
-
-API Route: /api/import/parse
-Rate Limit: 10 requests/minute
-```
-
-#### F3.2 Bank Statement Import
-```
-Purpose: Import transactions from bank statements to populate Savings Pot withdrawals
-
-Supported Formats:
-- PDF statements (FNB, Standard Bank, Absa, Nedbank, Capitec)
-- CSV exports (most banks offer this)
-- OFX/QIF files (if available)
-
-Flow:
-┌─────────────────────────────────────────────────────────────┐
-│ STEP 1: Upload Statement                                    │
-│ ─────────────────────────────────────────────────────────── │
-│ [Drop PDF/CSV here or click to browse]                      │
-│                                                             │
-│ Select account: [Medical Aid Account ▼]                     │
-│ Statement period: Auto-detected from file                   │
-└─────────────────────────────────────────────────────────────┘
-                            ↓
-┌─────────────────────────────────────────────────────────────┐
-│ STEP 2: AI Parses Transactions                              │
-│ ─────────────────────────────────────────────────────────── │
-│ Found 23 transactions from 1 Mar - 31 Mar 2026              │
-│                                                             │
-│ ☑ R1,200.00  DR NAIDOO MEDICAL      [Withdrawal ▼]  Mar 18 │
-│ ☑ R450.00    CLICKS PHARMACY        [Withdrawal ▼]  Mar 12 │
-│ ☑ R6,000.00  SALARY TRANSFER IN     [Contribution▼] Mar 25 │
-│ ☐ R89.00     BANK CHARGES           [Skip ▼]        Mar 01 │
-│                                                             │
-│ [Select All]  [Deselect All]                                │
-└─────────────────────────────────────────────────────────────┘
-                            ↓
-┌─────────────────────────────────────────────────────────────┐
-│ STEP 3: Review & Confirm                                    │
-│ ─────────────────────────────────────────────────────────── │
-│ Adding to: Medical Aid Fund                                 │
-│                                                             │
-│ Contributions: 1 transaction, +R6,000                       │
-│ Withdrawals:   2 transactions, -R1,650                      │
-│ Skipped:       1 transaction (bank charges)                 │
-│                                                             │
-│ New balance after import: R27,800                           │
-│                                                             │
-│ [Cancel]                              [Confirm Import]      │
-└─────────────────────────────────────────────────────────────┘
-
-AI Parsing (Gemini):
-- Extracts: date, description, amount, transaction type (debit/credit)
-- Cleans merchant names: "CLICKS *1234 SANDTON" → "Clicks Pharmacy"
-- Detects duplicates (already imported transactions)
-- Suggests categorization based on description
-
-SA Bank Statement Formats:
-- FNB: PDF with table structure, CSV available
-- Standard Bank: PDF, CSV, OFX
-- Absa: PDF, CSV
-- Nedbank: PDF, CSV
-- Capitec: PDF, CSV (clean format)
-- TymeBank: PDF, CSV (digital-first, clean export format)
-
-Edge Cases:
-- Duplicate detection (same amount, date, description)
-- Multi-month statements
-- Foreign currency transactions (show in ZAR equivalent)
-- Pending vs cleared transactions
-
-API Routes:
-- POST /api/import/statement/upload - Upload file, get parsed preview
-- POST /api/import/statement/confirm - Confirm and save transactions
-
-Security:
-- Files processed in memory, not stored permanently
-- Statement data never leaves your Firebase (no third-party storage)
-- Option to auto-delete uploaded file after processing
-```
-
-#### F3.2 Smart Advisor
-```
-Capabilities:
-1. Savings Finder
-   "Reducing Entertainment by R1,000/month builds R12,000 emergency fund in a year"
-
-2. Seasonal Forecaster
-   "Based on history, budget extra R15,000 for December"
-
-3. Goal Achievability
-   "70k Medical aid at R2,000/month = 35 months. Consider R3,000/month for 2-year target"
-
-4. Category Health
-   "Family support is 17% of income (R14,100). National average is 8-12%."
-
-5. Bill Negotiation Prompts
-   "Car insurance at R8,000 is high. Last increased in March 2025. Consider shopping around."
-
-Implementation:
-- Weekly Cloud Function analyzes full dataset
-- Gemini generates insights with structured prompts
-- Insights ranked by actionability
-- Stored with expiration dates
-```
-
-#### F3.3 Natural Language Entry
-```
-Future Feature:
-"Add bond R9000 to March"
-"Mark medical aid as paid"
-"How much did I spend on groceries last year?"
-
-Implementation: Gemini function calling with expense schema
-```
+Future feature:
+- "Add R500 for groceries"
+- "Mark car insurance as paid"
+- "How much did I spend on transport last year?"
 
 ---
 
-## 5. API Routes
-
-### 5.1 Route Structure
+## 6. API Routes
 
 ```
 /api
 ├── /auth
-│   └── /[...nextauth]     # Auth handlers
-├── /expenses
-│   ├── GET /              # List expenses (with filters)
-│   ├── POST /             # Create expense
-│   ├── PATCH /[id]        # Update expense
-│   ├── DELETE /[id]       # Delete expense
-│   └── POST /bulk         # Bulk operations
-├── /folders
-│   ├── GET /              # List folders
-│   ├── POST /             # Create folder (auto-populates from base expenses)
-│   ├── PATCH /[id]        # Update folder
-│   └── DELETE /[id]       # Archive folder
-├── /base-expenses
-│   ├── GET /              # List base expense templates
-│   ├── POST /             # Create base expense
-│   ├── PATCH /[id]        # Update base expense
-│   └── DELETE /[id]       # Deactivate base expense
+│   └── /[...nextauth]         # Auth handlers
+├── /commitments
+│   ├── GET /                  # List commitments
+│   ├── POST /                 # Create commitment
+│   ├── PATCH /[id]            # Update commitment
+│   └── DELETE /[id]           # Delete commitment
 ├── /goals
-│   ├── GET /              # List goals
-│   ├── POST /             # Create goal
-│   └── PATCH /[id]        # Update goal
-├── /investments
-│   ├── GET /              # List investments
-│   ├── POST /             # Create investment
-│   ├── PATCH /[id]        # Update investment
-│   └── POST /[id]/contribute  # Record contribution
-├── /savings-pots
-│   ├── GET /              # List savings pots
-│   ├── POST /             # Create savings pot
-│   ├── PATCH /[id]        # Update savings pot
-│   ├── POST /[id]/contribute  # Record contribution (money in)
-│   └── POST /[id]/withdraw    # Record withdrawal (money out)
+│   ├── GET /                  # List goals
+│   ├── POST /                 # Create goal
+│   ├── PATCH /[id]            # Update goal
+│   ├── POST /[id]/contribute  # Record contribution
+│   └── POST /[id]/withdraw    # Record withdrawal (savings type)
+├── /cycles
+│   ├── GET /                  # List cycles
+│   ├── GET /current           # Get or create current cycle
+│   └── PATCH /[id]            # Update cycle (income, close)
+├── /cycle-items
+│   ├── GET /?cycleId=         # List items for cycle
+│   ├── POST /                 # Create one-off item
+│   ├── PATCH /[id]            # Update item (status, amount)
+│   ├── PATCH /[id]/status     # Quick status update
+│   └── DELETE /[id]           # Delete item
 ├── /insights
-│   ├── GET /              # Get active insights
-│   └── PATCH /[id]        # Dismiss insight
-├── /import
-│   ├── POST /parse              # AI parse Samsung Notes text
-│   ├── POST /confirm            # Confirm notes import
-│   ├── POST /statement/upload   # Upload bank statement (PDF/CSV)
-│   └── POST /statement/confirm  # Confirm statement transactions
+│   ├── GET /                  # Get active insights
+│   └── PATCH /[id]            # Dismiss/read insight
 ├── /analytics
-│   ├── GET /dashboard     # Dashboard data
-│   ├── GET /trends        # Trend analysis
-│   └── GET /categories    # Category breakdown
+│   ├── GET /dashboard         # Dashboard data
+│   ├── GET /trends            # Trend analysis
+│   └── GET /categories        # Category breakdown
+├── /import
+│   ├── POST /parse            # AI parse text
+│   └── POST /statement        # Parse bank statement
 └── /export
-    └── GET /              # Export all data (JSON/CSV)
-```
-
-### 5.2 Example Route Implementation
-
-```typescript
-// app/api/expenses/route.ts
-import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { db } from '@/lib/firebase-admin';
-
-export async function GET(request: NextRequest) {
-  const session = await getServerSession();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  const { searchParams } = new URL(request.url);
-  const folderId = searchParams.get('folderId');
-
-  let query = db
-    .collection('users')
-    .doc(session.user.id)
-    .collection('expenses');
-
-  if (folderId) {
-    query = query.where('folderId', '==', folderId);
-  }
-
-  const snapshot = await query.orderBy('sortOrder').get();
-  const expenses = snapshot.docs.map(doc => ({
-    id: doc.id,
-    ...doc.data()
-  }));
-
-  return NextResponse.json({ expenses });
-}
-
-export async function POST(request: NextRequest) {
-  const session = await getServerSession();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  const body = await request.json();
-
-  const expense = {
-    ...body,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  };
-
-  const docRef = await db
-    .collection('users')
-    .doc(session.user.id)
-    .collection('expenses')
-    .add(expense);
-
-  return NextResponse.json({ id: docRef.id, ...expense }, { status: 201 });
-}
+    └── GET /                  # Export all data (JSON/CSV)
 ```
 
 ---
 
-## 6. UI/UX Specifications
+## 7. UI/UX Specifications
 
-### 6.1 Design System
+### 7.1 Navigation Structure
+
+Three main views accessible via bottom nav:
+
+| Tab | View | Purpose |
+|-----|------|---------|
+| **Now** | Dashboard | Current status at a glance |
+| **Plan** | Commitments & Goals | Your financial plan |
+| **History** | Trends & Past Cycles | Analysis and history |
+
+Plus:
+- Settings (gear icon in header)
+- Cycle detail (drill down from dashboard)
+- Goal detail (drill down from plan)
+
+### 7.2 Design System
 
 ```
-Theme: Dark Mode Primary (light mode secondary)
-
-Colors:
-- Background:    #0a0a0a (near black)
-- Surface:       #171717 (card backgrounds)
-- Border:        #262626 (subtle borders)
-- Primary:       #22c55e (green - for paid/positive)
-- Warning:       #f59e0b (amber - for pending)
-- Danger:        #ef4444 (red - for overdue)
-- Text Primary:  #fafafa
-- Text Secondary:#a1a1aa
+Colors (dark theme default):
+  background:    #0a0a0a
+  surface:       #171717
+  border:        #262626
+  primary:       #22c55e  (green - paid/positive)
+  warning:       #f59e0b  (amber - due/pending)
+  danger:        #ef4444  (red - overdue)
+  text-primary:  #fafafa
+  text-secondary:#a1a1aa
 
 Typography:
-- Font: Inter (system fallback: -apple-system, sans-serif)
-- Headings: 600 weight
-- Body: 400 weight
-- Monospace numbers: JetBrains Mono (for amounts)
+  labels/UI:     Inter (400, 600)
+  amounts:       JetBrains Mono
 
 Spacing:
-- Base unit: 4px
-- Component padding: 16px
-- Card gap: 12px
-- Section gap: 24px
+  base unit:     4px
+  component:     16px
+  section:       24px
 
-Border Radius:
-- Cards: 12px
-- Buttons: 8px
-- Inputs: 8px
-- Chips: 9999px (full round)
+Border radius:
+  cards:         12px
+  buttons:       8px
+  inputs:        8px
+
+Responsive:
+  mobile:        < 640px  (single column, bottom nav)
+  tablet:        640-1024px (two columns, side nav)
+  desktop:       > 1024px (three columns, expanded side nav)
 ```
 
-### 6.2 Component Hierarchy
+### 7.3 Key Interactions
 
-```
-App Layout
-├── Header
-│   ├── Logo
-│   ├── Sync Status Indicator
-│   └── Profile Menu
-├── Navigation (Bottom on mobile, Side on desktop)
-│   ├── Dashboard
-│   ├── Folders (Monthly expenses)
-│   ├── Savings (Pots with in/out: Medical, Emergency, etc.)
-│   ├── Investments (Fixed term: Byte Fusion, etc.)
-│   ├── Goals (Year plans: MacBook, Pay off car, etc.)
-│   └── Settings
-└── Main Content Area
-    └── [Page Content]
-
-Folder View
-├── Folder Header
-│   ├── Title + Period
-│   ├── Progress Ring
-│   └── Income Input
-├── Expense List
-│   ├── Expense Item (repeating)
-│   │   ├── Checkbox
-│   │   ├── Label
-│   │   ├── Amount
-│   │   └── Swipe Actions
-│   └── Add Expense Button
-└── Footer Summary
-    ├── Total
-    ├── Paid
-    └── Balance
-```
-
-### 6.3 Key Interactions
-
-```
-Mark as Paid:
-- Tap checkbox → immediate strikethrough + green check
+**Status Change:**
+- Tap item row to cycle: upcoming → due → paid
+- Visual feedback: color change, subtle animation
 - Haptic feedback on mobile
-- Optimistic update (no loading state)
-- Subtle confetti on completing all items
 
-Add Expense:
+**Add Item:**
 - Floating "+" button
-- Bottom sheet on mobile, modal on desktop
+- Bottom sheet on mobile
 - Auto-focus on label field
-- Smart suggestions based on history
 
-Reorder:
-- Long press to drag
-- Visual lift effect
-- Drop zones highlighted
-- Save order on drop
-
-Quick Edit Amount:
+**Quick Edit:**
 - Tap amount to edit inline
 - Number pad on mobile
-- Enter to confirm, tap outside to cancel
-```
-
-### 6.4 Responsive Breakpoints
-
-```
-Mobile:    < 640px   (single column, bottom nav)
-Tablet:    640-1024px (two columns, side nav)
-Desktop:   > 1024px  (three columns, expanded side nav)
-```
+- Tap outside to cancel
 
 ---
 
-## 7. Project Structure
+## 8. Project Structure
 
 ```
 byte-finance/
 ├── app/
 │   ├── (auth)/
-│   │   ├── login/
-│   │   │   └── page.tsx
+│   │   ├── login/page.tsx
 │   │   └── layout.tsx
-│   ├── (dashboard)/
-│   │   ├── page.tsx              # Dashboard home
-│   │   ├── folders/
-│   │   │   ├── page.tsx          # Folder grid
-│   │   │   └── [id]/
-│   │   │       └── page.tsx      # Folder detail (expense list)
-│   │   ├── savings/
-│   │   │   ├── page.tsx          # Savings pots overview
-│   │   │   └── [id]/
-│   │   │       └── page.tsx      # Pot detail + transactions
-│   │   ├── investments/
-│   │   │   ├── page.tsx          # Investment portfolio
-│   │   │   └── [id]/
-│   │   │       └── page.tsx      # Investment detail + contributions
-│   │   ├── goals/
-│   │   │   └── page.tsx          # Goals by year
-│   │   ├── insights/
-│   │   │   └── page.tsx          # AI insights
-│   │   ├── import/
-│   │   │   ├── page.tsx          # Import hub (choose import type)
-│   │   │   ├── notes/
-│   │   │   │   └── page.tsx      # Samsung Notes importer
-│   │   │   └── statement/
-│   │   │       └── page.tsx      # Bank statement importer
-│   │   ├── settings/
-│   │   │   └── page.tsx          # User preferences
-│   │   └── layout.tsx            # Dashboard layout with nav
+│   ├── (main)/
+│   │   ├── page.tsx                    # Dashboard (Now)
+│   │   ├── plan/page.tsx               # Commitments & Goals
+│   │   ├── history/page.tsx            # Trends & Past Cycles
+│   │   ├── cycle/[id]/page.tsx         # Cycle detail
+│   │   ├── goal/[id]/page.tsx          # Goal detail
+│   │   ├── settings/page.tsx
+│   │   └── layout.tsx                  # Main layout with nav
 │   ├── api/
-│   │   ├── auth/[...nextauth]/
-│   │   ├── expenses/
-│   │   ├── folders/
-│   │   ├── goals/
-│   │   ├── insights/
-│   │   ├── import/
-│   │   ├── analytics/
-│   │   └── export/
-│   ├── layout.tsx                # Root layout
+│   │   └── [... see API routes above]
+│   ├── layout.tsx
 │   └── globals.css
 ├── components/
-│   ├── ui/                       # Shadcn/ui components
-│   │   ├── button.tsx
-│   │   ├── card.tsx
-│   │   ├── checkbox.tsx
-│   │   ├── dialog.tsx
-│   │   ├── dropdown-menu.tsx
-│   │   ├── input.tsx
-│   │   ├── progress.tsx
-│   │   └── ...
-│   ├── expenses/
-│   │   ├── expense-item.tsx
-│   │   ├── expense-list.tsx
-│   │   ├── expense-form.tsx
-│   │   └── expense-summary.tsx
-│   ├── folders/
-│   │   ├── folder-card.tsx
-│   │   ├── folder-grid.tsx
-│   │   └── folder-form.tsx
-│   ├── goals/
-│   │   ├── goal-item.tsx
-│   │   ├── goal-list.tsx
-│   │   └── goal-form.tsx
-│   ├── savings/
-│   │   ├── savings-pot-card.tsx
-│   │   ├── pot-balance-display.tsx
-│   │   ├── transaction-list.tsx
-│   │   ├── contribution-form.tsx
-│   │   └── withdrawal-form.tsx
-│   ├── investments/
-│   │   ├── investment-card.tsx
-│   │   ├── investment-progress.tsx
-│   │   ├── contribution-form.tsx
-│   │   └── contribution-history.tsx
+│   ├── ui/                             # shadcn/ui primitives
 │   ├── dashboard/
-│   │   ├── balance-ring.tsx
-│   │   ├── category-chart.tsx
-│   │   ├── quick-stats.tsx
+│   │   ├── cycle-progress.tsx          # Progress bar
+│   │   ├── needs-attention.tsx         # Due items card
+│   │   ├── goals-summary.tsx           # Goals preview
 │   │   └── insight-card.tsx
+│   ├── plan/
+│   │   ├── commitment-list.tsx
+│   │   ├── commitment-form.tsx
+│   │   ├── goal-card.tsx
+│   │   └── goal-form.tsx
+│   ├── cycle/
+│   │   ├── cycle-item.tsx
+│   │   ├── cycle-item-list.tsx
+│   │   ├── cycle-summary.tsx
+│   │   └── add-item-sheet.tsx
+│   ├── history/
+│   │   ├── spending-chart.tsx
+│   │   ├── category-breakdown.tsx
+│   │   └── past-cycles-list.tsx
 │   ├── layout/
 │   │   ├── header.tsx
-│   │   ├── nav.tsx
-│   │   ├── mobile-nav.tsx
+│   │   ├── bottom-nav.tsx
+│   │   ├── side-nav.tsx
 │   │   └── sync-indicator.tsx
 │   └── shared/
 │       ├── amount-display.tsx
 │       ├── currency-input.tsx
-│       ├── date-picker.tsx
-│       └── empty-state.tsx
-├── lib/
-│   ├── firebase.ts               # Client SDK init
-│   ├── firebase-admin.ts         # Admin SDK init
-│   ├── auth.ts                   # NextAuth config
-│   ├── utils.ts                  # Helper functions
-│   ├── constants.ts              # App constants
-│   └── validations.ts            # Zod schemas
+│       ├── progress-bar.tsx
+│       └── status-badge.tsx
 ├── hooks/
-│   ├── use-expenses.ts           # Expense CRUD + real-time
-│   ├── use-folders.ts
+│   ├── use-commitments.ts
 │   ├── use-goals.ts
-│   ├── use-savings-pots.ts       # Savings pots with transactions
-│   ├── use-investments.ts        # Investment tracking
-│   ├── use-analytics.ts
-│   ├── use-pay-day.ts            # Pay day calculation logic
+│   ├── use-cycles.ts
+│   ├── use-cycle-items.ts
+│   ├── use-insights.ts
+│   ├── use-pay-day.ts
 │   └── use-offline-status.ts
+├── lib/
+│   ├── firebase.ts
+│   ├── firebase-admin.ts
+│   ├── auth.ts
+│   ├── pay-day.ts
+│   ├── smart-link.ts
+│   ├── validations.ts
+│   └── utils.ts
 ├── stores/
-│   └── app-store.ts              # Zustand global state
+│   └── app-store.ts
 ├── types/
-│   └── index.ts                  # TypeScript interfaces
+│   └── index.ts
+├── functions/                          # Firebase Cloud Functions
+│   ├── src/
+│   │   ├── index.ts
+│   │   ├── trend-analyzer.ts
+│   │   ├── smart-advisor.ts
+│   │   └── notification-service.ts
+│   └── package.json
 ├── public/
-│   ├── icons/
-│   └── manifest.json             # PWA manifest
-├── .env.local
-├── .env.example
-├── next.config.js
-├── tailwind.config.ts
-├── tsconfig.json
-├── package.json
-└── README.md
+│   ├── manifest.json
+│   └── icons/
+└── [config files]
 ```
 
 ---
 
-## 8. Development Phases
+## 9. Development Phases
 
 ### Phase 1: Foundation (MVP)
-```
-Week 1-2: Setup & Auth
-- [ ] Initialize Next.js project
-- [ ] Configure Tailwind + dark theme
-- [ ] Setup Firebase project
-- [ ] Implement authentication (Google + Email)
-- [ ] Create user profile on first login
-- [ ] Basic layout with navigation
 
-Week 3-4: Core Features
-- [ ] Folder CRUD operations
-- [ ] Expense CRUD operations
-- [ ] Checkbox interaction (mark as paid)
-- [ ] Running totals and balance calculation
-- [ ] Pay day configuration (fixed date OR last working day)
-- [ ] Offline persistence
-
-Week 5-6: Smart Linking (Core Feature)
-- [ ] Goal/Investment CRUD operations
-- [ ] Link expense to goal/investment
-- [ ] Auto-update goal progress when expense marked paid
-- [ ] "Behind" calculation logic
-- [ ] Basic goal progress UI
-
-Week 7: Polish
-- [ ] Responsive design refinement
-- [ ] Loading states and error handling
-- [ ] Empty states
-- [ ] PWA configuration
-- [ ] Basic onboarding flow
-```
+- [ ] Authentication (Google + Email)
+- [ ] User profile with pay day config
+- [ ] Commitments CRUD
+- [ ] Goals CRUD
+- [ ] Cycles (auto-generation)
+- [ ] Cycle items (status flow)
+- [ ] Smart linking (auto-contributions)
+- [ ] Dashboard view
+- [ ] Plan view
+- [ ] Cycle detail view
+- [ ] Offline support
+- [ ] Responsive design
 
 ### Phase 2: Intelligence
-```
-Week 8-9: Dashboard & Analytics
-- [ ] Dashboard page with charts
-- [ ] Category breakdown
-- [ ] Month-over-month comparison
-- [ ] Monthly snapshot aggregation
-- [ ] Goal/Investment progress overview
 
-Week 10: Notifications & Alerts
-- [ ] "Behind on goal" detection logic
-- [ ] Push notification setup (FCM)
-- [ ] In-app notification center
-- [ ] Pay cycle reminders
-- [ ] Goal milestone celebrations
+- [ ] History view with charts
+- [ ] Monthly snapshots
+- [ ] Trend analysis (Cloud Function)
+- [ ] Smart advisor (Cloud Function)
+- [ ] Notifications (in-app)
+- [ ] Goal insights
 
-Week 11: Historical Backfill
-- [ ] Link expense to past months retroactively
-- [ ] Bulk contribution calculation
-- [ ] Trend detection from historical data
-```
+### Phase 3: AI & Polish
 
-### Phase 3: AI Features
-```
-Week 12-13: Import Tools
-- [ ] Legacy data importer (AI parsing from Samsung Notes)
-- [ ] Bank statement import (PDF/CSV parsing)
-- [ ] Duplicate transaction detection
-- [ ] Merchant name cleaning
-
-Week 14-15: Smart Advisor
-- [ ] Spending pattern insights
-- [ ] Savings recommendations
-- [ ] Seasonal forecasting
-- [ ] Goal achievability analysis
-
-Week 16-17: Native & Polish
-- [ ] Capacitor integration
-- [ ] Push notifications
-- [ ] Performance optimization
-- [ ] Beta testing
-```
+- [ ] Data importer (AI parsing)
+- [ ] Bank statement import
+- [ ] Push notifications (FCM)
+- [ ] Data export
+- [ ] PWA optimization
+- [ ] Performance tuning
 
 ---
 
-## 9. Environment Variables
+## 10. Future Enhancements
 
-```bash
-# .env.local
+Features considered for future development (post-MVP):
 
-# Firebase Client
-NEXT_PUBLIC_FIREBASE_API_KEY=
-NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=
-NEXT_PUBLIC_FIREBASE_PROJECT_ID=
-NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=
-NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=
-NEXT_PUBLIC_FIREBASE_APP_ID=
+### 10.1 Year-over-Year Comparison
 
-# Firebase Admin (Server-side)
-FIREBASE_PROJECT_ID=
-FIREBASE_CLIENT_EMAIL=
-FIREBASE_PRIVATE_KEY=
+Side-by-side comparison of financial data between years:
+- Compare spending patterns between 2025 vs 2026
+- Identify what changed (new commitments, removed ones, amount changes)
+- Visual diff showing increases/decreases per category
+- Highlight significant changes (>10% difference)
 
-# NextAuth
-NEXTAUTH_URL=http://localhost:3000
-NEXTAUTH_SECRET=
-
-# Google OAuth
-GOOGLE_CLIENT_ID=
-GOOGLE_CLIENT_SECRET=
-
-# Gemini AI
-GEMINI_API_KEY=
-
-# App Config
-NEXT_PUBLIC_APP_URL=http://localhost:3000
+**UI Concept:**
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Compare Years                                              │
+├─────────────────────────────────────────────────────────────┤
+│  [2025 ▼]  vs  [2026 ▼]                                     │
+│                                                              │
+│  CATEGORY         2025         2026        CHANGE           │
+│  ─────────────────────────────────────────────────────────  │
+│  Housing         R290,000    R312,000     +7.6% ↑           │
+│  Transport       R180,000    R156,000     -13.3% ↓          │
+│  Family          R144,000    R180,000     +25.0% ↑          │
+│                                                              │
+│  TOTAL           R980,000    R1,020,000   +4.1%             │
+└─────────────────────────────────────────────────────────────┘
 ```
 
----
+### 10.2 Sage Accounting Integration
 
-## 10. Success Metrics
+Read-only integration with Sage Accounting for business expense verification:
+- OAuth connection to Sage API
+- Sync business transactions (read-only)
+- Match ByteFinance business items to Sage entries
+- Flag discrepancies for review
+- Generate accountant-ready reports
 
-### 10.1 MVP Success Criteria
-- [ ] Can create monthly folder and add 25+ expenses
-- [ ] Can mark items as paid with single tap
-- [ ] Totals calculate correctly
-- [ ] Works offline and syncs when online
-- [ ] Pay cycle logic respects configured pay day (including last working day)
-- [ ] Can link expense to goal/investment (Smart Linking)
-- [ ] Linked expense auto-updates goal progress when marked paid
+**Benefits:**
+- Verify business expenses are properly recorded in Sage
+- Identify items paid from wrong account
+- Simplify month-end reconciliation
 
-### 10.2 Phase 2 Success Criteria
-- [ ] Dashboard loads in < 2 seconds
-- [ ] Historical data queryable from 2018
-- [ ] At least 3 meaningful insights generated weekly
-- [ ] Goal progress accurately tracked via Smart Linking
-- [ ] "Behind" alerts trigger when contributions missed
-- [ ] Historical backfill works (link expense → apply to past months)
+### 10.3 AI Wrong-Account Detection
 
-### 10.3 Long-term KPIs
-- Time to complete monthly expense entry: < 5 minutes
-- Insight actionability rate: > 60% (user finds useful)
-- Emergency fund growth: Measurable increase over 12 months
-- User retention: Weekly active usage
+Machine learning to detect potential wrong-account transactions:
+- Learn patterns from historical data
+- Flag business expenses paid from personal account
+- Suggest corrections with one-tap fix
+- Train on user corrections to improve accuracy
 
----
+**Example Insight:**
+```
+💡 "Car Tracker (R199) looks like a business expense but was
+   marked as personal. Move to business?"
+   [Yes, move] [No, keep as personal] [Ignore]
+```
 
-## 11. Risk Mitigation
+### 10.4 Multi-Currency Support
 
-| Risk | Mitigation |
-|------|------------|
-| Firebase costs at scale | Implement pagination, cache aggressively, monitor usage |
-| AI parsing errors | Always show preview, allow manual corrections |
-| Offline conflicts | Last-write-wins with conflict log for review |
-| Data loss | Daily backups to Cloud Storage, export feature |
-| Scope creep | Strict MVP definition, defer "nice to have" features |
+Extend beyond ZAR for international users:
+- Support additional currencies (USD, EUR, GBP)
+- Currency conversion for cross-border transactions
+- Historical exchange rate tracking
 
----
+### 10.5 Shared Household Finances
 
-## 12. Next Steps
-
-1. **Approve this spec** - Review and confirm approach
-2. **Setup infrastructure** - Create Firebase project, Vercel project
-3. **Initialize codebase** - Next.js with Tailwind, Shadcn/ui
-4. **Build auth flow** - Google sign-in working end-to-end
-5. **First feature** - Folder + expense CRUD with offline support
+Multiple users sharing a household budget:
+- Invite family members
+- Shared commitments vs personal commitments
+- Combined dashboard with contribution visibility
+- Per-person expense assignment
 
 ---
 
-*Document Version: 1.0*
+## 11. Success Metrics
+
+### MVP Success Criteria
+
+- [ ] Can create commitments and goals
+- [ ] Cycles auto-generate on pay day
+- [ ] Can mark items paid with single tap
+- [ ] Goals auto-update when linked items paid
+- [ ] Dashboard shows accurate current status
+- [ ] Works offline with seamless sync
+- [x] Year filter dropdown on dashboard
+- [x] Account type filter (All/Personal/Business)
+
+### Long-term KPIs
+
+- Time to view financial status: < 2 seconds (app open to dashboard)
+- Time to mark item paid: < 1 second
+- Goal tracking accuracy: 100% (no manual intervention needed)
+- Monthly active usage: weekly sessions
+
+---
+
+*Document Version: 2.1*
 *Last Updated: April 2026*
-*Author: Claude Code Assistant*

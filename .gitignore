@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+/functions/node_modules
 /.pnp
 .pnp.*
 .yarn/*
@@ -19,6 +20,9 @@
 
 # production
 /build
+
+# Firebase Functions compiled output
+/functions/lib/
 
 # misc
 .DS_Store

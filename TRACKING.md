@@ -1,51 +1,70 @@
-# ByteFinance AI — Feature Status
+# ByteFinance - Development Status
 
-> Quick reference: what's built, what's in progress, what's still todo.
-> Based on requirements.md — one row per feature, no need to read the codebase.
+> Quick reference for feature implementation status.
+> Based on TECH_SPEC.md — feature-first view, no need to read the codebase.
 
 ---
 
 ## Legend
-- ✅ Done — built and working
-- 🔄 Partial — some parts done, some missing
-- ⏳ Todo — not started
+
+- ✅ Done - Built and working
+- 🔄 In Progress - Partially implemented
+- ⏳ Todo - Not started
 
 ---
 
-## Feature Status
+## Phase 1: Core Tracking (MVP)
 
 | # | Feature | Status | Notes |
 |---|---------|--------|-------|
-| 1 | User Authentication | 🔄 Partial | Login page + NextAuth config built. Dev bypass active (no real Firebase Auth needed locally). Google + email/password wired but untested without real credentials. |
-| 2 | User Profile & Preferences | 🔄 Partial | UserProfile created on first sign-in with correct defaults. Settings page exists but pay day preference UI not yet wired. |
-| 3 | Pay Cycle Calculation | ✅ Done | Full SA holiday registry, fixed + last-working-day modes, pay cycle boundaries. "Days until pay day" shown on monthly folder. 37 tests passing. |
-| 4 | Folder Management | ✅ Done | Create, edit, archive (soft delete), progress ring, budgeted/paid totals, income field, monthly auto-population from base expenses. |
-| 5 | Expense Management | ✅ Done | Add/edit/delete, optimistic toggle, paidDate, drag-to-reorder, account type filter, notes/tags, celebratory animation, expense summary footer. |
-| 6 | Base Expenses (Templates) | ✅ Done | CRUD, active/inactive toggle, drag-to-reorder, auto-populates new monthly folders. |
-| 7 | Offline Support | 🔄 Partial | IndexedDB persistence enabled, sync indicator in header, optimistic writes. Conflict resolution relies on Firestore default (last-write-wins). Full offline test requires real Firebase. |
-| 8 | Smart Linking | ✅ Done | Core logic done — contribution record/reverse on toggle, backfill API, suggestion banner on expense items, backfill confirmation sheet. |
-| 9 | Goal Tracking | ⏳ Todo | API routes, hook, components, goals page — not started. **Next up.** |
-| 10 | Debt Payoff Tracking | ⏳ Todo | Extension of Goal tracking — not started. |
-| 11 | Investment Tracking | ⏳ Todo | API routes, hook, components, investments page — not started. |
-| 12 | Savings Pots | ⏳ Todo | API routes, hook, components, savings page — not started. |
-| 13 | Dashboard | ⏳ Todo | Placeholder page only. Balance ring, category chart, quick stats, upcoming expenses, insights panel — not started. |
-| 14 | Trend Analysis | ⏳ Todo | Cloud Function (nightly), MonthlySnapshot aggregation, trend/alert Insights — not started. |
-| 15 | Notifications & Alerts | ⏳ Todo | Cloud Function, FCM push, in-app Insights for missed contributions, milestones, anomalies — not started. Dismiss/snooze UI also not started. |
-| 16 | AI Smart Advisor | ⏳ Todo | Cloud Function (weekly), Gemini integration, suggestion Insights — not started. |
-| 17 | Samsung Notes Importer | ⏳ Todo | Gemini parse route, preview table, confirm + bulk insert — not started. |
-| 18 | Bank Statement Import | ⏳ Todo | PDF/CSV upload, Gemini parse, duplicate detection, preview + confirm — not started. |
-| 19 | Data Export | ⏳ Todo | JSON + CSV export from Settings — not started. |
-| 20 | Security & Data Isolation | 🔄 Partial | Firestore rules written, Admin SDK used in all API routes. Auth bypass active in dev. Full enforcement requires real Firebase + auth enabled. |
-| 21 | Responsive UI & Design System | ✅ Done | Single/two/three column layouts, dark theme, JetBrains Mono for amounts, haptic feedback on toggle, PWA manifest. |
+| 1 | Authentication | ✅ Done | Firebase Auth config, Google Sign-In, dev bypass active |
+| 2 | User Profile & Pay Day Config | ✅ Done | UserProfile created on sign-in, preferences stored, pay day hook |
+| 3 | Pay Cycle Logic | ✅ Done | Fixed + last working day modes, all SA public holidays, cycle boundaries |
+| 4 | Commitments (recurring templates) | ✅ Done | API routes (GET/POST/PATCH/DELETE), `use-commitments` hook, settings UI |
+| 5 | Goals | ✅ Done | API routes, `use-goals` hook, goals page with create/delete/progress |
+| 6 | Cycles (auto-generated pay periods) | ✅ Done | API routes, `use-cycles` hook, auto-spawns items from commitments |
+| 7 | Cycle Items (status flow) | ✅ Done | API routes, `use-cycle-items` hook, optimistic updates, status toggle |
+| 8 | Smart Linking (auto goal contributions) | ✅ Done | Wired in `use-cycle-items` — marking paid auto-contributes to linked goal |
+| 9 | Dashboard (Now view) | ✅ Done | Cycle progress, goals summary, due/upcoming/paid sections, year + account filters, add item, pay day countdown |
+| 10 | Plan View (Commitments + Goals) | ⏳ Todo | `/plan` page — commitments grouped by category, goals with progress |
+| 11 | Cycle Detail View | ⏳ Todo | `/cycle/[id]` — full cycle with editing, skip, reorder |
+| 12 | Offline Support | 🔄 In Progress | Firestore IndexedDB persistence enabled, sync indicator in header |
+| 13 | Responsive Design | 🔄 In Progress | Mobile-first layout done, desktop side nav needs polish |
 
 ---
 
-## Progress at a Glance
+## Phase 2: Intelligence
+
+| # | Feature | Status | Notes |
+|---|---------|--------|-------|
+| 14 | History View | ⏳ Todo | `/history` — spending chart, category breakdown, past cycles list |
+| 15 | Monthly Snapshots | ⏳ Todo | Aggregated data written by Cloud Function for trend queries |
+| 16 | Trend Analysis | ⏳ Todo | Cloud Function scaffold exists (`functions/src/trend-analyzer.ts`) |
+| 17 | Smart Advisor | ⏳ Todo | Cloud Function scaffold exists (`functions/src/smart-advisor.ts`) |
+| 18 | In-App Notifications / Insights | ⏳ Todo | Alerts, milestones, reminders — Cloud Function + dismiss UI |
+
+---
+
+## Phase 3: AI & Polish
+
+| # | Feature | Status | Notes |
+|---|---------|--------|-------|
+| 19 | Data Importer (text) | ⏳ Todo | AI parsing of plain text expense lists |
+| 20 | Bank Statement Import | ⏳ Todo | PDF/CSV parsing via Gemini |
+| 21 | Push Notifications | ⏳ Todo | FCM integration |
+| 22 | Data Export | ⏳ Todo | JSON/CSV export from Settings |
+| 23 | PWA Optimization | ⏳ Todo | Manifest exists, install prompt + icons needed |
+
+---
+
+## Progress Overview
 
 ```
-Done (✅)     ████████████░░░░░░░░  7 / 21 features
-Partial (🔄)  ████░░░░░░░░░░░░░░░░  4 / 21 features
-Todo (⏳)     ░░░░░░░░████████████  10 / 21 features
+Phase 1 (MVP):    ████████████████░░░░  9 / 13 features
+Phase 2:          ░░░░░░░░░░░░░░░░░░░░  0 / 5 features
+Phase 3:          ░░░░░░░░░░░░░░░░░░░░  0 / 5 features
+─────────────────────────────────────────────────────────
+Total:            ████████░░░░░░░░░░░░  9 / 23 features (39%)
 ```
 
 ---
@@ -54,25 +73,47 @@ Todo (⏳)     ░░░░░░░░████████████  10 
 
 | Route | Works? |
 |-------|--------|
-| `/` (Dashboard) | ⚠️ Placeholder text only |
-| `/folders` | ✅ Full CRUD |
-| `/folders/[id]` | ✅ Expenses, toggle, reorder, summary |
-| `/settings` | ✅ Base expense management |
-| `/goals` | ❌ 404 |
-| `/savings` | ❌ 404 |
-| `/investments` | ❌ 404 |
-| `/insights` | ❌ 404 |
-| `/import` | ❌ 404 |
+| `/` (Dashboard) | ✅ Full — cycle progress, goals, items, filters |
+| `/goals` | ✅ Full — create, view, delete, progress bars |
+| `/settings` | ✅ Commitments CRUD (base templates) |
+| `/plan` | ❌ Not built yet |
+| `/history` | ❌ Not built yet |
+| `/cycle/[id]` | ❌ Not built yet |
 | `/login` | ✅ Renders (bypassed in dev) |
 
 ---
 
-## What Needs Firebase to Work Fully
+## Data Model (Current)
 
-These features are built but require real Firebase credentials in `.env.local`:
-- Sign in / sign out (Google + email/password)
-- Firestore reads/writes (all data persistence)
-- Offline sync
-- Push notifications (FCM)
+The app was refactored from Folders/Expenses to the new model:
 
-Replace placeholder values in `.env.local` with real project credentials when ready to connect.
+| Old (removed) | New |
+|---------------|-----|
+| `Folder` | `Cycle` (auto-generated) |
+| `BaseExpense` | `Commitment` (recurring template) |
+| `Expense` | `CycleItem` (instance per cycle) |
+| `SavingsPot` / `Investment` | Merged into `Goal` (with `allowWithdrawals` + `investmentTracking`) |
+
+---
+
+## Infrastructure Status
+
+| Item | Status | Notes |
+|------|--------|-------|
+| Firebase Project | ✅ Ready | `byte-finance-prod` |
+| Firebase Config | ✅ Done | `firebase.json`, `.firebaserc`, indexes updated |
+| Cloud Functions | ✅ Scaffold | v2 syntax, needs Blaze plan to deploy |
+| Vercel Deployment | ⏳ Todo | Not configured |
+| API Routes | ✅ Done | `/commitments`, `/cycles`, `/cycle-items`, `/goals` |
+
+---
+
+## Next Up
+
+1. **Plan View** — `/plan` page with commitments grouped by category + goals management
+2. **Cycle Detail** — `/cycle/[id]` with full item list, edit amounts, skip items
+3. **History View** — `/history` with spending charts and past cycles
+
+---
+
+*Last Updated: April 2026*
