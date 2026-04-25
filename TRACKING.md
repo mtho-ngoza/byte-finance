@@ -25,8 +25,8 @@
 | 6 | Cycles (auto-generated pay periods) | ✅ Done | API routes, `use-cycles` hook, auto-spawns items from commitments |
 | 7 | Cycle Items (status flow) | ✅ Done | API routes, `use-cycle-items` hook, optimistic updates, status toggle |
 | 8 | Smart Linking (auto goal contributions) | ✅ Done | Wired in `use-cycle-items` — marking paid auto-contributes to linked goal |
-| 9 | Dashboard (Now view) | ✅ Done | Cycle progress, goals summary, due/upcoming/paid sections, year + account filters, add item, pay day countdown |
-| 10 | Plan View (Commitments + Goals) | ⏳ Todo | `/plan` page — commitments grouped by category, goals with progress |
+| 9 | Dashboard (Now view) | ✅ Done | Cycle progress, goals summary, due/upcoming/paid sections, year + account filters, add item, pay day countdown, cycle navigation, inline amount editing |
+| 10 | Plan View (Commitments + Goals) | ✅ Done | `/plan` page — commitments grouped by category, goals with progress bars, monthly totals |
 | 11 | Cycle Detail View | ⏳ Todo | `/cycle/[id]` — full cycle with editing, skip, reorder |
 | 12 | Offline Support | 🔄 In Progress | Firestore IndexedDB persistence enabled, sync indicator in header |
 | 13 | Responsive Design | 🔄 In Progress | Mobile-first layout done, desktop side nav needs polish |
@@ -60,11 +60,11 @@
 ## Progress Overview
 
 ```
-Phase 1 (MVP):    ████████████████░░░░  9 / 13 features
+Phase 1 (MVP):    ██████████████████░░  10 / 13 features
 Phase 2:          ░░░░░░░░░░░░░░░░░░░░  0 / 5 features
 Phase 3:          ░░░░░░░░░░░░░░░░░░░░  0 / 5 features
 ─────────────────────────────────────────────────────────
-Total:            ████████░░░░░░░░░░░░  9 / 23 features (39%)
+Total:            █████████░░░░░░░░░░░  10 / 23 features (43%)
 ```
 
 ---
@@ -75,8 +75,8 @@ Total:            ████████░░░░░░░░░░░░  
 |-------|--------|
 | `/` (Dashboard) | ✅ Full — cycle progress, goals, items, filters |
 | `/goals` | ✅ Full — create, view, delete, progress bars |
-| `/settings` | ✅ Commitments CRUD (base templates) |
-| `/plan` | ❌ Not built yet |
+| `/settings` | ✅ Pay day config + Commitments CRUD |
+| `/plan` | ✅ Full — commitments by category, goals with progress |
 | `/history` | ❌ Not built yet |
 | `/cycle/[id]` | ❌ Not built yet |
 | `/login` | ✅ Renders (bypassed in dev) |
