@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
   const { userId } = auth;
 
   const body = await request.json();
-  const { id, startDate, endDate, income } = body;
+  const { id, startDate, endDate, income, status } = body;
 
   if (!id || !startDate || !endDate) {
     return NextResponse.json(
@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
     totalPaid: 0,
     itemCount: commitments.length,
     paidCount: 0,
-    status: 'active',
+    status: status ?? 'active',
     createdAt: now,
     updatedAt: now,
   };
