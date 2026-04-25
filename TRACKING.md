@@ -37,7 +37,7 @@
 
 | # | Feature | Status | Notes |
 |---|---------|--------|-------|
-| 14 | History View | ⏳ Todo | `/history` — spending chart, category breakdown, past cycles list |
+| 14 | History View | ✅ Done | `/history` — bar chart, category donut, past cycles list, year selector |
 | 15 | Monthly Snapshots | ⏳ Todo | Aggregated data written by Cloud Function for trend queries |
 | 16 | Trend Analysis | ⏳ Todo | Cloud Function scaffold exists (`functions/src/trend-analyzer.ts`) |
 | 17 | Smart Advisor | ⏳ Todo | Cloud Function scaffold exists (`functions/src/smart-advisor.ts`) |
@@ -61,10 +61,10 @@
 
 ```
 Phase 1 (MVP):    ████████████████████  11 / 13 features
-Phase 2:          ░░░░░░░░░░░░░░░░░░░░  0 / 5 features
+Phase 2:          ████░░░░░░░░░░░░░░░░  1 / 5 features
 Phase 3:          ░░░░░░░░░░░░░░░░░░░░  0 / 5 features
 ─────────────────────────────────────────────────────────
-Total:            ██████████░░░░░░░░░░  11 / 23 features (48%)
+Total:            ████████████░░░░░░░░  12 / 23 features (52%)
 ```
 
 ---
@@ -77,7 +77,7 @@ Total:            ██████████░░░░░░░░░░  
 | `/goals` | ✅ Full — create, view, delete, progress bars |
 | `/settings` | ✅ Pay day config only (commitments moved to /plan) |
 | `/plan` | ✅ Full — commitments by category, goals with progress |
-| `/history` | ❌ Not built yet |
+| `/history` | ✅ Full — bar chart, category breakdown, past cycles list |
 | `/cycle/[id]` | ✅ Full — items by category, edit, skip, reorder |
 | `/login` | ✅ Renders (bypassed in dev) |
 
