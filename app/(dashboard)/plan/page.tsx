@@ -61,6 +61,7 @@ interface CommitmentFormData {
   accountType: 'personal' | 'business';
   dueDay?: number;
   isVariable: boolean;
+  linkedGoalId?: string;
 }
 
 const EMPTY_FORM: CommitmentFormData = {
@@ -69,6 +70,7 @@ const EMPTY_FORM: CommitmentFormData = {
   category: 'other',
   accountType: 'personal',
   isVariable: false,
+  linkedGoalId: undefined,
 };
 
 // ---------------------------------------------------------------------------
@@ -331,7 +333,9 @@ export default function PlanPage() {
                                   accountType: item.accountType,
                                   dueDay: item.dueDay,
                                   isVariable: item.isVariable,
+                                  linkedGoalId: item.linkedGoalId,
                                 }}
+                                goals={activeGoals}
                                 onSave={handleUpdate}
                                 onCancel={() => setEditingItem(null)}
                                 saving={saving}
@@ -360,6 +364,7 @@ export default function PlanPage() {
         <div className="mt-3">
           {showForm ? (
             <CommitmentForm
+              goals={activeGoals}
               onSave={handleCreate}
               onCancel={() => setShowForm(false)}
               saving={saving}
@@ -476,6 +481,11 @@ function SortableCommitmentRow({ item, onToggleActive, onEdit, onDelete }: Sorta
             Biz
           </span>
         )}
+        {item.linkedGoalId && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary shrink-0">
+            linked
+          </span>
+        )}
       </div>
 
       {/* Amount */}
@@ -524,12 +534,13 @@ function SortableCommitmentRow({ item, onToggleActive, onEdit, onDelete }: Sorta
 
 interface CommitmentFormProps {
   initial?: CommitmentFormData;
+  goals?: Goal[];
   onSave: (data: CommitmentFormData) => Promise<void>;
   onCancel: () => void;
   saving: boolean;
 }
 
-function CommitmentForm({ initial = EMPTY_FORM, onSave, onCancel, saving }: CommitmentFormProps) {
+function CommitmentForm({ initial = EMPTY_FORM, goals = [], onSave, onCancel, saving }: CommitmentFormProps) {
   const [form, setForm] = useState<CommitmentFormData>(initial);
 
   function set<K extends keyof CommitmentFormData>(key: K, value: CommitmentFormData[K]) {
@@ -604,6 +615,30 @@ function CommitmentForm({ initial = EMPTY_FORM, onSave, onCancel, saving }: Comm
           Variable amount (changes month to month)
         </label>
       </div>
+
+      {/* Goal linking */}
+      {goals.length > 0 && (
+        <div>
+          <label className="block text-xs text-text-secondary mb-1">
+            Link to Goal (auto-contribute when paid)
+          </label>
+          <select
+            value={form.linkedGoalId ?? ''}
+            onChange={(e) => set('linkedGoalId', e.target.value || undefined)}
+            className="w-full px-3 py-2 bg-background border border-border rounded-lg text-text-primary focus:outline-none focus:border-primary text-sm"
+          >
+            <option value="">No linked goal</option>
+            {goals.map((goal) => (
+              <option key={goal.id} value={goal.id}>
+                {goal.name} ({goal.type === 'debt_payoff' ? 'Debt' : goal.type === 'savings' ? 'Savings' : 'Investment'})
+              </option>
+            ))}
+          </select>
+          <p className="text-[10px] text-text-secondary mt-1">
+            When marked paid, amount auto-adds to this goal
+          </p>
+        </div>
+      )}
 
       {/* Actions */}
       <div className="flex gap-2 pt-1">

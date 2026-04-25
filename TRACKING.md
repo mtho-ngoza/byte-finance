@@ -27,7 +27,7 @@
 | 8 | Smart Linking (auto goal contributions) | ✅ Done | Wired in `use-cycle-items` — marking paid auto-contributes to linked goal |
 | 9 | Dashboard (Now view) | ✅ Done | Cycle progress, goals summary, due/upcoming/paid sections, year + account filters, add item, pay day countdown, cycle navigation, inline amount editing |
 | 10 | Plan View (Commitments + Goals) | ✅ Done | `/plan` page — commitments grouped by category, goals with progress bars, monthly totals |
-| 11 | Cycle Detail View | ⏳ Todo | `/cycle/[id]` — full cycle with editing, skip, reorder |
+| 11 | Cycle Detail View | ✅ Done | `/cycle/[id]` — items by category, edit/skip/reorder, drag-and-drop |
 | 12 | Offline Support | 🔄 In Progress | Firestore IndexedDB persistence enabled, sync indicator in header |
 | 13 | Responsive Design | 🔄 In Progress | Mobile-first layout done, desktop side nav needs polish |
 
@@ -60,11 +60,11 @@
 ## Progress Overview
 
 ```
-Phase 1 (MVP):    ██████████████████░░  10 / 13 features
+Phase 1 (MVP):    ████████████████████  11 / 13 features
 Phase 2:          ░░░░░░░░░░░░░░░░░░░░  0 / 5 features
 Phase 3:          ░░░░░░░░░░░░░░░░░░░░  0 / 5 features
 ─────────────────────────────────────────────────────────
-Total:            █████████░░░░░░░░░░░  10 / 23 features (43%)
+Total:            ██████████░░░░░░░░░░  11 / 23 features (48%)
 ```
 
 ---
@@ -75,10 +75,10 @@ Total:            █████████░░░░░░░░░░░  
 |-------|--------|
 | `/` (Dashboard) | ✅ Full — cycle progress, goals, items, filters |
 | `/goals` | ✅ Full — create, view, delete, progress bars |
-| `/settings` | ✅ Pay day config + Commitments CRUD |
+| `/settings` | ✅ Pay day config only (commitments moved to /plan) |
 | `/plan` | ✅ Full — commitments by category, goals with progress |
 | `/history` | ❌ Not built yet |
-| `/cycle/[id]` | ❌ Not built yet |
+| `/cycle/[id]` | ✅ Full — items by category, edit, skip, reorder |
 | `/login` | ✅ Renders (bypassed in dev) |
 
 ---
@@ -110,7 +110,7 @@ The app was refactored from Folders/Expenses to the new model:
 
 ## Next Up
 
-1. **Plan View** — `/plan` page with commitments grouped by category + goals management
+1. ~~**Plan View**~~ ✅ Done — commitments CRUD merged from Settings
 2. **Cycle Detail** — `/cycle/[id]` with full item list, edit amounts, skip items
 3. **History View** — `/history` with spending charts and past cycles
 
@@ -131,9 +131,9 @@ npm run build && npm start
 ```
 
 **Next session priorities:**
-1. Build `/plan` page for managing commitments + goals
-2. Test full cycle item flow (mark paid, skip, reorder)
-3. Build `/cycle/[id]` detail view
+1. ~~Build `/plan` page~~ ✅ Done — merged with Settings commitments
+2. Build `/cycle/[id]` detail view with editing, skip, reorder
+3. Build `/history` view with spending charts and past cycles
 
 ---
 
