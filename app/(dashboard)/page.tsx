@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useCycles } from '@/hooks/use-cycles';
 import { useCycleItems } from '@/hooks/use-cycle-items';
@@ -17,16 +17,54 @@ export default function DashboardPage() {
   const { activeGoals, loading: goalsLoading } = useGoals();
   const { profile } = useUserProfile();
   const { daysUntilPayDay } = usePayDay(profile?.preferences);
-  const { selectedYear, accountFilter } = useAppStore();
+  const { selectedYear, accountFilter, currentCycleId, setCurrentCycleId } = useAppStore();
 
-  // Filter cycles by selected year
-  const yearCycles = cycles.filter((c) => {
-    const cycleYear = parseInt(c.id.split('-')[0], 10);
-    return cycleYear === selectedYear;
-  });
+  // Filter cycles by selected year, sorted newest first
+  const yearCycles = cycles
+    .filter((c) => {
+      const cycleYear = parseInt(c.id.split('-')[0], 10);
+      return cycleYear === selectedYear;
+    })
+    .sort((a, b) => b.id.localeCompare(a.id));
 
-  // Get the most recent cycle for the selected year (or active one)
-  const currentCycle = yearCycles.find((c) => c.status === 'active') ?? yearCycles[0] ?? null;
+  // Find current cycle index
+  const currentIndex = currentCycleId
+    ? yearCycles.findIndex((c) => c.id === currentCycleId)
+    : -1;
+
+  // Get selected cycle or default to most recent/active
+  const selectedCycle =
+    currentIndex >= 0
+      ? yearCycles[currentIndex]
+      : yearCycles.find((c) => c.status === 'active') ?? yearCycles[0] ?? null;
+
+  // Sync currentCycleId when cycles load or year changes
+  useEffect(() => {
+    if (yearCycles.length > 0 && (!currentCycleId || currentIndex < 0)) {
+      const defaultCycle = yearCycles.find((c) => c.status === 'active') ?? yearCycles[0];
+      if (defaultCycle) {
+        setCurrentCycleId(defaultCycle.id);
+      }
+    }
+  }, [yearCycles, currentCycleId, currentIndex, setCurrentCycleId]);
+
+  // Navigation handlers
+  const canGoPrev = currentIndex < yearCycles.length - 1;
+  const canGoNext = currentIndex > 0;
+
+  const goToPrevCycle = () => {
+    if (canGoPrev) {
+      setCurrentCycleId(yearCycles[currentIndex + 1].id);
+    }
+  };
+
+  const goToNextCycle = () => {
+    if (canGoNext) {
+      setCurrentCycleId(yearCycles[currentIndex - 1].id);
+    }
+  };
+
+  const currentCycle = selectedCycle;
 
   const {
     items,
@@ -34,6 +72,7 @@ export default function DashboardPage() {
     totalCommitted,
     totalPaid,
     updateStatus,
+    updateAmount,
   } = useCycleItems(currentCycle?.id ?? null);
 
   // Available years from cycles
@@ -108,12 +147,38 @@ export default function DashboardPage() {
         <FilterBar availableYears={availableYears.length > 0 ? availableYears : undefined} />
       </div>
 
-      {/* Cycle Summary */}
+      {/* Cycle Summary with Navigation */}
       <div className="p-4 rounded-xl border border-border bg-surface">
         <div className="flex items-center justify-between mb-3">
-          <div>
-            <h2 className="text-sm text-text-secondary">Current Cycle</h2>
-            <p className="text-lg font-semibold text-text-primary">{formatCycleId(currentCycle.id)}</p>
+          <div className="flex items-center gap-2">
+            {/* Prev button */}
+            <button
+              onClick={goToPrevCycle}
+              disabled={!canGoPrev}
+              className="w-8 h-8 rounded-lg border border-border flex items-center justify-center disabled:opacity-30 hover:bg-background transition-colors"
+              aria-label="Previous cycle"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <div>
+              <h2 className="text-sm text-text-secondary">
+                {currentCycle.status === 'active' ? 'Current Cycle' : 'Past Cycle'}
+              </h2>
+              <p className="text-lg font-semibold text-text-primary">{formatCycleId(currentCycle.id)}</p>
+            </div>
+            {/* Next button */}
+            <button
+              onClick={goToNextCycle}
+              disabled={!canGoNext}
+              className="w-8 h-8 rounded-lg border border-border flex items-center justify-center disabled:opacity-30 hover:bg-background transition-colors"
+              aria-label="Next cycle"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
           </div>
           <div className="text-right">
             <p className="text-sm text-text-secondary">Remaining</p>
@@ -190,7 +255,7 @@ export default function DashboardPage() {
           </h3>
           <div className="space-y-2">
             {dueItems.map((item) => (
-              <CycleItemRow key={item.id} item={item} onStatusChange={updateStatus} />
+              <CycleItemRow key={item.id} item={item} onStatusChange={updateStatus} onAmountChange={updateAmount} />
             ))}
           </div>
         </section>
@@ -204,7 +269,7 @@ export default function DashboardPage() {
           </h3>
           <div className="space-y-2">
             {upcomingItems.map((item) => (
-              <CycleItemRow key={item.id} item={item} onStatusChange={updateStatus} />
+              <CycleItemRow key={item.id} item={item} onStatusChange={updateStatus} onAmountChange={updateAmount} />
             ))}
           </div>
         </section>
@@ -222,7 +287,7 @@ export default function DashboardPage() {
           </h3>
           <div className="space-y-2">
             {paidItems.map((item) => (
-              <CycleItemRow key={item.id} item={item} onStatusChange={updateStatus} />
+              <CycleItemRow key={item.id} item={item} onStatusChange={updateStatus} onAmountChange={updateAmount} />
             ))}
           </div>
         </section>
@@ -236,7 +301,7 @@ export default function DashboardPage() {
           </h3>
           <div className="space-y-2 opacity-60">
             {skippedItems.map((item) => (
-              <CycleItemRow key={item.id} item={item} onStatusChange={updateStatus} />
+              <CycleItemRow key={item.id} item={item} onStatusChange={updateStatus} onAmountChange={updateAmount} />
             ))}
           </div>
         </section>
@@ -315,10 +380,13 @@ function GoalSummaryRow({ goal }: GoalSummaryRowProps) {
 interface CycleItemRowProps {
   item: CycleItem;
   onStatusChange: (id: string, status: CycleItemStatus) => Promise<void>;
+  onAmountChange: (id: string, amount: number) => Promise<void>;
 }
 
-function CycleItemRow({ item, onStatusChange }: CycleItemRowProps) {
+function CycleItemRow({ item, onStatusChange, onAmountChange }: CycleItemRowProps) {
   const [loading, setLoading] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editValue, setEditValue] = useState('');
 
   const handleToggle = async () => {
     setLoading(true);
@@ -327,6 +395,34 @@ function CycleItemRow({ item, onStatusChange }: CycleItemRowProps) {
       await onStatusChange(item.id, newStatus);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleAmountClick = () => {
+    if (item.status !== 'skipped') {
+      setEditValue((item.amount / 100).toFixed(2));
+      setEditing(true);
+    }
+  };
+
+  const handleAmountSave = async () => {
+    const newAmount = Math.round(parseFloat(editValue) * 100);
+    if (!isNaN(newAmount) && newAmount >= 0 && newAmount !== item.amount) {
+      setLoading(true);
+      try {
+        await onAmountChange(item.id, newAmount);
+      } finally {
+        setLoading(false);
+      }
+    }
+    setEditing(false);
+  };
+
+  const handleAmountKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleAmountSave();
+    } else if (e.key === 'Escape') {
+      setEditing(false);
     }
   };
 
@@ -377,12 +473,32 @@ function CycleItemRow({ item, onStatusChange }: CycleItemRowProps) {
         </p>
       </div>
 
-      {/* Amount */}
-      <AmountDisplay
-        amount={item.amount}
-        size="sm"
-        className={isPaid ? 'opacity-50' : ''}
-      />
+      {/* Amount - editable */}
+      {editing ? (
+        <div className="flex items-center gap-1">
+          <span className="text-sm text-text-secondary">R</span>
+          <input
+            type="number"
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onBlur={handleAmountSave}
+            onKeyDown={handleAmountKeyDown}
+            autoFocus
+            step="0.01"
+            min="0"
+            className="w-20 px-2 py-1 text-sm text-right rounded border border-primary bg-background text-text-primary focus:outline-none"
+          />
+        </div>
+      ) : (
+        <button
+          onClick={handleAmountClick}
+          disabled={item.status === 'skipped'}
+          className={`hover:bg-background px-2 py-1 rounded transition-colors ${isPaid ? 'opacity-50' : ''}`}
+          title="Click to edit amount"
+        >
+          <AmountDisplay amount={item.amount} size="sm" />
+        </button>
+      )}
     </div>
   );
 }

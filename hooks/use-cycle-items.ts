@@ -31,6 +31,8 @@ interface UseCycleItemsResult {
   totalPaid: number;
   /** Update item status with optimistic update */
   updateStatus: (itemId: string, status: CycleItemStatus) => Promise<void>;
+  /** Update item amount with optimistic update */
+  updateAmount: (itemId: string, newAmount: number) => Promise<void>;
 }
 
 export function useCycleItems(cycleId: string | null): UseCycleItemsResult {
@@ -172,6 +174,53 @@ export function useCycleItems(cycleId: string | null): UseCycleItemsResult {
     [userId, cycleId, items, setOptimisticItem, removeOptimisticItem]
   );
 
+  // Update amount with optimistic update
+  const updateAmount = useCallback(
+    async (itemId: string, newAmount: number) => {
+      if (!userId || !cycleId) return;
+
+      const item = items.find((i) => i.id === itemId);
+      if (!item) return;
+
+      const previousAmount = item.amount;
+      const amountDiff = newAmount - previousAmount;
+      const now = Timestamp.now();
+
+      // Optimistic update
+      const optimisticItem: CycleItem = {
+        ...item,
+        amount: newAmount,
+        updatedAt: now,
+      };
+      setOptimisticItem(itemId, optimisticItem);
+
+      try {
+        // Update item
+        const itemRef = doc(db, `users/${userId}/cycleItems`, itemId);
+        await updateDoc(itemRef, {
+          amount: newAmount,
+          updatedAt: now,
+        });
+
+        // Update cycle totals
+        const cycleRef = doc(db, `users/${userId}/cycles`, cycleId);
+        await updateDoc(cycleRef, {
+          totalCommitted: increment(amountDiff),
+          ...(item.status === 'paid' ? { totalPaid: increment(amountDiff) } : {}),
+          updatedAt: now,
+        });
+
+        // Clear optimistic update
+        removeOptimisticItem(itemId);
+      } catch (error) {
+        // Rollback on error
+        removeOptimisticItem(itemId);
+        throw error;
+      }
+    },
+    [userId, cycleId, items, setOptimisticItem, removeOptimisticItem]
+  );
+
   return {
     items,
     loading,
@@ -180,5 +229,6 @@ export function useCycleItems(cycleId: string | null): UseCycleItemsResult {
     totalCommitted,
     totalPaid,
     updateStatus,
+    updateAmount,
   };
 }
