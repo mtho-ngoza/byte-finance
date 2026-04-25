@@ -116,4 +116,25 @@ The app was refactored from Folders/Expenses to the new model:
 
 ---
 
-*Last Updated: April 2026*
+## Resume Point (25 April 2026)
+
+**What's working:**
+- Dashboard displays cycle data with year/account filters
+- Dev auth bypass configured (SKIP_AUTH=true)
+- Firestore rules deployed with dev-user-local access
+- Goals composite index deployed
+
+**To run locally:**
+```bash
+npm run build && npm start
+# Or use: npm run dev:win
+```
+
+**Next session priorities:**
+1. Build `/plan` page for managing commitments + goals
+2. Test full cycle item flow (mark paid, skip, reorder)
+3. Build `/cycle/[id]` detail view
+
+---
+
+*Last Updated: 25 April 2026*
