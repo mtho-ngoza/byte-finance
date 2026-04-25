@@ -115,6 +115,9 @@ export default function DashboardPage() {
   const remaining = totalCommitted - totalPaid;
   const progressPercent = totalCommitted > 0 ? Math.round((totalPaid / totalCommitted) * 100) : 0;
 
+  // Is this a past cycle? (closed status or end date has passed)
+  const isPastCycle = currentCycle?.status === 'closed';
+
   if (loading) {
     return (
       <div className="animate-pulse space-y-4">
@@ -191,7 +194,7 @@ export default function DashboardPage() {
             </button>
           </div>
           <div className="text-right">
-            <p className="text-sm text-text-secondary">Remaining</p>
+            <p className="text-sm text-text-secondary">{isPastCycle ? 'Unpaid' : 'Remaining'}</p>
             <AmountDisplay amount={remaining} size="lg" />
           </div>
         </div>
@@ -253,15 +256,15 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Due Items - Needs attention */}
+      {/* Due Items - Needs attention (or Missed for past cycles) */}
       {dueItems.length > 0 && (
         <section>
-          <h3 className="text-sm font-medium text-warning mb-2 flex items-center gap-1.5">
+          <h3 className={`text-sm font-medium mb-2 flex items-center gap-1.5 ${isPastCycle ? 'text-error' : 'text-warning'}`}>
             <svg className="w-4 h-4" fill="none" viewBox="0 0 16 16">
               <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.5" />
               <path d="M8 4v4M8 10v1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
-            Due ({dueItems.length})
+            {isPastCycle ? 'Missed' : 'Due'} ({dueItems.length})
           </h3>
           <div className="space-y-2">
             {dueItems.map((item) => (
@@ -271,11 +274,11 @@ export default function DashboardPage() {
         </section>
       )}
 
-      {/* Upcoming Items */}
+      {/* Upcoming Items (or Unpaid for past cycles) */}
       {upcomingItems.length > 0 && (
         <section>
-          <h3 className="text-sm font-medium text-text-secondary mb-2">
-            Upcoming ({upcomingItems.length})
+          <h3 className={`text-sm font-medium mb-2 ${isPastCycle ? 'text-error' : 'text-text-secondary'}`}>
+            {isPastCycle ? 'Unpaid' : 'Upcoming'} ({upcomingItems.length})
           </h3>
           <div className="space-y-2">
             {upcomingItems.map((item) => (

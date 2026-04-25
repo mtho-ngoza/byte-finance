@@ -91,6 +91,10 @@ export default function CycleDetailPage() {
 
   const paidCount = items.filter((i) => i.status === 'paid').length;
   const skippedCount = items.filter((i) => i.status === 'skipped').length;
+  const unpaidCount = items.filter((i) => i.status === 'upcoming' || i.status === 'due').length;
+
+  // Is this a past cycle?
+  const isPastCycle = cycle?.status === 'closed';
 
   if (loading) {
     return (
@@ -147,8 +151,11 @@ export default function CycleDetailPage() {
             </p>
           </div>
           <div className="text-right">
-            <p className="text-sm text-text-secondary">Remaining</p>
+            <p className="text-sm text-text-secondary">{isPastCycle ? 'Unpaid' : 'Remaining'}</p>
             <AmountDisplay amount={remaining} size="lg" />
+            {isPastCycle && unpaidCount > 0 && (
+              <p className="text-xs text-error">{unpaidCount} item{unpaidCount !== 1 ? 's' : ''} not paid</p>
+            )}
           </div>
         </div>
 

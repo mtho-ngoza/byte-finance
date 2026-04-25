@@ -359,6 +359,9 @@ function CycleRow({ cycle, isSelected, onClick }: CycleRowProps) {
     ? Math.round((cycle.totalPaid / cycle.totalCommitted) * 100)
     : 0;
 
+  const unpaidCount = cycle.itemCount - cycle.paidCount;
+  const isPastCycle = cycle.status === 'closed';
+
   return (
     <button
       onClick={onClick}
@@ -371,15 +374,18 @@ function CycleRow({ cycle, isSelected, onClick }: CycleRowProps) {
       <div>
         <p className="text-sm font-medium text-text-primary">{formatCycleId(cycle.id)}</p>
         <p className="text-xs text-text-secondary">
-          {cycle.paidCount} / {cycle.itemCount} items
+          {cycle.paidCount} / {cycle.itemCount} paid
           {cycle.status === 'active' && (
-            <span className="ml-2 text-primary">Active</span>
+            <span className="ml-2 text-primary">Current</span>
+          )}
+          {isPastCycle && unpaidCount > 0 && (
+            <span className="ml-2 text-error">{unpaidCount} unpaid</span>
           )}
         </p>
       </div>
       <div className="text-right">
         <AmountDisplay amount={cycle.totalPaid} size="sm" />
-        <p className="text-xs text-text-secondary">{progressPercent}% of committed</p>
+        <p className="text-xs text-text-secondary">{progressPercent}% paid</p>
       </div>
     </button>
   );
