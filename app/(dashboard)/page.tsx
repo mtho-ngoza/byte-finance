@@ -75,6 +75,16 @@ export default function DashboardPage() {
     updateAmount,
   } = useCycleItems(currentCycle?.id ?? null);
 
+  // Delete item handler
+  const deleteItem = async (itemId: string) => {
+    try {
+      const res = await fetch(`/api/cycle-items/${itemId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Delete failed');
+    } catch (err) {
+      console.error('Delete failed:', err);
+    }
+  };
+
   // Available years from cycles
   const availableYears = [...new Set(cycles.map((c) => parseInt(c.id.split('-')[0], 10)))].sort(
     (a, b) => b - a
@@ -255,7 +265,7 @@ export default function DashboardPage() {
           </h3>
           <div className="space-y-2">
             {dueItems.map((item) => (
-              <CycleItemRow key={item.id} item={item} onStatusChange={updateStatus} onAmountChange={updateAmount} />
+              <CycleItemRow key={item.id} item={item} onStatusChange={updateStatus} onAmountChange={updateAmount} onDelete={deleteItem} />
             ))}
           </div>
         </section>
@@ -269,7 +279,7 @@ export default function DashboardPage() {
           </h3>
           <div className="space-y-2">
             {upcomingItems.map((item) => (
-              <CycleItemRow key={item.id} item={item} onStatusChange={updateStatus} onAmountChange={updateAmount} />
+              <CycleItemRow key={item.id} item={item} onStatusChange={updateStatus} onAmountChange={updateAmount} onDelete={deleteItem} />
             ))}
           </div>
         </section>
@@ -287,7 +297,7 @@ export default function DashboardPage() {
           </h3>
           <div className="space-y-2">
             {paidItems.map((item) => (
-              <CycleItemRow key={item.id} item={item} onStatusChange={updateStatus} onAmountChange={updateAmount} />
+              <CycleItemRow key={item.id} item={item} onStatusChange={updateStatus} onAmountChange={updateAmount} onDelete={deleteItem} />
             ))}
           </div>
         </section>
@@ -301,7 +311,7 @@ export default function DashboardPage() {
           </h3>
           <div className="space-y-2 opacity-60">
             {skippedItems.map((item) => (
-              <CycleItemRow key={item.id} item={item} onStatusChange={updateStatus} onAmountChange={updateAmount} />
+              <CycleItemRow key={item.id} item={item} onStatusChange={updateStatus} onAmountChange={updateAmount} onDelete={deleteItem} />
             ))}
           </div>
         </section>
@@ -381,12 +391,16 @@ interface CycleItemRowProps {
   item: CycleItem;
   onStatusChange: (id: string, status: CycleItemStatus) => Promise<void>;
   onAmountChange: (id: string, amount: number) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
 }
 
-function CycleItemRow({ item, onStatusChange, onAmountChange }: CycleItemRowProps) {
+function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete }: CycleItemRowProps) {
   const [loading, setLoading] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
+  const [showMenu, setShowMenu] = useState(false);
+
+  const isSkipped = item.status === 'skipped';
 
   const handleToggle = async () => {
     setLoading(true);
@@ -424,6 +438,23 @@ function CycleItemRow({ item, onStatusChange, onAmountChange }: CycleItemRowProp
     } else if (e.key === 'Escape') {
       setEditing(false);
     }
+  };
+
+  const handleSkip = async () => {
+    setLoading(true);
+    setShowMenu(false);
+    try {
+      const newStatus: CycleItemStatus = isSkipped ? 'upcoming' : 'skipped';
+      await onStatusChange(item.id, newStatus);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!confirm('Delete this item?')) return;
+    setShowMenu(false);
+    await onDelete(item.id);
   };
 
   const isPaid = item.status === 'paid';
@@ -492,13 +523,49 @@ function CycleItemRow({ item, onStatusChange, onAmountChange }: CycleItemRowProp
       ) : (
         <button
           onClick={handleAmountClick}
-          disabled={item.status === 'skipped'}
-          className={`hover:bg-background px-2 py-1 rounded transition-colors ${isPaid ? 'opacity-50' : ''}`}
+          disabled={isSkipped}
+          className={`hover:bg-background px-2 py-1 rounded transition-colors ${isPaid || isSkipped ? 'opacity-50' : ''}`}
           title="Click to edit amount"
         >
           <AmountDisplay amount={item.amount} size="sm" />
         </button>
       )}
+
+      {/* Menu button */}
+      <div className="relative">
+        <button
+          onClick={() => setShowMenu(!showMenu)}
+          className="w-7 h-7 flex items-center justify-center rounded hover:bg-background text-text-secondary hover:text-text-primary transition-colors"
+          aria-label="Item menu"
+        >
+          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 16 16">
+            <circle cx="8" cy="3" r="1.5" />
+            <circle cx="8" cy="8" r="1.5" />
+            <circle cx="8" cy="13" r="1.5" />
+          </svg>
+        </button>
+
+        {showMenu && (
+          <>
+            <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)} />
+            <div className="absolute right-0 top-full mt-1 w-28 bg-surface border border-border rounded-lg shadow-lg z-20 py-1">
+              <button
+                onClick={handleSkip}
+                disabled={loading}
+                className="w-full px-3 py-1.5 text-left text-sm text-text-primary hover:bg-background transition-colors disabled:opacity-50"
+              >
+                {isSkipped ? 'Unskip' : 'Skip'}
+              </button>
+              <button
+                onClick={handleDelete}
+                className="w-full px-3 py-1.5 text-left text-sm text-error hover:bg-background transition-colors"
+              >
+                Delete
+              </button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }
