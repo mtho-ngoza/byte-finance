@@ -1,10 +1,11 @@
 interface AmountDisplayProps {
   amount: number; // cents
   className?: string;
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'xs' | 'sm' | 'md' | 'lg';
 }
 
 const sizeClasses = {
+  xs: 'text-xs',
   sm: 'text-sm',
   md: 'text-base',
   lg: 'text-2xl',

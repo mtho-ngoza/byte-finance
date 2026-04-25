@@ -4,13 +4,10 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 const NAV_ITEMS = [
-  { label: 'Dashboard', href: '/', icon: '⊞' },
-  { label: 'Folders', href: '/folders', icon: '⊟' },
+  { label: 'Now', href: '/', icon: '⊞' },
+  { label: 'Plan', href: '/plan', icon: '⊟' },
+  { label: 'History', href: '/history', icon: '◉' },
   { label: 'Goals', href: '/goals', icon: '◎' },
-  { label: 'Savings', href: '/savings', icon: '◈' },
-  { label: 'Investments', href: '/investments', icon: '◆' },
-  { label: 'Insights', href: '/insights', icon: '◉' },
-  { label: 'Import', href: '/import', icon: '⊕' },
   { label: 'Settings', href: '/settings', icon: '⊙' },
 ];
 

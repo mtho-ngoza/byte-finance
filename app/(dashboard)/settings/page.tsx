@@ -19,38 +19,40 @@ import { CSS } from '@dnd-kit/utilities';
 import { CurrencyInput } from '@/components/shared/currency-input';
 import { AmountDisplay } from '@/components/shared/amount-display';
 import { Skeleton } from '@/components/shared/skeleton';
-import type { BaseExpense, ExpenseCategory } from '@/types/index';
+import type { Commitment, Category } from '@/types/index';
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-interface BaseExpenseFormData {
+interface CommitmentFormData {
   label: string;
   amount: number;
-  category: ExpenseCategory;
+  category: Category;
   accountType: 'personal' | 'business';
+  dueDay?: number;
+  isVariable: boolean;
 }
 
-const CATEGORIES: ExpenseCategory[] = [
+const CATEGORIES: Category[] = [
   'housing',
   'transport',
   'family',
-  'business',
-  'living',
+  'utilities',
   'health',
   'education',
   'savings',
-  'entertainment',
-  'subscriptions',
+  'lifestyle',
+  'business',
   'other',
 ];
 
-const EMPTY_FORM: BaseExpenseFormData = {
+const EMPTY_FORM: CommitmentFormData = {
   label: '',
   amount: 0,
   category: 'other',
   accountType: 'personal',
+  isVariable: false,
 };
 
 // ---------------------------------------------------------------------------
@@ -58,9 +60,9 @@ const EMPTY_FORM: BaseExpenseFormData = {
 // ---------------------------------------------------------------------------
 
 interface SortableRowProps {
-  item: BaseExpense;
-  onToggleActive: (item: BaseExpense) => void;
-  onEdit: (item: BaseExpense) => void;
+  item: Commitment;
+  onToggleActive: (item: Commitment) => void;
+  onEdit: (item: Commitment) => void;
   onDelete: (id: string) => void;
 }
 
@@ -122,6 +124,8 @@ function SortableRow({ item, onToggleActive, onEdit, onDelete }: SortableRowProp
         </p>
         <p className="text-xs text-text-secondary capitalize">
           {item.category} · {item.accountType}
+          {item.isVariable && ' · Variable'}
+          {item.dueDay && ` · Due ${item.dueDay}${getDaySuffix(item.dueDay)}`}
         </p>
       </div>
 
@@ -154,21 +158,31 @@ function SortableRow({ item, onToggleActive, onEdit, onDelete }: SortableRowProp
   );
 }
 
+function getDaySuffix(day: number): string {
+  if (day >= 11 && day <= 13) return 'th';
+  switch (day % 10) {
+    case 1: return 'st';
+    case 2: return 'nd';
+    case 3: return 'rd';
+    default: return 'th';
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Add / Edit form
 // ---------------------------------------------------------------------------
 
-interface BaseExpenseFormProps {
-  initial?: BaseExpenseFormData;
-  onSave: (data: BaseExpenseFormData) => Promise<void>;
+interface CommitmentFormProps {
+  initial?: CommitmentFormData;
+  onSave: (data: CommitmentFormData) => Promise<void>;
   onCancel: () => void;
   saving: boolean;
 }
 
-function BaseExpenseForm({ initial = EMPTY_FORM, onSave, onCancel, saving }: BaseExpenseFormProps) {
-  const [form, setForm] = useState<BaseExpenseFormData>(initial);
+function CommitmentForm({ initial = EMPTY_FORM, onSave, onCancel, saving }: CommitmentFormProps) {
+  const [form, setForm] = useState<CommitmentFormData>(initial);
 
-  function set<K extends keyof BaseExpenseFormData>(key: K, value: BaseExpenseFormData[K]) {
+  function set<K extends keyof CommitmentFormData>(key: K, value: CommitmentFormData[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
@@ -187,7 +201,7 @@ function BaseExpenseForm({ initial = EMPTY_FORM, onSave, onCancel, saving }: Bas
           type="text"
           value={form.label}
           onChange={(e) => set('label', e.target.value)}
-          placeholder="e.g. Rent"
+          placeholder="e.g. Rent, Medical Aid"
           required
           className="w-full px-3 py-2 bg-background border border-border rounded-lg text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-primary text-sm"
         />
@@ -205,7 +219,7 @@ function BaseExpenseForm({ initial = EMPTY_FORM, onSave, onCancel, saving }: Bas
           <label className="block text-xs text-text-secondary mb-1">Category</label>
           <select
             value={form.category}
-            onChange={(e) => set('category', e.target.value as ExpenseCategory)}
+            onChange={(e) => set('category', e.target.value as Category)}
             className="w-full px-3 py-2 bg-background border border-border rounded-lg text-text-primary focus:outline-none focus:border-primary text-sm capitalize"
           >
             {CATEGORIES.map((c) => (
@@ -228,6 +242,33 @@ function BaseExpenseForm({ initial = EMPTY_FORM, onSave, onCancel, saving }: Bas
         </div>
       </div>
 
+      {/* Due day + Variable toggle */}
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs text-text-secondary mb-1">Due Day (optional)</label>
+          <input
+            type="number"
+            value={form.dueDay ?? ''}
+            onChange={(e) => set('dueDay', e.target.value ? parseInt(e.target.value, 10) : undefined)}
+            min={1}
+            max={31}
+            placeholder="1-31"
+            className="w-full px-3 py-2 bg-background border border-border rounded-lg text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-primary text-sm"
+          />
+        </div>
+        <div className="flex items-end pb-2">
+          <label className="flex items-center gap-2 text-sm text-text-primary cursor-pointer">
+            <input
+              type="checkbox"
+              checked={form.isVariable}
+              onChange={(e) => set('isVariable', e.target.checked)}
+              className="w-4 h-4 rounded border-border bg-background accent-primary"
+            />
+            Variable amount
+          </label>
+        </div>
+      </div>
+
       {/* Actions */}
       <div className="flex gap-2 pt-1">
         <button
@@ -235,7 +276,7 @@ function BaseExpenseForm({ initial = EMPTY_FORM, onSave, onCancel, saving }: Bas
           disabled={saving || !form.label.trim() || form.amount <= 0}
           className="flex-1 py-2 bg-primary text-black font-medium rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-primary/90 transition-colors"
         >
-          {saving ? 'Saving…' : 'Save'}
+          {saving ? 'Saving...' : 'Save'}
         </button>
         <button
           type="button"
@@ -254,10 +295,10 @@ function BaseExpenseForm({ initial = EMPTY_FORM, onSave, onCancel, saving }: Bas
 // ---------------------------------------------------------------------------
 
 export default function SettingsPage() {
-  const [items, setItems] = useState<BaseExpense[]>([]);
+  const [items, setItems] = useState<Commitment[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [editingItem, setEditingItem] = useState<BaseExpense | null>(null);
+  const [editingItem, setEditingItem] = useState<Commitment | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -265,13 +306,13 @@ export default function SettingsPage() {
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
   );
 
-  // Fetch base expenses
+  // Fetch commitments
   const fetchItems = useCallback(async () => {
     try {
-      const res = await fetch('/api/base-expenses');
-      if (!res.ok) throw new Error('Failed to load base expenses');
+      const res = await fetch('/api/commitments');
+      if (!res.ok) throw new Error('Failed to load commitments');
       const data = await res.json();
-      setItems(data.baseExpenses ?? []);
+      setItems(data.commitments ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
@@ -284,19 +325,19 @@ export default function SettingsPage() {
   }, [fetchItems]);
 
   // Create
-  async function handleCreate(form: BaseExpenseFormData) {
+  async function handleCreate(form: CommitmentFormData) {
     setSaving(true);
     setError(null);
     try {
       const nextOrder = items.length > 0 ? Math.max(...items.map((i) => i.sortOrder)) + 1 : 0;
-      const res = await fetch('/api/base-expenses', {
+      const res = await fetch('/api/commitments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...form, sortOrder: nextOrder, isActive: true }),
       });
-      if (!res.ok) throw new Error('Failed to create base expense');
+      if (!res.ok) throw new Error('Failed to create commitment');
       const created = await res.json();
-      setItems((prev) => [...prev, created as BaseExpense]);
+      setItems((prev) => [...prev, created as Commitment]);
       setShowForm(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
@@ -306,19 +347,19 @@ export default function SettingsPage() {
   }
 
   // Update
-  async function handleUpdate(form: BaseExpenseFormData) {
+  async function handleUpdate(form: CommitmentFormData) {
     if (!editingItem) return;
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch(`/api/base-expenses/${editingItem.id}`, {
+      const res = await fetch(`/api/commitments/${editingItem.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),
       });
-      if (!res.ok) throw new Error('Failed to update base expense');
+      if (!res.ok) throw new Error('Failed to update commitment');
       const updated = await res.json();
-      setItems((prev) => prev.map((i) => (i.id === editingItem.id ? (updated as BaseExpense) : i)));
+      setItems((prev) => prev.map((i) => (i.id === editingItem.id ? (updated as Commitment) : i)));
       setEditingItem(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
@@ -328,20 +369,20 @@ export default function SettingsPage() {
   }
 
   // Toggle active
-  async function handleToggleActive(item: BaseExpense) {
+  async function handleToggleActive(item: Commitment) {
     // Optimistic update
     setItems((prev) =>
       prev.map((i) => (i.id === item.id ? { ...i, isActive: !i.isActive } : i))
     );
     try {
-      const res = await fetch(`/api/base-expenses/${item.id}`, {
+      const res = await fetch(`/api/commitments/${item.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ isActive: !item.isActive }),
       });
       if (!res.ok) throw new Error('Failed to update');
       const updated = await res.json();
-      setItems((prev) => prev.map((i) => (i.id === item.id ? (updated as BaseExpense) : i)));
+      setItems((prev) => prev.map((i) => (i.id === item.id ? (updated as Commitment) : i)));
     } catch (err) {
       // Revert on failure
       setItems((prev) =>
@@ -353,12 +394,12 @@ export default function SettingsPage() {
 
   // Delete
   async function handleDelete(id: string) {
-    if (!confirm('Delete this base expense? This cannot be undone.')) return;
+    if (!confirm('Delete this commitment? This cannot be undone.')) return;
     // Optimistic remove
     const prev = items;
     setItems((p) => p.filter((i) => i.id !== id));
     try {
-      const res = await fetch(`/api/base-expenses/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/commitments/${id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Failed to delete');
     } catch (err) {
       setItems(prev);
@@ -384,7 +425,7 @@ export default function SettingsPage() {
     const changed = withOrder.filter((item) => prevOrderMap.get(item.id) !== item.sortOrder);
     await Promise.all(
       changed.map((item) =>
-        fetch(`/api/base-expenses/${item.id}`, {
+        fetch(`/api/commitments/${item.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ sortOrder: item.sortOrder }),
@@ -402,13 +443,13 @@ export default function SettingsPage() {
         <h1 className="text-xl font-semibold text-text-primary">Settings</h1>
       </div>
 
-      {/* Base Expenses section */}
+      {/* Commitments section */}
       <section>
         <div className="mb-4">
-          <h2 className="text-base font-semibold text-text-primary">Base Expenses</h2>
+          <h2 className="text-base font-semibold text-text-primary">Commitments</h2>
           <p className="text-sm text-text-secondary mt-1">
-            Templates that auto-populate new monthly folders. Active templates are copied as
-            pending expenses whenever you create a new monthly folder.
+            Recurring monthly obligations that auto-populate each pay cycle.
+            Active commitments spawn items when you create a new cycle.
           </p>
           {!loading && items.length > 0 && (
             <p className="text-xs text-text-secondary mt-1">
@@ -443,13 +484,15 @@ export default function SettingsPage() {
               <div className="space-y-2">
                 {items.map((item) => (
                   editingItem?.id === item.id ? (
-                    <BaseExpenseForm
+                    <CommitmentForm
                       key={item.id}
                       initial={{
                         label: item.label,
                         amount: item.amount,
                         category: item.category,
                         accountType: item.accountType,
+                        dueDay: item.dueDay,
+                        isVariable: item.isVariable,
                       }}
                       onSave={handleUpdate}
                       onCancel={() => setEditingItem(null)}
@@ -474,7 +517,7 @@ export default function SettingsPage() {
         {!loading && (
           <div className="mt-3">
             {showForm ? (
-              <BaseExpenseForm
+              <CommitmentForm
                 onSave={handleCreate}
                 onCancel={() => setShowForm(false)}
                 saving={saving}
@@ -484,7 +527,7 @@ export default function SettingsPage() {
                 onClick={() => setShowForm(true)}
                 className="w-full py-2.5 border border-dashed border-border rounded-lg text-sm text-text-secondary hover:text-text-primary hover:border-primary transition-colors"
               >
-                + Add base expense
+                + Add commitment
               </button>
             )}
           </div>

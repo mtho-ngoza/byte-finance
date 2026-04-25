@@ -3,13 +3,12 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
-// Show only the most important items in the bottom tab bar
 const MOBILE_NAV_ITEMS = [
-  { label: 'Home', href: '/', icon: '⊞' },
-  { label: 'Folders', href: '/folders', icon: '⊟' },
+  { label: 'Now', href: '/', icon: '⊞' },
+  { label: 'Plan', href: '/plan', icon: '⊟' },
+  { label: 'History', href: '/history', icon: '◉' },
   { label: 'Goals', href: '/goals', icon: '◎' },
-  { label: 'Savings', href: '/savings', icon: '◈' },
-  { label: 'More', href: '/insights', icon: '⋯' },
+  { label: 'Settings', href: '/settings', icon: '⊙' },
 ];
 
 export function MobileNav() {
