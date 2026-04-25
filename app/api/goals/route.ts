@@ -11,7 +11,6 @@ export async function GET(request: NextRequest) {
   const db = getAdminDb();
   const snap = await db
     .collection(`users/${userId}/goals`)
-    .orderBy('year', 'desc')
     .orderBy('priority')
     .get();
 
@@ -25,13 +24,22 @@ export async function POST(request: NextRequest) {
   const { userId } = auth;
 
   const body = await request.json();
-  const { title, type, targetAmount, currentAmount, year, priority, status, notes,
-    expectedMonthlyContribution, linkedExpenseLabel, startDate, targetDate,
-    debtTracking } = body;
+  const {
+    name,
+    type,
+    targetAmount,
+    monthlyTarget,
+    linkedCommitmentLabel,
+    debtTracking,
+    investmentTracking,
+    allowWithdrawals,
+    priority,
+    notes,
+  } = body;
 
-  if (!title || !type || !year || !priority) {
+  if (!name || !type || targetAmount === undefined || !priority) {
     return NextResponse.json(
-      { error: 'title, type, year, and priority are required' },
+      { error: 'name, type, targetAmount, and priority are required' },
       { status: 400 }
     );
   }
@@ -39,23 +47,22 @@ export async function POST(request: NextRequest) {
   const db = getAdminDb();
   const now = FieldValue.serverTimestamp();
 
-  const goalData: Record<string, unknown> = {
-    title,
+  const goalData = {
+    name,
     type,
-    targetAmount: targetAmount ?? null,
-    currentAmount: currentAmount ?? 0,
+    targetAmount,
+    currentAmount: 0,
+    monthlyTarget: monthlyTarget ?? null,
+    linkedCommitmentLabel: linkedCommitmentLabel ?? null,
+    debtTracking: debtTracking ?? null,
+    investmentTracking: investmentTracking ?? null,
     contributions: [],
-    status: status ?? 'pending',
-    isOnTrack: false,
-    monthsBehind: 0,
-    year,
+    allowWithdrawals: allowWithdrawals ?? false,
+    withdrawals: [],
+    status: 'active',
+    isOnTrack: true,
     priority,
     notes: notes ?? null,
-    expectedMonthlyContribution: expectedMonthlyContribution ?? null,
-    linkedExpenseLabel: linkedExpenseLabel ?? null,
-    startDate: startDate ?? null,
-    targetDate: targetDate ?? null,
-    debtTracking: debtTracking ?? null,
     createdAt: now,
     updatedAt: now,
     completedAt: null,

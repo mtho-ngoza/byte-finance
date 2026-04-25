@@ -5,6 +5,24 @@ import { FieldValue } from 'firebase-admin/firestore';
 
 type Params = { params: Promise<{ id: string }> };
 
+export async function GET(request: NextRequest, { params }: Params) {
+  const auth = await withAuth(request);
+  if (auth instanceof NextResponse) return auth;
+  const { userId } = auth;
+
+  const { id } = await params;
+
+  const db = getAdminDb();
+  const ref = db.doc(`users/${userId}/goals/${id}`);
+  const snap = await ref.get();
+
+  if (!snap.exists) {
+    return NextResponse.json({ error: 'Goal not found' }, { status: 404 });
+  }
+
+  return NextResponse.json({ id, ...snap.data() });
+}
+
 export async function PATCH(request: NextRequest, { params }: Params) {
   const auth = await withAuth(request);
   if (auth instanceof NextResponse) return auth;
@@ -14,10 +32,20 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const body = await request.json();
 
   const allowed = [
-    'title', 'type', 'targetAmount', 'currentAmount', 'status', 'priority',
-    'notes', 'year', 'expectedMonthlyContribution', 'linkedExpenseLabel',
-    'startDate', 'targetDate', 'debtTracking', 'contributions', 'completedAt',
-    'isOnTrack', 'monthsBehind',
+    'name',
+    'type',
+    'targetAmount',
+    'currentAmount',
+    'monthlyTarget',
+    'linkedCommitmentLabel',
+    'debtTracking',
+    'investmentTracking',
+    'allowWithdrawals',
+    'status',
+    'isOnTrack',
+    'priority',
+    'notes',
+    'completedAt',
   ];
 
   const updates: Record<string, unknown> = { updatedAt: FieldValue.serverTimestamp() };

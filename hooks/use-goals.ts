@@ -1,68 +1,58 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useUserId } from './use-user-id';
 import type { Goal } from '@/types';
 
 /**
- * Compute isOnTrack and monthsBehind client-side on every render.
- *
- * isOnTrack: currentAmount / targetAmount >= elapsedMonths / totalPlannedMonths
- * monthsBehind: number of expected monthly contributions not yet received
+ * Compute isOnTrack based on contribution pace vs monthly target
  */
-function computeTrackingFields(goal: Goal): Pick<Goal, 'isOnTrack' | 'monthsBehind'> {
+function computeIsOnTrack(goal: Goal): boolean {
+  if (!goal.monthlyTarget || goal.monthlyTarget <= 0) {
+    return true; // No target = always on track
+  }
+
+  // Calculate months since start
   const now = new Date();
+  const contributions = goal.contributions ?? [];
 
-  // Without a targetAmount or targetDate we can't compute tracking
-  if (!goal.targetAmount || !goal.targetDate || !goal.startDate) {
-    return { isOnTrack: true, monthsBehind: 0 };
+  if (contributions.length === 0) {
+    return false;
   }
 
-  const start = goal.startDate.toDate();
-  const target = goal.targetDate.toDate();
+  // Get earliest contribution date
+  const firstContribution = contributions[0]?.date?.toDate?.() ?? now;
+  const monthsElapsed = Math.max(
+    1,
+    (now.getFullYear() - firstContribution.getFullYear()) * 12 +
+      (now.getMonth() - firstContribution.getMonth())
+  );
 
-  const totalPlannedMonths =
-    (target.getFullYear() - start.getFullYear()) * 12 +
-    (target.getMonth() - start.getMonth());
-
-  if (totalPlannedMonths <= 0) {
-    return { isOnTrack: goal.currentAmount >= goal.targetAmount, monthsBehind: 0 };
-  }
-
-  const elapsedMonths =
-    (now.getFullYear() - start.getFullYear()) * 12 +
-    (now.getMonth() - start.getMonth());
-
-  const clampedElapsed = Math.max(0, Math.min(elapsedMonths, totalPlannedMonths));
-
-  const progressRatio = goal.currentAmount / goal.targetAmount;
-  const timeRatio = clampedElapsed / totalPlannedMonths;
-
-  const isOnTrack = progressRatio >= timeRatio;
-
-  // monthsBehind: how many expected monthly contributions haven't arrived
-  let monthsBehind = 0;
-  if (!isOnTrack && goal.expectedMonthlyContribution && goal.expectedMonthlyContribution > 0) {
-    const expectedTotal = goal.expectedMonthlyContribution * clampedElapsed;
-    const deficit = expectedTotal - goal.currentAmount;
-    monthsBehind = Math.max(0, Math.floor(deficit / goal.expectedMonthlyContribution));
-  }
-
-  return { isOnTrack, monthsBehind };
+  const expectedTotal = goal.monthlyTarget * monthsElapsed;
+  return goal.currentAmount >= expectedTotal;
 }
 
 interface UseGoalsResult {
   goals: Goal[];
   loading: boolean;
-  /** Goals grouped by year, sorted descending */
-  goalsByYear: Map<number, Goal[]>;
+  /** Active goals only */
+  activeGoals: Goal[];
+  /** Goals by type */
+  goalsByType: {
+    savings: Goal[];
+    debt_payoff: Goal[];
+    investment: Goal[];
+  };
+  /** Total current amount across all active goals */
+  totalProgress: number;
+  /** Total target amount across all active goals */
+  totalTarget: number;
 }
 
 export function useGoals(): UseGoalsResult {
   const userId = useUserId();
-
   const [rawGoals, setRawGoals] = useState<Goal[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -74,8 +64,8 @@ export function useGoals(): UseGoalsResult {
 
     const q = query(
       collection(db, `users/${userId}/goals`),
-      orderBy('year', 'desc'),
       orderBy('priority'),
+      orderBy('createdAt', 'desc')
     );
 
     const unsubscribe = onSnapshot(q, (snap) => {
@@ -87,21 +77,32 @@ export function useGoals(): UseGoalsResult {
     return unsubscribe;
   }, [userId]);
 
-  // Compute tracking fields on every render
+  // Compute tracking fields
   const goals = rawGoals.map((g) => ({
     ...g,
-    ...computeTrackingFields(g),
+    isOnTrack: computeIsOnTrack(g),
   }));
 
-  // Group by year
-  const goalsByYear = new Map<number, Goal[]>();
-  for (const goal of goals) {
-    const list = goalsByYear.get(goal.year) ?? [];
-    list.push(goal);
-    goalsByYear.set(goal.year, list);
-  }
+  // Filter active goals
+  const activeGoals = goals.filter((g) => g.status === 'active');
 
-  return { goals, loading, goalsByYear };
+  // Group by type
+  const goalsByType = {
+    savings: activeGoals.filter((g) => g.type === 'savings'),
+    debt_payoff: activeGoals.filter((g) => g.type === 'debt_payoff'),
+    investment: activeGoals.filter((g) => g.type === 'investment'),
+  };
+
+  // Calculate totals
+  const totalProgress = activeGoals.reduce((sum, g) => sum + g.currentAmount, 0);
+  const totalTarget = activeGoals.reduce((sum, g) => sum + g.targetAmount, 0);
+
+  return {
+    goals,
+    loading,
+    activeGoals,
+    goalsByType,
+    totalProgress,
+    totalTarget,
+  };
 }
-
-export { computeTrackingFields };
