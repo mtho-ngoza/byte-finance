@@ -4,10 +4,16 @@ service cloud.firestore {
     function isOwner(userId) {
       return request.auth != null && request.auth.uid == userId;
     }
+
+    // Dev user bypass - REMOVE IN PRODUCTION
+    function isDevUser(userId) {
+      return userId == 'dev-user-local';
+    }
+
     match /users/{userId} {
-      allow read, write: if isOwner(userId);
+      allow read, write: if isOwner(userId) || isDevUser(userId);
       match /{subcollection}/{docId} {
-        allow read, write: if isOwner(userId);
+        allow read, write: if isOwner(userId) || isDevUser(userId);
       }
     }
   }

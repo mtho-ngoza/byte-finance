@@ -111,13 +111,13 @@ export const DEV_USER_ID = 'dev-user-local';
 
 /**
  * Middleware helper for protected API routes.
- * In development, returns a fixed dev user so the app works without credentials.
+ * In development or when SKIP_AUTH=true, returns a fixed dev user.
  * In production, verifies the NextAuth session.
  */
 export async function withAuth(
   _request: NextRequest
 ): Promise<{ userId: string } | NextResponse> {
-  if (process.env.NODE_ENV === 'development') {
+  if (process.env.NODE_ENV === 'development' || process.env.SKIP_AUTH === 'true') {
     return { userId: DEV_USER_ID };
   }
 

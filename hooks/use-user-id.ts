@@ -7,13 +7,14 @@ const DEV_USER_ID = 'dev-user-local';
 
 /**
  * Returns the current user ID.
- * In development, returns a fixed dev user ID to bypass auth.
+ * In development or when SKIP_AUTH is set, returns a fixed dev user ID.
  * In production, returns the session user ID.
  */
 export function useUserId(): string | undefined {
   const { data: session } = useSession();
 
-  if (process.env.NODE_ENV === 'development') {
+  // NEXT_PUBLIC_ prefix needed for client-side access
+  if (process.env.NODE_ENV === 'development' || process.env.NEXT_PUBLIC_SKIP_AUTH === 'true') {
     return DEV_USER_ID;
   }
 
