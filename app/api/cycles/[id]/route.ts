@@ -51,3 +51,34 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   const updated = await ref.get();
   return NextResponse.json({ id, ...updated.data() });
 }
+
+export async function DELETE(request: NextRequest, { params }: RouteParams) {
+  const auth = await withAuth(request);
+  if (auth instanceof NextResponse) return auth;
+  const { userId } = auth;
+
+  const { id } = await params;
+
+  const db = getAdminDb();
+  const ref = db.collection(`users/${userId}/cycles`).doc(id);
+
+  const doc = await ref.get();
+  if (!doc.exists) {
+    return NextResponse.json({ error: 'Cycle not found' }, { status: 404 });
+  }
+
+  // Also delete all cycle items for this cycle
+  const itemsSnap = await db
+    .collection(`users/${userId}/cycleItems`)
+    .where('cycleId', '==', id)
+    .get();
+
+  const batch = db.batch();
+  itemsSnap.docs.forEach((itemDoc) => {
+    batch.delete(itemDoc.ref);
+  });
+  batch.delete(ref);
+  await batch.commit();
+
+  return NextResponse.json({ success: true, deletedItems: itemsSnap.size });
+}
