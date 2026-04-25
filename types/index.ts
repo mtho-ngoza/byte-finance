@@ -1,25 +1,35 @@
 import type { Timestamp } from 'firebase/firestore';
 
-export type ExpenseCategory =
-  | 'housing'
-  | 'transport'
-  | 'family'
-  | 'business'
-  | 'living'
-  | 'health'
-  | 'education'
-  | 'savings'
-  | 'entertainment'
-  | 'subscriptions'
+/**
+ * Category classification for commitments and cycle items
+ */
+export type Category =
+  | 'housing'      // Bond, Levies, Rates, Electricity
+  | 'transport'    // Car Insurance, Petrol, Car tracker
+  | 'family'       // Support payments, school fees
+  | 'utilities'    // Fibre, DSTV, subscriptions
+  | 'health'       // Medical aid, pharmacy
+  | 'education'    // UNISA, courses
+  | 'savings'      // Emergency fund, investments
+  | 'lifestyle'    // Entertainment, dining, shopping
+  | 'business'     // PAYE, accounting, business expenses
   | 'other';
 
+/**
+ * Status flow for cycle items: upcoming → due → paid (or skipped)
+ */
+export type CycleItemStatus = 'upcoming' | 'due' | 'paid' | 'skipped';
+
+/**
+ * User profile with preferences
+ */
 export interface UserProfile {
   id: string;
   email: string;
   displayName: string;
   preferences: {
     payDayType: 'fixed' | 'last_working_day';
-    payDayFixed?: number; // 1–28
+    payDayFixed?: number; // 1-28, used if type is 'fixed'
     currency: 'ZAR';
     theme: 'dark' | 'light';
     notificationsEnabled: boolean;
@@ -28,85 +38,88 @@ export interface UserProfile {
   updatedAt: Timestamp;
 }
 
-export interface Folder {
+/**
+ * Commitment - A recurring monthly financial obligation
+ * Templates that spawn CycleItems each pay cycle
+ */
+export interface Commitment {
   id: string;
-  name: string;
-  type: 'monthly' | 'project' | 'savings' | 'goals';
-  icon?: string;
-  color?: string;
-  period?: { month: number; year: number };
-  income?: {
-    amount: number;
-    source?: string;
-    receivedDate?: Timestamp;
-    verified: boolean;
-  };
-  sortOrder: number;
-  isArchived: boolean;
-  createdAt: Timestamp;
-  updatedAt: Timestamp;
-}
-
-export interface Expense {
-  id: string;
-  folderId: string;
-  label: string;
-  amount: number; // cents
-  status: 'pending' | 'paid';
-  category: ExpenseCategory;
+  label: string;                    // "Bond", "Medical Aid", "Grocery"
+  amount: number;                   // Default amount in cents
+  category: Category;
   accountType: 'personal' | 'business';
-  linkedTo?: { type: 'goal' | 'investment' | 'savings_pot'; id: string };
-  dueDate?: Timestamp;
-  paidDate?: Timestamp;
-  notes?: string;
-  tags?: string[];
+
+  // Smart linking - auto-contribute to goal when paid
+  linkedGoalId?: string;
+
+  // Scheduling
+  dueDay?: number;                  // Day of month when typically due (1-31)
+  isVariable: boolean;              // True for expenses that vary (grocery, petrol)
+
+  // Organization
   sortOrder: number;
+  isActive: boolean;                // Can disable without deleting
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
 
-export interface BaseExpense {
-  id: string;
-  label: string;
-  amount: number; // cents
-  category: ExpenseCategory;
-  accountType: 'personal' | 'business';
-  linkedTo?: { type: 'goal' | 'investment' | 'savings_pot'; id: string };
-  sortOrder: number;
-  isActive: boolean;
-  createdAt: Timestamp;
-  updatedAt: Timestamp;
-}
-
+/**
+ * Goal - A financial target (savings, debt payoff, or investment)
+ */
 export interface Goal {
   id: string;
-  title: string;
-  type: 'savings' | 'purchase' | 'debt_payoff' | 'milestone';
-  targetAmount?: number; // cents
-  currentAmount: number; // cents
+  name: string;                     // "Medical Fund", "Pay off car", "Byte Fusion"
+  type: 'savings' | 'debt_payoff' | 'investment';
+
+  // Target tracking
+  targetAmount: number;             // Target in cents
+  currentAmount: number;            // Current progress (auto-calculated)
+
+  // For debt_payoff type
   debtTracking?: {
-    originalBalance: number; // cents
-    currentBalance: number; // cents
-    interestRate?: number;
-    minimumPayment?: number; // cents
+    originalBalance: number;        // Starting debt amount in cents
+    interestRate?: number;          // Annual rate (0.105 = 10.5%)
+    minimumPayment?: number;        // Minimum monthly payment in cents
     lender?: string;
     accountNumber?: string;
-    projectedPayoffDate?: Timestamp;
   };
-  expectedMonthlyContribution?: number; // cents
-  linkedExpenseLabel?: string;
+
+  // For investment type
+  investmentTracking?: {
+    termMonths: number;
+    startDate: Timestamp;
+    maturityDate: Timestamp;
+    institution?: string;
+  };
+
+  // Contribution expectations
+  monthlyTarget?: number;           // Expected monthly contribution in cents
+  linkedCommitmentLabel?: string;   // For auto-linking suggestions
+
+  // Contribution history
   contributions: Array<{
+    id: string;
     date: Timestamp;
-    amount: number; // cents
-    expenseId: string;
-    folderId: string;
+    amount: number;                 // cents
+    cycleId: string;
+    cycleItemId?: string;
+    note?: string;
   }>;
-  startDate?: Timestamp;
-  targetDate?: Timestamp;
-  status: 'pending' | 'in_progress' | 'completed' | 'cancelled';
-  isOnTrack: boolean;
-  monthsBehind: number;
-  year: number;
+
+  // For savings type with withdrawals (e.g., Medical Fund)
+  allowWithdrawals: boolean;
+  withdrawals?: Array<{
+    id: string;
+    date: Timestamp;
+    amount: number;                 // cents
+    description: string;
+  }>;
+
+  // Status
+  status: 'active' | 'completed' | 'paused';
+  isOnTrack: boolean;               // Calculated: meeting expected pace?
+
+  // Metadata
   priority: 'high' | 'medium' | 'low';
   notes?: string;
   createdAt: Timestamp;
@@ -114,50 +127,74 @@ export interface Goal {
   completedAt?: Timestamp;
 }
 
-export interface Investment {
+/**
+ * Cycle - An auto-generated pay period
+ */
+export interface Cycle {
+  id: string;                       // Format: "2026-04"
+
+  // Period boundaries
+  startDate: Timestamp;             // Pay day of this cycle
+  endDate: Timestamp;               // Day before next pay day
+
+  // Income for this cycle
+  income?: {
+    amount: number;                 // cents
+    source?: string;
+    receivedDate?: Timestamp;
+    verified: boolean;
+  };
+
+  // Calculated totals (denormalized for fast reads)
+  totalCommitted: number;           // Sum of all item amounts in cents
+  totalPaid: number;                // Sum of paid item amounts in cents
+  itemCount: number;
+  paidCount: number;
+
+  // Status
+  status: 'active' | 'closed';
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+/**
+ * CycleItem - An individual item within a cycle
+ * Spawned from Commitments or added as one-offs
+ */
+export interface CycleItem {
   id: string;
-  name: string;
-  type: 'fixed_term' | 'recurring' | 'stocks' | 'other';
-  targetAmount: number; // cents
-  monthlyContribution: number; // cents
-  termMonths: number;
-  startDate: Timestamp;
-  maturityDate: Timestamp;
-  totalContributed: number; // cents
-  contributions: Array<{ date: Timestamp; amount: number; note?: string }>;
-  status: 'active' | 'matured' | 'withdrawn' | 'paused';
-  institution?: string;
-  accountNumber?: string;
+  cycleId: string;
+
+  // Source tracking
+  commitmentId?: string;            // Null for one-off items
+
+  // Item details
+  label: string;
+  amount: number;                   // cents
+  category: Category;
+  accountType: 'personal' | 'business';
+
+  // Status flow
+  status: CycleItemStatus;
+
+  // Timing
+  dueDate?: Timestamp;
+  paidDate?: Timestamp;
+
+  // Smart linking
+  linkedGoalId?: string;
+
+  // Metadata
   notes?: string;
+  tags?: string[];
+  sortOrder: number;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
 
-export interface SavingsPot {
-  id: string;
-  name: string;
-  description?: string;
-  targetBalance?: number; // cents
-  currentBalance: number; // cents
-  totalContributed: number; // cents
-  totalWithdrawn: number; // cents
-  linkedExpenseLabel?: string;
-  expectedMonthlyContribution?: number; // cents
-  transactions: Array<{
-    id: string;
-    type: 'contribution' | 'withdrawal';
-    amount: number; // cents
-    date: Timestamp;
-    description?: string;
-    linkedExpenseId?: string;
-    linkedFolderId?: string;
-  }>;
-  isOnTrack: boolean;
-  monthsBehind: number;
-  createdAt: Timestamp;
-  updatedAt: Timestamp;
-}
-
+/**
+ * Insight - AI-generated observations and alerts
+ */
 export interface Insight {
   id: string;
   type: 'trend' | 'alert' | 'suggestion' | 'achievement';
@@ -166,19 +203,29 @@ export interface Insight {
   data?: Record<string, unknown>;
   isRead: boolean;
   isDismissed: boolean;
-  snoozedUntil?: Timestamp;
   expiresAt?: Timestamp;
   createdAt: Timestamp;
 }
 
+/**
+ * MonthlySnapshot - Aggregated data for trend analysis
+ */
 export interface MonthlySnapshot {
-  id: string; // "2026-03"
+  id: string;                       // Format: "2026-04"
   year: number;
   month: number;
-  totalBudgeted: number; // cents
-  totalPaid: number; // cents
-  categoryBreakdown: Record<ExpenseCategory, number>;
-  topExpenses: Array<{ label: string; amount: number }>;
-  goalsProgress: number; // 0–100 percentage
+  totalCommitted: number;           // cents
+  totalPaid: number;                // cents
+  categoryBreakdown: Record<Category, number>;
+  topItems: Array<{ label: string; amount: number }>;
+  goalsProgress: number;            // Overall goal progress percentage (0-100)
   createdAt: Timestamp;
 }
+
+/**
+ * Helper type for creating new documents (without id and timestamps)
+ */
+export type CreateCommitment = Omit<Commitment, 'id' | 'createdAt' | 'updatedAt'>;
+export type CreateGoal = Omit<Goal, 'id' | 'createdAt' | 'updatedAt' | 'completedAt' | 'contributions' | 'withdrawals' | 'currentAmount' | 'isOnTrack'>;
+export type CreateCycle = Omit<Cycle, 'id' | 'createdAt' | 'updatedAt'>;
+export type CreateCycleItem = Omit<CycleItem, 'id' | 'createdAt' | 'updatedAt'>;

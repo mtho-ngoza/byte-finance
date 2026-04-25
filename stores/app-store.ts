@@ -1,43 +1,64 @@
 import { create } from 'zustand';
-import type { Expense } from '@/types';
+import type { CycleItem } from '@/types';
 
-type ActiveFilter = 'all' | 'personal' | 'business';
+type AccountFilter = 'all' | 'personal' | 'business';
 type SyncStatus = 'online' | 'offline' | 'syncing';
 
 interface AppState {
-  activeFilter: ActiveFilter;
-  optimisticExpenses: Map<string, Expense>;
+  // Filters
+  accountFilter: AccountFilter;
+  selectedYear: number;
+
+  // Optimistic updates for cycle items
+  optimisticCycleItems: Map<string, CycleItem>;
+
+  // Current active cycle
+  currentCycleId: string | null;
+
+  // Sync status
   syncStatus: SyncStatus;
+
+  // Dismissed insights
   dismissedInsights: Set<string>;
 
-  setActiveFilter: (filter: ActiveFilter) => void;
-  setOptimisticExpense: (id: string, expense: Expense) => void;
-  removeOptimisticExpense: (id: string) => void;
+  // Actions
+  setAccountFilter: (filter: AccountFilter) => void;
+  setSelectedYear: (year: number) => void;
+  setOptimisticCycleItem: (id: string, item: CycleItem) => void;
+  removeOptimisticCycleItem: (id: string) => void;
+  setCurrentCycleId: (id: string | null) => void;
   setSyncStatus: (status: SyncStatus) => void;
   addDismissedInsight: (id: string) => void;
 }
 
+const currentYear = new Date().getFullYear();
+
 export const useAppStore = create<AppState>((set) => ({
-  activeFilter: 'all',
-  optimisticExpenses: new Map(),
+  accountFilter: 'all',
+  selectedYear: currentYear,
+  optimisticCycleItems: new Map(),
+  currentCycleId: null,
   syncStatus: 'online',
   dismissedInsights: new Set(),
 
-  setActiveFilter: (filter) => set({ activeFilter: filter }),
+  setAccountFilter: (filter) => set({ accountFilter: filter }),
+  setSelectedYear: (year) => set({ selectedYear: year }),
 
-  setOptimisticExpense: (id, expense) =>
+  setOptimisticCycleItem: (id, item) =>
     set((state) => {
-      const next = new Map(state.optimisticExpenses);
-      next.set(id, expense);
-      return { optimisticExpenses: next };
+      const next = new Map(state.optimisticCycleItems);
+      next.set(id, item);
+      return { optimisticCycleItems: next };
     }),
 
-  removeOptimisticExpense: (id) =>
+  removeOptimisticCycleItem: (id) =>
     set((state) => {
-      const next = new Map(state.optimisticExpenses);
+      const next = new Map(state.optimisticCycleItems);
       next.delete(id);
-      return { optimisticExpenses: next };
+      return { optimisticCycleItems: next };
     }),
+
+  setCurrentCycleId: (id) => set({ currentCycleId: id }),
 
   setSyncStatus: (status) => set({ syncStatus: status }),
 
