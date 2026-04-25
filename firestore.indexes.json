@@ -1,24 +1,67 @@
 {
   "indexes": [
     {
-      "collectionGroup": "expenses",
+      "collectionGroup": "cycleItems",
+      "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "folderId", "order": "ASCENDING" },
+        { "fieldPath": "cycleId", "order": "ASCENDING" },
         { "fieldPath": "sortOrder", "order": "ASCENDING" }
       ]
     },
     {
-      "collectionGroup": "expenses",
+      "collectionGroup": "cycleItems",
+      "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "category", "order": "ASCENDING" },
         { "fieldPath": "paidDate", "order": "DESCENDING" }
       ]
     },
     {
+      "collectionGroup": "cycleItems",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "cycleId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "goals",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "priority", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "goals",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "priority", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "cycles",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "startDate", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "commitments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "isActive", "order": "ASCENDING" },
+        { "fieldPath": "sortOrder", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "snapshots",
+      "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "year", "order": "DESCENDING" },
-        { "fieldPath": "status", "order": "ASCENDING" }
+        { "fieldPath": "month", "order": "DESCENDING" }
       ]
     }
   ],
