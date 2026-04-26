@@ -57,6 +57,17 @@
 
 ---
 
+## Enhancements (Nice to Have)
+
+| Feature | Notes |
+|---------|-------|
+| Hybrid Goal Creation | Let user choose monthly_fixed vs deadline_fixed mode, calculate the other automatically |
+| Goal Edit Form | Edit existing goals (name, target, deadline) |
+| Commitment Templates | Pre-built commitment sets for common scenarios |
+| Dark/Light Theme Toggle | Currently dark only |
+
+---
+
 ## Progress Overview
 
 ```
@@ -123,8 +134,9 @@ The app was refactored from Folders/Expenses to the new model:
 
 **What's working:**
 - Full MVP functional: Dashboard, Plan, Goals, History, Cycle Detail, Goal Detail
-- Goals now show linked commitments and compute monthly target dynamically
-- Goal Detail page shows contribution history, timeline, linked commitments
+- Goals show linked commitments and compute monthly target dynamically
+- Goal Detail page shows contribution history grouped by month, timeline, linked commitments
+- Contributions dated correctly per cycle month (not current date)
 - Cycle navigation with context-aware labels (Unpaid/Missed for past cycles)
 - Smart linking: commitments auto-contribute to linked goals when paid
 - Skip/delete items from dashboard and cycle detail
