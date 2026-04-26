@@ -42,6 +42,7 @@ export async function POST(request: NextRequest) {
     dueDate,
     notes,
     sortOrder,
+    status,
   } = body;
 
   if (!cycleId || !label || amount === undefined || !category || !accountType) {
@@ -54,6 +55,7 @@ export async function POST(request: NextRequest) {
   const db = getAdminDb();
   const now = FieldValue.serverTimestamp();
 
+  const isPaid = status === 'paid';
   const itemData = {
     cycleId,
     commitmentId: null, // One-off item
@@ -61,10 +63,10 @@ export async function POST(request: NextRequest) {
     amount,
     category,
     accountType,
-    status: 'upcoming',
+    status: status ?? 'upcoming',
     linkedGoalId: linkedGoalId ?? null,
     dueDate: dueDate ?? null,
-    paidDate: null,
+    paidDate: isPaid ? FieldValue.serverTimestamp() : null,
     notes: notes ?? null,
     tags: [],
     sortOrder: sortOrder ?? 0,
@@ -77,11 +79,18 @@ export async function POST(request: NextRequest) {
 
   // Update cycle totals
   const cycleRef = db.collection(`users/${userId}/cycles`).doc(cycleId);
-  await cycleRef.update({
+  const cycleUpdate: Record<string, unknown> = {
     totalCommitted: FieldValue.increment(amount),
     itemCount: FieldValue.increment(1),
     updatedAt: now,
-  });
+  };
+
+  if (isPaid) {
+    cycleUpdate.totalPaid = FieldValue.increment(amount);
+    cycleUpdate.paidCount = FieldValue.increment(1);
+  }
+
+  await cycleRef.update(cycleUpdate);
 
   const created = await ref.get();
   return NextResponse.json({ id: ref.id, ...created.data() }, { status: 201 });
