@@ -111,30 +111,33 @@ The app was refactored from Folders/Expenses to the new model:
 ## Next Up
 
 1. ~~**Plan View**~~ ✅ Done — commitments CRUD merged from Settings
-2. **Cycle Detail** — `/cycle/[id]` with full item list, edit amounts, skip items
-3. **History View** — `/history` with spending charts and past cycles
+2. ~~**Cycle Detail**~~ ✅ Done — `/cycle/[id]` with edit/skip/reorder, drag-and-drop
+3. ~~**History View**~~ ✅ Done — `/history` with bar chart, category donut, past cycles
+4. **Goal Detail View** — `/goals/[id]` with contribution history, deadline tracking
+5. **Monthly Snapshots** — Aggregated data for trend queries
 
 ---
 
-## Resume Point (25 April 2026)
+## Resume Point (26 April 2026)
 
 **What's working:**
-- Dashboard displays cycle data with year/account filters
+- Full MVP functional: Dashboard, Plan, Goals, History, Cycle Detail
+- Cycle navigation with context-aware labels (Unpaid/Missed for past cycles)
+- Smart linking: commitments auto-contribute to linked goals when paid
+- Skip/delete items from dashboard and cycle detail
 - Dev auth bypass configured (SKIP_AUTH=true)
-- Firestore rules deployed with dev-user-local access
-- Goals composite index deployed
 
 **To run locally:**
 ```bash
-npm run build && npm start
-# Or use: npm run dev:win
+npm run dev:win
+# Seed data: node scripts/seed-2026.mjs --reset
 ```
 
 **Next session priorities:**
-1. ~~Build `/plan` page~~ ✅ Done — merged with Settings commitments
-2. Build `/cycle/[id]` detail view with editing, skip, reorder
-3. Build `/history` view with spending charts and past cycles
+1. Enhance Goals with deadlines and contribution history view
+2. Complete offline support (sync indicator)
+3. Polish responsive design for desktop
 
 ---
 
-*Last Updated: 25 April 2026*
+*Last Updated: 26 April 2026*
