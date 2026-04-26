@@ -93,8 +93,12 @@ export interface Goal {
   };
 
   // Contribution expectations
-  monthlyTarget?: number;           // Expected monthly contribution in cents
+  monthlyTarget?: number;           // Manual monthly target (if not using linked commitments)
   linkedCommitmentLabel?: string;   // For auto-linking suggestions
+
+  // Deadline tracking
+  targetDate?: Timestamp;           // When goal should be achieved
+  calculationMode?: 'monthly_fixed' | 'deadline_fixed';  // How goal was set up
 
   // Contribution history
   contributions: Array<{

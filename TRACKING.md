@@ -74,7 +74,8 @@ Total:            ████████████░░░░░░░░  
 | Route | Works? |
 |-------|--------|
 | `/` (Dashboard) | ✅ Full — cycle progress, goals, items, filters |
-| `/goals` | ✅ Full — create, view, delete, progress bars |
+| `/goals` | ✅ Full — create, view, delete, progress, linked commitments shown |
+| `/goals/[id]` | ✅ Full — contribution history, linked commitments, timeline, progress |
 | `/settings` | ✅ Pay day config only (commitments moved to /plan) |
 | `/plan` | ✅ Full — commitments by category, goals with progress |
 | `/history` | ✅ Full — bar chart, category breakdown, past cycles list |
@@ -113,7 +114,7 @@ The app was refactored from Folders/Expenses to the new model:
 1. ~~**Plan View**~~ ✅ Done — commitments CRUD merged from Settings
 2. ~~**Cycle Detail**~~ ✅ Done — `/cycle/[id]` with edit/skip/reorder, drag-and-drop
 3. ~~**History View**~~ ✅ Done — `/history` with bar chart, category donut, past cycles
-4. **Goal Detail View** — `/goals/[id]` with contribution history, deadline tracking
+4. ~~**Goal Detail View**~~ ✅ Done — `/goals/[id]` with contribution history, linked commitments, timeline
 5. **Monthly Snapshots** — Aggregated data for trend queries
 
 ---
@@ -121,7 +122,9 @@ The app was refactored from Folders/Expenses to the new model:
 ## Resume Point (26 April 2026)
 
 **What's working:**
-- Full MVP functional: Dashboard, Plan, Goals, History, Cycle Detail
+- Full MVP functional: Dashboard, Plan, Goals, History, Cycle Detail, Goal Detail
+- Goals now show linked commitments and compute monthly target dynamically
+- Goal Detail page shows contribution history, timeline, linked commitments
 - Cycle navigation with context-aware labels (Unpaid/Missed for past cycles)
 - Smart linking: commitments auto-contribute to linked goals when paid
 - Skip/delete items from dashboard and cycle detail
@@ -134,9 +137,9 @@ npm run dev:win
 ```
 
 **Next session priorities:**
-1. Enhance Goals with deadlines and contribution history view
-2. Complete offline support (sync indicator)
-3. Polish responsive design for desktop
+1. Complete offline support (sync indicator)
+2. Polish responsive design for desktop
+3. Monthly Snapshots for trend analysis
 
 ---
 

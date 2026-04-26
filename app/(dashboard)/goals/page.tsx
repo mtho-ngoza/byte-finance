@@ -1,11 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { useGoals } from '@/hooks/use-goals';
-import type { Goal } from '@/types';
+import Link from 'next/link';
+import { useGoals, GoalWithComputed } from '@/hooks/use-goals';
 
 export default function GoalsPage() {
-  const { goals, loading, activeGoals, goalsByType, totalProgress, totalTarget } = useGoals();
+  const { goals, loading, activeGoals, goalsByType, totalProgress, totalTarget, commitments } = useGoals();
   const [showForm, setShowForm] = useState(false);
 
   const formatAmount = (cents: number) => {
@@ -189,55 +189,107 @@ export default function GoalsPage() {
       ) : (
         <div className="space-y-3">
           {activeGoals.map((goal) => (
-            <div
-              key={goal.id}
-              className="p-4 rounded-xl border border-border bg-surface"
-            >
-              <div className="flex items-start justify-between mb-2">
-                <div>
-                  <h3 className="font-medium text-text-primary">{goal.name}</h3>
-                  <span className="text-xs text-text-secondary capitalize">{goal.type.replace('_', ' ')}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  {goal.isOnTrack ? (
-                    <span className="text-xs text-primary">On Track</span>
-                  ) : (
-                    <span className="text-xs text-warning">Behind</span>
-                  )}
-                  <button
-                    onClick={() => handleDelete(goal.id)}
-                    className="p-1 text-text-secondary hover:text-danger transition-colors"
-                  >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 16 16">
-                      <path d="M5 5l6 6M11 5l-6 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between text-sm mb-2">
-                <span className="text-text-secondary">Progress</span>
-                <span className="font-mono text-text-primary">
-                  {formatAmount(goal.currentAmount)} / {formatAmount(goal.targetAmount)}
-                </span>
-              </div>
-
-              <div className="h-2 bg-background rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-primary rounded-full transition-all"
-                  style={{ width: `${getProgressPercentage(goal.currentAmount, goal.targetAmount)}%` }}
-                />
-              </div>
-
-              {goal.monthlyTarget && (
-                <p className="mt-2 text-xs text-text-secondary">
-                  Monthly target: {formatAmount(goal.monthlyTarget)}
-                </p>
-              )}
-            </div>
+            <GoalCard key={goal.id} goal={goal} onDelete={handleDelete} formatAmount={formatAmount} />
           ))}
         </div>
       )}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// GoalCard Component
+// ---------------------------------------------------------------------------
+
+interface GoalCardProps {
+  goal: GoalWithComputed;
+  onDelete: (id: string) => void;
+  formatAmount: (cents: number) => string;
+}
+
+function GoalCard({ goal, onDelete, formatAmount }: GoalCardProps) {
+  const progressPercent = goal.targetAmount > 0
+    ? Math.min(100, Math.round((goal.currentAmount / goal.targetAmount) * 100))
+    : 0;
+
+  const hasLinkedCommitments = goal.linkedCommitments.length > 0;
+
+  return (
+    <Link
+      href={`/goals/${goal.id}`}
+      className="block p-4 rounded-xl border border-border bg-surface hover:border-primary/50 transition-colors"
+    >
+      <div className="flex items-start justify-between mb-2">
+        <div>
+          <h3 className="font-medium text-text-primary">{goal.name}</h3>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-text-secondary capitalize">{goal.type.replace('_', ' ')}</span>
+            {hasLinkedCommitments && (
+              <span className="text-xs px-1.5 py-0.5 rounded bg-primary/10 text-primary">
+                {goal.linkedCommitments.length} linked
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {goal.isOnTrack ? (
+            <span className="text-xs text-primary">On Track</span>
+          ) : (
+            <span className="text-xs text-warning">Behind</span>
+          )}
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              onDelete(goal.id);
+            }}
+            className="p-1 text-text-secondary hover:text-danger transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 16 16">
+              <path d="M5 5l6 6M11 5l-6 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between text-sm mb-2">
+        <span className="text-text-secondary">Progress</span>
+        <span className="font-mono text-text-primary">
+          {formatAmount(goal.currentAmount)} / {formatAmount(goal.targetAmount)}
+        </span>
+      </div>
+
+      <div className="h-2 bg-background rounded-full overflow-hidden mb-3">
+        <div
+          className="h-full bg-primary rounded-full transition-all"
+          style={{ width: `${progressPercent}%` }}
+        />
+      </div>
+
+      {/* Monthly contribution info */}
+      <div className="flex items-center justify-between text-xs text-text-secondary">
+        <span>
+          Monthly: {formatAmount(goal.effectiveMonthlyTarget)}
+          {hasLinkedCommitments && (
+            <span className="text-text-secondary/70"> (from commitments)</span>
+          )}
+        </span>
+        {goal.estimatedCompletionDate && goal.currentAmount < goal.targetAmount && (
+          <span>
+            Est. completion: {goal.estimatedCompletionDate.toLocaleDateString('en-ZA', { month: 'short', year: 'numeric' })}
+          </span>
+        )}
+      </div>
+
+      {/* Deadline warning */}
+      {goal.daysUntilDeadline !== null && (
+        <div className={`mt-2 text-xs ${goal.daysUntilDeadline < 30 ? 'text-warning' : 'text-text-secondary'}`}>
+          {goal.daysUntilDeadline > 0
+            ? `${goal.daysUntilDeadline} days until deadline`
+            : goal.daysUntilDeadline === 0
+            ? 'Deadline is today!'
+            : `${Math.abs(goal.daysUntilDeadline)} days past deadline`}
+        </div>
+      )}
+    </Link>
   );
 }
