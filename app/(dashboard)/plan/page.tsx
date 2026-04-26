@@ -17,7 +17,7 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { useGoals } from '@/hooks/use-goals';
+import { useGoals, GoalWithComputed } from '@/hooks/use-goals';
 import { CurrencyInput } from '@/components/shared/currency-input';
 import { AmountDisplay } from '@/components/shared/amount-display';
 import { Skeleton } from '@/components/shared/skeleton';
@@ -119,7 +119,7 @@ export default function PlanPage() {
 
   // Calculate totals
   const totalMonthly = items.filter(i => i.isActive).reduce((sum, c) => sum + c.amount, 0);
-  const totalGoalsMonthly = activeGoals.reduce((sum, g) => sum + (g.monthlyTarget || 0), 0);
+  const totalGoalsMonthly = activeGoals.reduce((sum, g) => sum + g.effectiveMonthlyTarget, 0);
 
   const toggleCategory = (category: Category) => {
     setExpandedCategories((prev) => {
@@ -666,7 +666,7 @@ function CommitmentForm({ initial = EMPTY_FORM, goals = [], onSave, onCancel, sa
 // ---------------------------------------------------------------------------
 
 interface GoalCardProps {
-  goal: Goal;
+  goal: GoalWithComputed;
 }
 
 function GoalCard({ goal }: GoalCardProps) {
@@ -675,8 +675,8 @@ function GoalCard({ goal }: GoalCardProps) {
     : 0;
 
   const remaining = goal.targetAmount - goal.currentAmount;
-  const monthsRemaining = goal.monthlyTarget && goal.monthlyTarget > 0
-    ? Math.ceil(remaining / goal.monthlyTarget)
+  const monthsRemaining = goal.effectiveMonthlyTarget > 0
+    ? Math.ceil(remaining / goal.effectiveMonthlyTarget)
     : null;
 
   const typeIcon = {
@@ -701,10 +701,12 @@ function GoalCard({ goal }: GoalCardProps) {
             <p className="text-xs text-text-secondary">{typeLabel}</p>
           </div>
         </div>
-        {goal.monthlyTarget && goal.monthlyTarget > 0 && (
+        {goal.effectiveMonthlyTarget > 0 && (
           <div className="text-right">
-            <AmountDisplay amount={goal.monthlyTarget} size="sm" />
-            <p className="text-[10px] text-text-secondary">/month</p>
+            <AmountDisplay amount={goal.effectiveMonthlyTarget} size="sm" />
+            <p className="text-[10px] text-text-secondary">
+              /month{goal.linkedCommitments.length > 0 && ' (linked)'}
+            </p>
           </div>
         )}
       </div>
