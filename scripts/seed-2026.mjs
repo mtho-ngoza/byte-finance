@@ -34,7 +34,7 @@ const GOALS = [
   {
     name: 'Sbonga School Fees',
     type: 'debt_payoff',
-    targetAmount: 2400000, // R24,000 annual fees
+    targetAmount: 1590000, // R16,000 annual fees
     monthlyTarget: 200000,
     priority: 'high',
     linkedCommitmentLabel: 'Sbonga Fees', // Will link this commitment
@@ -51,8 +51,8 @@ const GOALS = [
   {
     name: 'Byte Fusion Business',
     type: 'investment',
-    targetAmount: 10000000, // R100,000 business fund
-    monthlyTarget: 300000,
+    targetAmount: 3600000, // R36,000 business fund
+    monthlyTarget: 150000,
     priority: 'medium',
     linkedCommitmentLabel: 'Byte Fusion',
   },
@@ -63,35 +63,36 @@ const GOALS = [
 // ---------------------------------------------------------------------------
 const COMMITMENTS = [
   // Housing
-  { label: 'Bond',              amount: 900000,  category: 'housing',   accountType: 'personal', isVariable: false },
-  { label: 'Levies',            amount: 150000,  category: 'housing',   accountType: 'personal', isVariable: true  },
-  { label: 'Rates',             amount: 50000,   category: 'housing',   accountType: 'personal', isVariable: false },
-  { label: 'Electricity',       amount: 150000,  category: 'housing',   accountType: 'personal', isVariable: true  },
+  { label: 'Bond',              amount: 805000,  category: 'housing',   accountType: 'personal', isVariable: false },
+  { label: 'Levies',            amount: 164270,  category: 'housing',   accountType: 'business', isVariable: true  },
+  { label: 'Rates',             amount: 50959,   category: 'housing',   accountType: 'business', isVariable: false },
+  { label: 'Electricity',       amount: 150000,  category: 'housing',   accountType: 'business', isVariable: true  },
   // Transport
-  { label: 'Car Insurance',     amount: 400000,  category: 'transport', accountType: 'personal', isVariable: true  },
-  { label: 'Car Track',         amount: 23900,   category: 'transport', accountType: 'personal', isVariable: true  },
-  { label: 'Petrol',            amount: 250000,  category: 'transport', accountType: 'personal', isVariable: true  },
+  { label: 'Car Insurance',     amount: 400000,  category: 'transport', accountType: 'business', isVariable: false  },
+  { label: 'Car Track',         amount: 23929,   category: 'transport', accountType: 'personal', isVariable: false  },
+  { label: 'Petrol',            amount: 250000,  category: 'transport', accountType: 'business', isVariable: true  },
   // Family
   { label: 'Family Support',    amount: 200000,  category: 'family',    accountType: 'personal', isVariable: false },
   { label: 'Sbonga Fees',       amount: 200000,  category: 'family',    accountType: 'personal', isVariable: false },
-  { label: 'Sbonga Transport',  amount: 60000,   category: 'family',    accountType: 'personal', isVariable: false },
+  { label: 'Sbonga Transport',  amount: 60000,   category: 'family',    accountType: 'personal', isVariable: true },
   { label: 'Nhloso Support',    amount: 250000,  category: 'family',    accountType: 'personal', isVariable: false },
-  { label: 'Spouse Support',    amount: 700000,  category: 'family',    accountType: 'personal', isVariable: true  },
+  { label: 'Spouse Support',    amount: 700000,  category: 'family',    accountType: 'personal', isVariable: false  },
   { label: 'Round ka Gogo',     amount: 150000,  category: 'family',    accountType: 'personal', isVariable: true  },
+  { label: 'Unisa Fees',        amount: 100000,  category: 'family',    accountType: 'business', isVariable: true  },
   // Health
   { label: 'Medical Aid',       amount: 600000,  category: 'health',    accountType: 'personal', isVariable: false },
   // Savings
   { label: 'Emergency',         amount: 100000,  category: 'savings',   accountType: 'personal', isVariable: false },
-  { label: 'Byte Fusion',       amount: 300000,  category: 'savings',   accountType: 'business', isVariable: false },
+  { label: 'Byte Fusion',       amount: 150000,  category: 'savings',   accountType: 'business', isVariable: false },
   // Utilities
-  { label: 'Fibre',             amount: 100000,  category: 'utilities', accountType: 'personal', isVariable: false },
-  { label: 'Mweb',              amount: 30000,   category: 'utilities', accountType: 'personal', isVariable: false },
-  { label: 'DSTV',              amount: 48000,   category: 'utilities', accountType: 'personal', isVariable: false },
+  { label: 'Fibre',             amount: 95000,  category: 'utilities', accountType: 'business', isVariable: false },
+  { label: 'Mweb',              amount: 29900,   category: 'utilities', accountType: 'business', isVariable: false },
+  { label: 'DSTV',              amount: 47900,   category: 'utilities', accountType: 'personal', isVariable: false },
   // Business
-  { label: 'PAYE',              amount: 180000,  category: 'business',  accountType: 'business', isVariable: true  },
-  { label: 'Accounting Fees',   amount: 390000,  category: 'business',  accountType: 'business', isVariable: true  },
+  { label: 'PAYE',              amount: 174600,  category: 'business',  accountType: 'business', isVariable: false  },
+  { label: 'Accounting Fees',   amount: 398550,  category: 'business',  accountType: 'business', isVariable: false  },
   { label: 'Bank Charges',      amount: 40000,   category: 'business',  accountType: 'business', isVariable: true  },
-  { label: 'Claude',            amount: 40000,   category: 'business',  accountType: 'business', isVariable: false },
+  { label: 'Claude',            amount: 40128,   category: 'business',  accountType: 'business', isVariable: false },
   // Lifestyle
   { label: 'Grocery',           amount: 400000,  category: 'lifestyle', accountType: 'personal', isVariable: true  },
   { label: 'Entertainment',     amount: 300000,  category: 'lifestyle', accountType: 'personal', isVariable: true  },
@@ -107,9 +108,9 @@ const MONTHS = {
     endDate: '2026-01-31',
     status: 'closed',
     items: {
-      'Bond':              { status: 'paid', amount: 900000 },
-      'Medical Aid':       { status: 'upcoming' },
-      'Car Insurance':     { status: 'upcoming', amount: 400000 },
+      'Bond':              { status: 'paid', amount: 805000 },
+      'Medical Aid':       { status: 'paid' },
+      'Car Insurance':     { status: 'paid', amount: 400000 },
       'Car Track':         { status: 'paid', amount: 18000 },
       'Levies':            { status: 'paid', amount: 170000 },
       'Rates':             { status: 'paid', amount: 50000 },
@@ -129,7 +130,7 @@ const MONTHS = {
       'DSTV':              { status: 'paid' },
       'PAYE':              { status: 'paid', amount: 320000 },
       'Accounting Fees':   { status: 'paid' },
-      'Entertainment':     { status: 'upcoming' },
+      'Entertainment':     { status: 'paid' },
       'Claude':            { status: 'paid' },
       'Round ka Gogo':     { status: 'paid', amount: 100000 },
       'Markham':           { status: 'paid' },
@@ -179,7 +180,7 @@ const MONTHS = {
     items: {
       'Bond':              { status: 'paid' },
       'Medical Aid':       { status: 'paid' },
-      'Car Insurance':     { status: 'paid', amount: 800000 },
+      'Car Insurance':     { status: 'paid' },
       'Car Track':         { status: 'paid', amount: 23900 },
       'Levies':            { status: 'paid', amount: 130000 },
       'Rates':             { status: 'paid' },
@@ -193,20 +194,20 @@ const MONTHS = {
       'Byte Fusion':       { status: 'paid' },
       'Spouse Support':    { status: 'paid' },
       'Electricity':       { status: 'paid' },
-      'Petrol':            { status: 'upcoming' },
+      'Petrol':            { status: 'paid' },
       'Fibre':             { status: 'paid' },
       'Mweb':              { status: 'paid' },
       'DSTV':              { status: 'paid' },
       'PAYE':              { status: 'paid' },
-      'Accounting Fees':   { status: 'paid', amount: 400000 },
+      'Accounting Fees':   { status: 'paid' },
       'Entertainment':     { status: 'paid' },
       'Claude':            { status: 'paid' },
       'Round ka Gogo':     { status: 'paid', amount: 280000 },
       'Markham':           { status: 'paid', amount: 150000 },
+      'Unisa Fees':        { status: 'paid', amount: 300000 },
     },
     oneOffs: [
       { label: 'Shein', amount: 100000, category: 'lifestyle', accountType: 'personal', status: 'paid' },
-      { label: 'Unisa', amount: 300000, category: 'education', accountType: 'personal', status: 'paid' },
       { label: 'Zuzu Travel', amount: 250000, category: 'lifestyle', accountType: 'personal', status: 'paid' },
       { label: 'Trip to KZN', amount: 500000, category: 'lifestyle', accountType: 'personal', status: 'paid' },
       { label: 'Golden Horse Trip', amount: 200000, category: 'lifestyle', accountType: 'personal', status: 'paid' },
@@ -219,9 +220,9 @@ const MONTHS = {
     items: {
       'Bond':              { status: 'upcoming' },
       'Medical Aid':       { status: 'upcoming' },
-      'Car Insurance':     { status: 'upcoming', amount: 400000 },
-      'Car Track':         { status: 'upcoming', amount: 23900 },
-      'Levies':            { status: 'upcoming', amount: 170000 },
+      'Car Insurance':     { status: 'upcoming' },
+      'Car Track':         { status: 'paid' },
+      'Levies':            { status: 'upcoming' },
       'Rates':             { status: 'upcoming' },
       'Family Support':    { status: 'upcoming' },
       'Grocery':           { status: 'upcoming' },
@@ -241,11 +242,13 @@ const MONTHS = {
       'Accounting Fees':   { status: 'upcoming' },
       'Entertainment':     { status: 'upcoming' },
       'Claude':            { status: 'upcoming' },
-      'Round ka Gogo':     { status: 'upcoming', amount: 100000 },
+      'Round ka Gogo':     { status: 'upcoming' },
       'Markham':           { status: 'upcoming' },
+      'Unisa Fees':        { status: 'upcoming' },
     },
     oneOffs: [
       { label: "Mother's Day", amount: 130000, category: 'family', accountType: 'personal', status: 'upcoming' },
+      { label: "Microwave", amount: 300000, category: 'housing', accountType: 'business', status: 'upcoming' },
     ],
   },
 };
@@ -395,11 +398,18 @@ async function seedCycle(cycleId, data) {
   const { items } = await get(`/api/cycle-items?cycleId=${cycleId}`);
   const itemMap = new Map((items || []).map(i => [i.label, i]));
 
+  console.log(`  → Found ${items?.length || 0} items in cycle`);
+
   // Update commitment-based items
   let updated = 0;
+  let skipped = 0;
   for (const [label, itemData] of Object.entries(data.items)) {
     const item = itemMap.get(label);
-    if (!item) continue;
+    if (!item) {
+      console.log(`  ⚠ Item not found: ${label}`);
+      skipped++;
+      continue;
+    }
 
     const updates = {};
     if (itemData.status !== item.status) updates.status = itemData.status;
@@ -423,10 +433,10 @@ async function seedCycle(cycleId, data) {
     if (existingLabels.has(oneOff.label)) continue;
 
     await post('/api/cycle-items', { cycleId, ...oneOff });
-    console.log(`  + ${oneOff.label} (one-off)`);
+    console.log(`  + ${oneOff.label} (one-off, ${oneOff.status})`);
   }
 
-  console.log(`  → ${updated} items updated\n`);
+  console.log(`  → ${updated} updated, ${skipped} not found\n`);
 }
 
 async function seed() {
