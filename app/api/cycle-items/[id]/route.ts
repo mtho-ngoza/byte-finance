@@ -28,15 +28,19 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   const newStatus = body.status;
   const now = FieldValue.serverTimestamp();
 
-  // Build update data
+  // Allow backdating paidDate for seeding historical data
+  const providedPaidDate = body.paidDate ? new Date(body.paidDate) : null;
+
+  // Build update data (exclude paidDate from spread, we handle it separately)
+  const { paidDate: _, ...restBody } = body;
   const updateData: Record<string, unknown> = {
-    ...body,
+    ...restBody,
     updatedAt: now,
   };
 
   // Set paidDate when marking as paid
   if (newStatus === 'paid' && previousStatus !== 'paid') {
-    updateData.paidDate = now;
+    updateData.paidDate = providedPaidDate ?? now;
   } else if (previousStatus === 'paid' && newStatus !== 'paid') {
     updateData.paidDate = null;
   }
@@ -55,12 +59,13 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
     // Smart linking: contribute to goal
     if (currentData.linkedGoalId) {
+      const contributionDate = providedPaidDate ?? new Date();
       const goalRef = db.collection(`users/${userId}/goals`).doc(currentData.linkedGoalId);
       await goalRef.update({
         currentAmount: FieldValue.increment(currentData.amount),
         contributions: FieldValue.arrayUnion({
           id: `${id}-${Date.now()}`,
-          date: new Date(),
+          date: contributionDate,
           amount: currentData.amount,
           cycleId: currentData.cycleId,
           cycleItemId: id,

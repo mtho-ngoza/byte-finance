@@ -69,7 +69,7 @@ const COMMITMENTS = [
   { label: 'Electricity',       amount: 150000,  category: 'housing',   accountType: 'business', isVariable: true  },
   // Transport
   { label: 'Car Insurance',     amount: 400000,  category: 'transport', accountType: 'business', isVariable: false  },
-  { label: 'Car Track',         amount: 23929,   category: 'transport', accountType: 'personal', isVariable: false  },
+  { label: 'Car Track',         amount: 18000,   category: 'transport', accountType: 'personal', isVariable: false  },
   { label: 'Petrol',            amount: 250000,  category: 'transport', accountType: 'business', isVariable: true  },
   // Family
   { label: 'Family Support',    amount: 200000,  category: 'family',    accountType: 'personal', isVariable: false },
@@ -378,6 +378,10 @@ async function seedCommitments() {
 async function seedCycle(cycleId, data) {
   console.log(`📅 Seeding ${cycleId}...`);
 
+  // Calculate a mid-month date for this cycle's paid items
+  const [year, month] = cycleId.split('-').map(Number);
+  const cyclePaidDate = new Date(year, month - 1, 15).toISOString(); // 15th of the month
+
   // Check if cycle exists
   const { cycles } = await get('/api/cycles');
   const exists = (cycles || []).some(c => c.id === cycleId);
@@ -414,6 +418,11 @@ async function seedCycle(cycleId, data) {
     const updates = {};
     if (itemData.status !== item.status) updates.status = itemData.status;
     if (itemData.amount && itemData.amount !== item.amount) updates.amount = itemData.amount;
+
+    // Provide paidDate for historical items
+    if (itemData.status === 'paid') {
+      updates.paidDate = cyclePaidDate;
+    }
 
     // Also sync linkedGoalId from commitment
     const linkedGoalId = goalIdsByCommitmentLabel.get(label);
