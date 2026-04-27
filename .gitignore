@@ -54,3 +54,6 @@ next-env.d.ts
 
 # Kiro
 .kiro/
+
+# Claude
+.claude/

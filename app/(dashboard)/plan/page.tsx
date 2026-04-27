@@ -746,7 +746,10 @@ function GoalCard({ goal }: GoalCardProps) {
       {/* Maturity date for investments */}
       {goal.type === 'investment' && goal.investmentTracking?.maturityDate && (
         <p className="text-xs text-text-secondary mt-2">
-          Matures: {(goal.investmentTracking.maturityDate.toDate()
+          Matures:{' '}
+          {(typeof goal.investmentTracking.maturityDate === 'string'
+            ? new Date(goal.investmentTracking.maturityDate)
+            : goal.investmentTracking.maturityDate.toDate()
           ).toLocaleDateString('en-ZA', { month: 'short', year: 'numeric' })}
         </p>
       )}
