@@ -1,19 +1,10 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import {
-  collection,
-  query,
-  where,
-  limit,
-  onSnapshot,
-  doc,
-  setDoc,
-  Timestamp,
-} from 'firebase/firestore';
-import { db } from '@/lib/firebase';
-import { useUserId } from './use-user-id';
-import type { Cycle, Commitment, CycleItem } from '@/types';
+import {useEffect, useState} from 'react';
+import {collection, doc, limit, onSnapshot, query, setDoc, Timestamp, where,} from 'firebase/firestore';
+import {db} from '@/lib/firebase';
+import {useUserId} from './use-user-id';
+import type {Commitment, Cycle, CycleItem} from '@/types';
 
 interface UseCyclesResult {
   cycles: Cycle[];
@@ -34,21 +25,19 @@ export function useCycles(): UseCyclesResult {
 
     const q = query(
       collection(db, `users/${userId}/cycles`),
-      limit(12)
+      limit(36) // 3 years of cycles
     );
 
-    const unsubscribe = onSnapshot(q, (snap) => {
+    return onSnapshot(q, (snap) => {
       const docs = snap.docs
-        .map((d) => ({ id: d.id, ...d.data() }) as Cycle)
-        .sort((a, b) => {
-          // Sort by id descending (format: YYYY-MM) as fallback
-          return b.id.localeCompare(a.id);
-        });
+          .map((d) => ({id: d.id, ...d.data()}) as Cycle)
+          .sort((a, b) => {
+            // Sort by id descending (format: YYYY-MM) as fallback
+            return b.id.localeCompare(a.id);
+          });
       setCycles(docs);
       setLoading(false);
     });
-
-    return unsubscribe;
   }, [userId]);
 
   // Current cycle is the one with status 'active' or the most recent
@@ -78,16 +67,14 @@ export function useCurrentCycle() {
       limit(1)
     );
 
-    const unsubscribe = onSnapshot(q, (snap) => {
+    return onSnapshot(q, (snap) => {
       if (snap.docs.length > 0) {
-        setCycle({ id: snap.docs[0].id, ...snap.docs[0].data() } as Cycle);
+        setCycle({id: snap.docs[0].id, ...snap.docs[0].data()} as Cycle);
       } else {
         setCycle(null);
       }
       setLoading(false);
     });
-
-    return unsubscribe;
   }, [userId]);
 
   return { cycle, loading };

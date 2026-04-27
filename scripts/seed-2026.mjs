@@ -55,6 +55,11 @@ const GOALS = [
     monthlyTarget: 150000,
     priority: 'medium',
     linkedCommitmentLabel: 'Byte Fusion',
+    investmentTracking: {
+      termMonths: 24,
+      startDate: '2025-09-01',   // Started Sept 2025
+      maturityDate: '2027-09-01', // 24 months later
+    },
   },
 ];
 
@@ -328,6 +333,7 @@ async function seedGoals() {
         priority: g.priority,
         allowWithdrawals: g.allowWithdrawals || false,
         status: 'active',
+        ...(g.investmentTracking && { investmentTracking: g.investmentTracking }),
       });
       console.log(`  ✓ ${g.name}`);
       created++;

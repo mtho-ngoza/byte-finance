@@ -40,6 +40,7 @@ export async function POST(request: NextRequest) {
     accountType,
     linkedGoalId,
     dueDate,
+    paidDate,
     notes,
     sortOrder,
     status,
@@ -56,6 +57,8 @@ export async function POST(request: NextRequest) {
   const now = FieldValue.serverTimestamp();
 
   const isPaid = status === 'paid';
+  const providedPaidDate = paidDate ? new Date(paidDate) : null;
+
   const itemData = {
     cycleId,
     commitmentId: null, // One-off item
@@ -66,7 +69,7 @@ export async function POST(request: NextRequest) {
     status: status ?? 'upcoming',
     linkedGoalId: linkedGoalId ?? null,
     dueDate: dueDate ?? null,
-    paidDate: isPaid ? FieldValue.serverTimestamp() : null,
+    paidDate: isPaid ? (providedPaidDate ?? now) : null,
     notes: notes ?? null,
     tags: [],
     sortOrder: sortOrder ?? 0,
@@ -91,6 +94,23 @@ export async function POST(request: NextRequest) {
   }
 
   await cycleRef.update(cycleUpdate);
+
+  // Record goal contribution if paid with linkedGoalId
+  if (isPaid && linkedGoalId) {
+    const contributionDate = providedPaidDate ?? new Date();
+    const goalRef = db.collection(`users/${userId}/goals`).doc(linkedGoalId);
+    await goalRef.update({
+      currentAmount: FieldValue.increment(amount),
+      contributions: FieldValue.arrayUnion({
+        id: `${ref.id}-${Date.now()}`,
+        date: contributionDate,
+        amount: amount,
+        cycleId: cycleId,
+        cycleItemId: ref.id,
+      }),
+      updatedAt: now,
+    });
+  }
 
   const created = await ref.get();
   return NextResponse.json({ id: ref.id, ...created.data() }, { status: 201 });

@@ -20,7 +20,6 @@ import { CSS } from '@dnd-kit/utilities';
 import { useGoals, GoalWithComputed } from '@/hooks/use-goals';
 import { CurrencyInput } from '@/components/shared/currency-input';
 import { AmountDisplay } from '@/components/shared/amount-display';
-import { Skeleton } from '@/components/shared/skeleton';
 import type { Commitment, Goal, Category } from '@/types';
 
 // Category display order and labels
@@ -747,7 +746,8 @@ function GoalCard({ goal }: GoalCardProps) {
       {/* Maturity date for investments */}
       {goal.type === 'investment' && goal.investmentTracking?.maturityDate && (
         <p className="text-xs text-text-secondary mt-2">
-          Matures: {goal.investmentTracking.maturityDate.toDate().toLocaleDateString('en-ZA', { month: 'short', year: 'numeric' })}
+          Matures: {(goal.investmentTracking.maturityDate.toDate()
+          ).toLocaleDateString('en-ZA', { month: 'short', year: 'numeric' })}
         </p>
       )}
     </div>
