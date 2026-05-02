@@ -28,8 +28,6 @@ export interface UserProfile {
   email: string;
   displayName: string;
   preferences: {
-    payDayType: 'fixed' | 'last_working_day';
-    payDayFixed?: number; // 1-28, used if type is 'fixed'
     currency: 'ZAR';
     theme: 'dark' | 'light';
     notificationsEnabled: boolean;
@@ -133,14 +131,14 @@ export interface Goal {
 }
 
 /**
- * Cycle - An auto-generated pay period
+ * Cycle - A calendar month period for tracking finances
  */
 export interface Cycle {
   id: string;                       // Format: "2026-04"
 
-  // Period boundaries
-  startDate: Timestamp;             // Pay day of this cycle
-  endDate: Timestamp;               // Day before next pay day
+  // Period boundaries (calendar month)
+  startDate: Timestamp;             // 1st of the month
+  endDate: Timestamp;               // Last day of the month
 
   // Income for this cycle
   income?: {

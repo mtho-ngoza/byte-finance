@@ -6,7 +6,6 @@ import { useCycles } from '@/hooks/use-cycles';
 import { useCycleItems } from '@/hooks/use-cycle-items';
 import { useGoals } from '@/hooks/use-goals';
 import { useUserProfile } from '@/hooks/use-user-profile';
-import { usePayDay } from '@/hooks/use-pay-day';
 import { useAppStore } from '@/stores/app-store';
 import { FilterBar } from '@/components/shared/filter-bar';
 import { AmountDisplay } from '@/components/shared/amount-display';
@@ -15,8 +14,7 @@ import type { CycleItem, CycleItemStatus, Goal } from '@/types';
 export default function DashboardPage() {
   const { cycles, loading: cyclesLoading } = useCycles();
   const { activeGoals, loading: goalsLoading } = useGoals();
-  const { profile, loading: profileLoading } = useUserProfile();
-  const { daysUntilPayDay } = usePayDay(profile?.preferences);
+  const { loading: profileLoading } = useUserProfile();
   const { selectedYear, accountFilter, currentCycleId, setCurrentCycleId } = useAppStore();
   const [creatingCycle, setCreatingCycle] = useState(false);
 
@@ -201,18 +199,7 @@ export default function DashboardPage() {
     <div className="space-y-6">
       {/* Header with filters */}
       <div className="flex items-center justify-between flex-wrap gap-4">
-        <div>
-          <h1 className="text-xl font-semibold text-text-primary">Dashboard</h1>
-          {daysUntilPayDay !== null && (
-            <p className="text-sm text-text-secondary">
-              {daysUntilPayDay > 0
-                ? `${daysUntilPayDay} day${daysUntilPayDay !== 1 ? 's' : ''} until pay day`
-                : daysUntilPayDay === 0
-                ? 'Pay day is today'
-                : `${Math.abs(daysUntilPayDay)} day${Math.abs(daysUntilPayDay) !== 1 ? 's' : ''} since pay day`}
-            </p>
-          )}
-        </div>
+        <h1 className="text-xl font-semibold text-text-primary">Dashboard</h1>
         <FilterBar availableYears={availableYears.length > 0 ? availableYears : undefined} />
       </div>
 
