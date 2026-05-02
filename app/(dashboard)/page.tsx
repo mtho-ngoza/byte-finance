@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useCycles } from '@/hooks/use-cycles';
 import { useCycleItems } from '@/hooks/use-cycle-items';
@@ -10,14 +10,99 @@ import { usePayDay } from '@/hooks/use-pay-day';
 import { useAppStore } from '@/stores/app-store';
 import { FilterBar } from '@/components/shared/filter-bar';
 import { AmountDisplay } from '@/components/shared/amount-display';
+import { getPayCycleBoundaries } from '@/lib/pay-day';
 import type { CycleItem, CycleItemStatus, Goal } from '@/types';
 
 export default function DashboardPage() {
   const { cycles, loading: cyclesLoading } = useCycles();
   const { activeGoals, loading: goalsLoading } = useGoals();
-  const { profile } = useUserProfile();
+  const { profile, loading: profileLoading } = useUserProfile();
   const { daysUntilPayDay } = usePayDay(profile?.preferences);
   const { selectedYear, accountFilter, currentCycleId, setCurrentCycleId } = useAppStore();
+  const [creatingCycle, setCreatingCycle] = useState(false);
+
+  // Auto-create current cycle if it doesn't exist
+  const ensureCurrentCycleExists = useCallback(async () => {
+    if (!profile?.preferences || cyclesLoading || creatingCycle) return;
+
+    const today = new Date();
+    const currentMonth = today.getMonth() + 1;
+    const currentYear = today.getFullYear();
+
+    // Get cycle boundaries for current month
+    const { start, end } = getPayCycleBoundaries(currentYear, currentMonth, profile.preferences);
+
+    // Determine which cycle ID we should be in based on today's date
+    // If today is before this month's pay day, we're in the previous cycle
+    // If today is on or after this month's pay day, we're in this month's cycle
+    const payDayThisMonth = getPayCycleBoundaries(currentYear, currentMonth, profile.preferences).payDay;
+
+    let expectedCycleId: string;
+    let cycleStart: Date;
+    let cycleEnd: Date;
+
+    if (today >= payDayThisMonth) {
+      // We're in this month's cycle (which spans to next month's pay day - 1)
+      expectedCycleId = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
+      cycleStart = payDayThisMonth;
+      const nextMonth = currentMonth === 12 ? 1 : currentMonth + 1;
+      const nextYear = currentMonth === 12 ? currentYear + 1 : currentYear;
+      const nextPayDay = getPayCycleBoundaries(nextYear, nextMonth, profile.preferences).payDay;
+      cycleEnd = new Date(nextPayDay);
+      cycleEnd.setDate(cycleEnd.getDate() - 1);
+    } else {
+      // We're still in previous month's cycle
+      const prevMonth = currentMonth === 1 ? 12 : currentMonth - 1;
+      const prevYear = currentMonth === 1 ? currentYear - 1 : currentYear;
+      expectedCycleId = `${prevYear}-${String(prevMonth).padStart(2, '0')}`;
+      cycleStart = start;
+      cycleEnd = end;
+    }
+
+    // Check if this cycle exists
+    const cycleExists = cycles.some((c) => c.id === expectedCycleId);
+
+    if (!cycleExists && cycles.length >= 0) {
+      // Create the cycle
+      setCreatingCycle(true);
+      try {
+        // Close any previous active cycles first
+        const activeCycles = cycles.filter((c) => c.status === 'active');
+        for (const ac of activeCycles) {
+          await fetch(`/api/cycles/${ac.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'closed' }),
+          });
+        }
+
+        // Create new cycle
+        await fetch('/api/cycles', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: expectedCycleId,
+            startDate: cycleStart.toISOString(),
+            endDate: cycleEnd.toISOString(),
+            status: 'active',
+          }),
+        });
+
+        console.log(`Auto-created cycle ${expectedCycleId}`);
+      } catch (err) {
+        console.error('Failed to auto-create cycle:', err);
+      } finally {
+        setCreatingCycle(false);
+      }
+    }
+  }, [profile?.preferences, cycles, cyclesLoading, creatingCycle]);
+
+  // Run auto-create check when profile and cycles are loaded
+  useEffect(() => {
+    if (!profileLoading && !cyclesLoading && profile?.preferences) {
+      ensureCurrentCycleExists();
+    }
+  }, [profileLoading, cyclesLoading, profile?.preferences, ensureCurrentCycleExists]);
 
   // Filter cycles by selected year, sorted newest first
   const yearCycles = cycles
