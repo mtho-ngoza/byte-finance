@@ -7,7 +7,7 @@ import { db } from '@/lib/firebase';
 import { useUserId } from '@/hooks/use-user-id';
 import { useUserProfile } from '@/hooks/use-user-profile';
 import { Skeleton } from '@/components/shared/skeleton';
-import type { UserProfile } from '@/types/index';
+import type { UserProfile } from '@/types';
 
 // ---------------------------------------------------------------------------
 // Pay Day Config Component
@@ -132,6 +132,85 @@ function PayDayConfig() {
 }
 
 // ---------------------------------------------------------------------------
+// VAT Config Component
+// ---------------------------------------------------------------------------
+
+function VatConfig() {
+  const userId = useUserId();
+  const { profile, loading } = useUserProfile();
+  const [saving, setSaving] = useState(false);
+  const [vatPercentage, setVatPercentage] = useState<number | null>(null);
+
+  // Sync state when profile loads
+  useEffect(() => {
+    if (profile?.preferences?.vatPercentage !== undefined) {
+      setVatPercentage(profile.preferences.vatPercentage);
+    }
+  }, [profile]);
+
+  async function handleSave() {
+    if (!userId) return;
+    setSaving(true);
+    try {
+      const ref = doc(db, `users/${userId}`);
+      await setDoc(ref, {
+        preferences: {
+          ...profile?.preferences,
+          vatPercentage: vatPercentage ?? undefined,
+        },
+        updatedAt: Timestamp.now(),
+      }, { merge: true });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) {
+    return <Skeleton height={80} className="w-full" />;
+  }
+
+  const currentVat = profile?.preferences?.vatPercentage;
+  const hasChanges = vatPercentage !== (currentVat ?? null);
+
+  return (
+    <div className="p-4 bg-surface border border-border rounded-lg space-y-4">
+      <div>
+        <label className="block text-xs text-text-secondary mb-2">VAT Percentage</label>
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            value={vatPercentage ?? ''}
+            onChange={(e) => {
+              const val = e.target.value;
+              setVatPercentage(val === '' ? null : Math.min(100, Math.max(0, parseFloat(val) || 0)));
+            }}
+            placeholder="15"
+            min={0}
+            max={100}
+            step="0.1"
+            className="w-24 px-3 py-2 bg-background border border-border rounded-lg text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-primary text-sm"
+          />
+          <span className="text-sm text-text-secondary">%</span>
+        </div>
+        <p className="text-xs text-text-secondary mt-1">
+          SA VAT is 15%. Leave empty to disable VAT calculation.
+        </p>
+      </div>
+
+      {hasChanges && (
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="w-full py-2 bg-primary text-black font-medium rounded-lg text-sm disabled:opacity-50 hover:bg-primary/90 transition-colors"
+        >
+          {saving ? 'Saving...' : 'Save Changes'}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main Settings Page
 // ---------------------------------------------------------------------------
 
@@ -152,6 +231,17 @@ export default function SettingsPage() {
           </p>
         </div>
         <PayDayConfig />
+      </section>
+
+      {/* VAT Config */}
+      <section>
+        <div className="mb-4">
+          <h2 className="text-base font-semibold text-text-primary">VAT</h2>
+          <p className="text-sm text-text-secondary mt-1">
+            Set VAT percentage for business income. Used for statement reconciliation.
+          </p>
+        </div>
+        <VatConfig />
       </section>
 
       {/* Quick Links */}

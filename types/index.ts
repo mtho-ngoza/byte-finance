@@ -33,6 +33,7 @@ export interface UserProfile {
     currency: 'ZAR';
     theme: 'dark' | 'light';
     notificationsEnabled: boolean;
+    vatPercentage?: number; // e.g., 15 for 15% SA VAT. Optional - if not set, no VAT calc.
   };
   createdAt: Timestamp;
   updatedAt: Timestamp;

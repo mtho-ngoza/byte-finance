@@ -24,6 +24,7 @@ import { db } from '@/lib/firebase';
 import { useUserId } from '@/hooks/use-user-id';
 import { useCycleItems } from '@/hooks/use-cycle-items';
 import { useCycles } from '@/hooks/use-cycles';
+import { useUserProfile } from '@/hooks/use-user-profile';
 import { AmountDisplay } from '@/components/shared/amount-display';
 import { CurrencyInput } from '@/components/shared/currency-input';
 import type { CycleItem, CycleItemStatus, Category, Cycle } from '@/types';
@@ -69,11 +70,13 @@ export default function CycleDetailPage() {
 
   const userId = useUserId();
   const { cycles, loading: cyclesLoading } = useCycles();
+  const { profile } = useUserProfile();
   const { items, loading: itemsLoading, totalCommitted, totalPaid, updateStatus, updateAmount } =
     useCycleItems(cycleId);
 
   const cycle = cycles.find((c) => c.id === cycleId);
   const loading = cyclesLoading || itemsLoading;
+  const vatPercentage = profile?.preferences?.vatPercentage;
 
   // Group items by category
   const itemsByCategory = useMemo(() => {
@@ -182,6 +185,7 @@ export default function CycleDetailPage() {
         cycle={cycle}
         cycleId={cycleId}
         totalCommitted={totalCommitted}
+        vatPercentage={vatPercentage}
       />
 
       {/* Items by Category */}
@@ -587,7 +591,7 @@ interface EditItemModalProps {
   onClose: () => void;
 }
 
-function EditItemModal({ item, cycleId, userId, onClose }: EditItemModalProps) {
+function EditItemModal({ item, userId, onClose }: EditItemModalProps) {
   const [saving, setSaving] = useState(false);
   const [label, setLabel] = useState(item.label);
   const [amount, setAmount] = useState((item.amount / 100).toFixed(2));
@@ -698,15 +702,27 @@ interface IncomeEntryProps {
   cycle: Cycle;
   cycleId: string;
   totalCommitted: number;
+  vatPercentage?: number; // e.g., 15 for 15%
 }
 
-function IncomeEntry({ cycle, cycleId, totalCommitted }: IncomeEntryProps) {
+function IncomeEntry({ cycle, cycleId, totalCommitted, vatPercentage }: IncomeEntryProps) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [amount, setAmount] = useState(cycle.income?.amount ?? 0);
   const [vatAmount, setVatAmount] = useState(cycle.income?.vatAmount ?? 0);
+  const [vatEnabled, setVatEnabled] = useState((cycle.income?.vatAmount ?? 0) > 0 || !!vatPercentage);
   const [verified, setVerified] = useState(cycle.income?.verified ?? false);
   const [source, setSource] = useState(cycle.income?.source ?? '');
+
+  // Auto-calculate VAT when amount changes (if VAT is enabled and percentage is set)
+  const handleAmountChange = (newAmount: number) => {
+    setAmount(newAmount);
+    if (vatEnabled && vatPercentage && vatPercentage > 0) {
+      // Calculate VAT: amount is inclusive, so VAT = amount * (rate / (100 + rate))
+      const calculatedVat = Math.round(newAmount * (vatPercentage / (100 + vatPercentage)));
+      setVatAmount(calculatedVat);
+    }
+  };
 
   // Calculate disposable income (excluding VAT - that's SARS's money)
   const grossIncome = cycle.income?.amount ?? 0;
@@ -741,6 +757,7 @@ function IncomeEntry({ cycle, cycleId, totalCommitted }: IncomeEntryProps) {
   const handleCancel = () => {
     setAmount(cycle.income?.amount ?? 0);
     setVatAmount(cycle.income?.vatAmount ?? 0);
+    setVatEnabled((cycle.income?.vatAmount ?? 0) > 0 || !!vatPercentage);
     setVerified(cycle.income?.verified ?? false);
     setSource(cycle.income?.source ?? '');
     setEditing(false);
@@ -753,15 +770,43 @@ function IncomeEntry({ cycle, cycleId, totalCommitted }: IncomeEntryProps) {
 
         <div>
           <label className="block text-xs text-text-secondary mb-1">Gross Income (including VAT)</label>
-          <CurrencyInput value={amount} onChange={setAmount} />
+          <CurrencyInput value={amount} onChange={handleAmountChange} />
         </div>
 
-        <div>
-          <label className="block text-xs text-text-secondary mb-1">VAT Amount (optional)</label>
-          <CurrencyInput value={vatAmount} onChange={setVatAmount} />
-          <p className="text-[10px] text-text-secondary mt-1">
-            VAT is excluded from disposable calculation — it&apos;s SARS&apos;s money
-          </p>
+        {/* VAT toggle and amount */}
+        <div className="space-y-2">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={vatEnabled}
+              onChange={(e) => {
+                setVatEnabled(e.target.checked);
+                if (!e.target.checked) {
+                  setVatAmount(0);
+                } else if (vatPercentage && amount > 0) {
+                  // Re-calculate VAT when enabling
+                  const calculatedVat = Math.round(amount * (vatPercentage / (100 + vatPercentage)));
+                  setVatAmount(calculatedVat);
+                }
+              }}
+              className="w-4 h-4 rounded border-border bg-background accent-primary"
+            />
+            <span className="text-sm text-text-primary">
+              Include VAT {vatPercentage ? `(${vatPercentage}%)` : ''}
+            </span>
+          </label>
+
+          {vatEnabled && (
+            <div>
+              <label className="block text-xs text-text-secondary mb-1">
+                VAT Amount {vatPercentage ? '(auto-calculated, editable)' : ''}
+              </label>
+              <CurrencyInput value={vatAmount} onChange={setVatAmount} />
+              <p className="text-[10px] text-text-secondary mt-1">
+                VAT excluded from disposable — it&apos;s SARS&apos;s money
+              </p>
+            </div>
+          )}
         </div>
 
         <div>
