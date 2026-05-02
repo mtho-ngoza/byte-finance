@@ -25,6 +25,7 @@ import { useUserId } from '@/hooks/use-user-id';
 import { useCycleItems } from '@/hooks/use-cycle-items';
 import { useCycles } from '@/hooks/use-cycles';
 import { AmountDisplay } from '@/components/shared/amount-display';
+import { CurrencyInput } from '@/components/shared/currency-input';
 import type { CycleItem, CycleItemStatus, Category, Cycle } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -175,6 +176,13 @@ export default function CycleDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Income Entry */}
+      <IncomeEntry
+        cycle={cycle}
+        cycleId={cycleId}
+        totalCommitted={totalCommitted}
+      />
 
       {/* Items by Category */}
       {CATEGORY_ORDER.map((category) => {
@@ -678,6 +686,202 @@ function EditItemModal({ item, cycleId, userId, onClose }: EditItemModalProps) {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// IncomeEntry Component
+// ---------------------------------------------------------------------------
+
+interface IncomeEntryProps {
+  cycle: Cycle;
+  cycleId: string;
+  totalCommitted: number;
+}
+
+function IncomeEntry({ cycle, cycleId, totalCommitted }: IncomeEntryProps) {
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [amount, setAmount] = useState(cycle.income?.amount ?? 0);
+  const [vatAmount, setVatAmount] = useState(cycle.income?.vatAmount ?? 0);
+  const [verified, setVerified] = useState(cycle.income?.verified ?? false);
+  const [source, setSource] = useState(cycle.income?.source ?? '');
+
+  // Calculate disposable income (excluding VAT - that's SARS's money)
+  const grossIncome = cycle.income?.amount ?? 0;
+  const vat = cycle.income?.vatAmount ?? 0;
+  const netIncome = grossIncome - vat;  // Your actual money
+  const disposable = netIncome - totalCommitted;
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/cycles/${cycleId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          income: {
+            amount,
+            vatAmount: vatAmount > 0 ? vatAmount : undefined,
+            verified,
+            source: source.trim() || undefined,
+          },
+        }),
+      });
+      if (!res.ok) throw new Error('Failed to update income');
+      setEditing(false);
+    } catch (err) {
+      console.error('Failed to save income:', err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCancel = () => {
+    setAmount(cycle.income?.amount ?? 0);
+    setVatAmount(cycle.income?.vatAmount ?? 0);
+    setVerified(cycle.income?.verified ?? false);
+    setSource(cycle.income?.source ?? '');
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <div className="p-4 rounded-xl border border-primary bg-surface space-y-4">
+        <h3 className="text-sm font-medium text-text-primary">Cycle Income</h3>
+
+        <div>
+          <label className="block text-xs text-text-secondary mb-1">Gross Income (including VAT)</label>
+          <CurrencyInput value={amount} onChange={setAmount} />
+        </div>
+
+        <div>
+          <label className="block text-xs text-text-secondary mb-1">VAT Amount (optional)</label>
+          <CurrencyInput value={vatAmount} onChange={setVatAmount} />
+          <p className="text-[10px] text-text-secondary mt-1">
+            VAT is excluded from disposable calculation — it&apos;s SARS&apos;s money
+          </p>
+        </div>
+
+        <div>
+          <label className="block text-xs text-text-secondary mb-1">Source (optional)</label>
+          <input
+            type="text"
+            value={source}
+            onChange={(e) => setSource(e.target.value)}
+            placeholder="e.g., Salary, Freelance"
+            className="w-full px-3 py-2 bg-background border border-border rounded-lg text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-primary text-sm"
+          />
+        </div>
+
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={verified}
+            onChange={(e) => setVerified(e.target.checked)}
+            className="w-4 h-4 rounded border-border bg-background accent-primary"
+          />
+          <span className="text-sm text-text-primary">Verified (confirmed in bank)</span>
+        </label>
+
+        <div className="flex gap-2">
+          <button
+            onClick={handleCancel}
+            className="flex-1 py-2 rounded-lg border border-border text-text-secondary text-sm hover:bg-background transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="flex-1 py-2 rounded-lg bg-primary text-background font-medium text-sm disabled:opacity-50"
+          >
+            {saving ? 'Saving...' : 'Save'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-4 rounded-xl border border-border bg-surface">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-medium text-text-primary">Cycle Income</h3>
+        <button
+          onClick={() => setEditing(true)}
+          className="text-xs text-primary hover:underline"
+        >
+          {grossIncome > 0 ? 'Edit' : 'Add Income'}
+        </button>
+      </div>
+
+      {grossIncome > 0 ? (
+        <div className="space-y-3">
+          {/* Income breakdown */}
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs text-text-secondary">
+                {vat > 0 ? 'Net Income' : 'Income'}
+              </p>
+              <div className="flex items-center gap-2">
+                <AmountDisplay amount={netIncome} size="lg" />
+                {cycle.income?.verified && (
+                  <span className="text-xs px-1.5 py-0.5 rounded bg-primary/10 text-primary">
+                    ✓ Verified
+                  </span>
+                )}
+              </div>
+              {cycle.income?.source && (
+                <p className="text-xs text-text-secondary mt-0.5">{cycle.income.source}</p>
+              )}
+            </div>
+            <div className="text-right">
+              <p className="text-xs text-text-secondary">Disposable</p>
+              <AmountDisplay
+                amount={disposable}
+                size="lg"
+                className={disposable < 0 ? 'text-error' : 'text-primary'}
+              />
+            </div>
+          </div>
+
+          {/* VAT breakdown (if applicable) */}
+          {vat > 0 && (
+            <div className="flex items-center justify-between text-xs py-2 px-3 bg-background rounded-lg">
+              <div className="flex items-center gap-4">
+                <span className="text-text-secondary">
+                  Gross: <AmountDisplay amount={grossIncome} size="xs" className="inline text-text-primary" />
+                </span>
+                <span className="text-text-secondary">
+                  VAT: <AmountDisplay amount={vat} size="xs" className="inline text-warning" />
+                </span>
+              </div>
+              <span className="text-text-secondary text-[10px]">VAT excluded from disposable</span>
+            </div>
+          )}
+
+          {/* Disposable breakdown bar */}
+          <div>
+            <div className="flex justify-between text-xs text-text-secondary mb-1">
+              <span>Committed: <AmountDisplay amount={totalCommitted} size="xs" className="inline" /></span>
+              <span>{netIncome > 0 ? Math.round((totalCommitted / netIncome) * 100) : 0}%</span>
+            </div>
+            <div className="h-2 bg-background rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${
+                  totalCommitted > netIncome ? 'bg-error' : 'bg-primary'
+                }`}
+                style={{ width: `${Math.min(100, netIncome > 0 ? (totalCommitted / netIncome) * 100 : 0)}%` }}
+              />
+            </div>
+          </div>
+        </div>
+      ) : (
+        <p className="text-sm text-text-secondary">
+          No income set. Add your income to see disposable amount.
+        </p>
+      )}
     </div>
   );
 }

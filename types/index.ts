@@ -143,7 +143,8 @@ export interface Cycle {
 
   // Income for this cycle
   income?: {
-    amount: number;                 // cents
+    amount: number;                 // cents (gross amount including VAT)
+    vatAmount?: number;             // cents (VAT portion - not your money, belongs to SARS)
     source?: string;
     receivedDate?: Timestamp;
     verified: boolean;
