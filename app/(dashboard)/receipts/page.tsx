@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
+import Link from 'next/link';
 import { useReceipts } from '@/hooks/use-receipts';
 import { useGeolocation } from '@/hooks/use-geolocation';
 import { useReceiptQueue } from '@/hooks/use-receipt-queue';
@@ -14,10 +15,9 @@ import type { Receipt, PendingReceipt } from '@/types';
 // ---------------------------------------------------------------------------
 
 export default function ReceiptsPage() {
-  const { receipts, needsAttention, complete, loading, deleteReceipt } = useReceipts();
+  const { receipts, needsAttention, complete, loading } = useReceipts();
   const { processQueue, getQueue } = useReceiptQueue();
   const [showCapture, setShowCapture] = useState(false);
-  const [selectedReceipt, setSelectedReceipt] = useState<Receipt | null>(null);
   const [pendingQueue, setPendingQueue] = useState<PendingReceipt[]>([]);
 
   // Process any queued uploads on page open and refresh the pending count
@@ -108,7 +108,6 @@ export default function ReceiptsPage() {
               <ReceiptCard
                 key={receipt.id}
                 receipt={receipt}
-                onClick={() => setSelectedReceipt(receipt)}
               />
             ))}
           </div>
@@ -132,7 +131,6 @@ export default function ReceiptsPage() {
               <ReceiptCard
                 key={receipt.id}
                 receipt={receipt}
-                onClick={() => setSelectedReceipt(receipt)}
               />
             ))}
           </div>
@@ -155,18 +153,6 @@ export default function ReceiptsPage() {
       {showCapture && (
         <ReceiptCapture onClose={() => setShowCapture(false)} />
       )}
-
-      {/* Detail Modal */}
-      {selectedReceipt && (
-        <ReceiptDetail
-          receipt={selectedReceipt}
-          onClose={() => setSelectedReceipt(null)}
-          onDelete={async () => {
-            await deleteReceipt(selectedReceipt.id);
-            setSelectedReceipt(null);
-          }}
-        />
-      )}
     </div>
   );
 }
@@ -177,18 +163,17 @@ export default function ReceiptsPage() {
 
 interface ReceiptCardProps {
   receipt: Receipt;
-  onClick: () => void;
 }
 
-function ReceiptCard({ receipt, onClick }: ReceiptCardProps) {
+function ReceiptCard({ receipt }: ReceiptCardProps) {
   const capturedAt = receipt.capturedAt
     ? new Date(typeof receipt.capturedAt === 'string' ? receipt.capturedAt : receipt.capturedAt.toDate()).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })
     : '';
 
   return (
-    <button
-      onClick={onClick}
-      className="bg-surface border border-border rounded-xl overflow-hidden text-left hover:border-primary transition-colors"
+    <Link
+      href={`/receipts/${receipt.id}`}
+      className="bg-surface border border-border rounded-xl overflow-hidden text-left hover:border-primary transition-colors block"
     >
       {/* Image */}
       <div className="aspect-[4/3] bg-background relative">
@@ -224,7 +209,7 @@ function ReceiptCard({ receipt, onClick }: ReceiptCardProps) {
         </p>
         <p className="text-[10px] text-text-secondary mt-0.5">{capturedAt}</p>
       </div>
-    </button>
+    </Link>
   );
 }
 
