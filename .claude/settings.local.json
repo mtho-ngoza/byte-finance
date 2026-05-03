@@ -6,7 +6,25 @@
       "Bash(npx tsc:*)",
       "Bash(npm run build:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(git branch:*)",
+      "Bash(git push:*)",
+      "Bash(npm install:*)",
+      "Bash(firebase use:*)",
+      "Bash(firebase deploy:*)",
+      "Bash(npx vitest:*)",
+      "Bash(npm run dev:*)",
+      "Bash(npm start)",
+      "Bash(npx kill-port:*)",
+      "Bash(taskkill:*)",
+      "Bash(npx firebase deploy:*)",
+      "Bash(curl:*)",
+      "Bash(node scripts/seed-feb-2026.mjs:*)",
+      "Bash(npm ls:*)",
+      "Bash(node scripts/seed-2025.mjs:*)",
+      "Bash(dir:*)",
+      "Bash(git check-ignore:*)",
+      "Bash(wc:*)"
     ]
   }
 }

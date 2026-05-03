@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/auth';
-import { getAdminDb } from '@/lib/firebase-admin';
+import { getAdminDb, getAdminStorage } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 
 /**
@@ -103,7 +103,7 @@ export async function PATCH(
 
 /**
  * DELETE /api/receipts/[id]
- * Delete a receipt
+ * Delete a receipt and all associated Storage files
  */
 export async function DELETE(
   request: NextRequest,
@@ -122,10 +122,36 @@ export async function DELETE(
     return NextResponse.json({ error: 'Receipt not found' }, { status: 404 });
   }
 
-  // Note: In production, also delete images from Storage
-  // const data = doc.data()!;
-  // await deleteFromStorage(data.imageUrl);
-  // await deleteFromStorage(data.originalImageUrl);
+  const data = doc.data()!;
+
+  // Delete all 3 Storage files (original, image, thumb)
+  // Extract the base path from the imageUrl
+  // URL format: https://storage.googleapis.com/{bucket}/users/{userId}/receipts/{receiptId}/image.jpg
+  try {
+    const bucket = getAdminStorage().bucket();
+    const urlToPath = (url: string) => {
+      const match = url.match(/storage\.googleapis\.com\/[^/]+\/(.+)/);
+      return match ? match[1] : null;
+    };
+
+    const filesToDelete = [
+      data.imageUrl,
+      data.originalImageUrl,
+      data.thumbnailUrl,
+    ].filter(Boolean);
+
+    await Promise.allSettled(
+      filesToDelete.map(async (url) => {
+        const path = urlToPath(url);
+        if (path) {
+          await bucket.file(path).delete();
+        }
+      })
+    );
+  } catch (err) {
+    // Log but don't fail — Firestore doc deletion is more important
+    console.error('Storage cleanup error:', err);
+  }
 
   await docRef.delete();
 

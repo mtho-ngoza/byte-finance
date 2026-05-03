@@ -1,0 +1,8 @@
+[
+  {
+    "origin": ["http://localhost:3000", "https://byte-finance-prod.web.app", "https://byte-finance-prod.firebaseapp.com"],
+    "method": ["GET", "POST", "PUT", "DELETE", "HEAD"],
+    "maxAgeSeconds": 3600,
+    "responseHeader": ["Content-Type", "Authorization", "Content-Length", "X-Requested-With"]
+  }
+]

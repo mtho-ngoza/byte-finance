@@ -3,10 +3,8 @@
 import { useState, useRef, useCallback } from 'react';
 import { useReceipts } from '@/hooks/use-receipts';
 import { useGeolocation } from '@/hooks/use-geolocation';
-import { useUserId } from '@/hooks/use-user-id';
 import { AmountDisplay } from '@/components/shared/amount-display';
 import { CurrencyInput } from '@/components/shared/currency-input';
-import { uploadReceiptImage } from '@/lib/receipt-upload';
 import type { Receipt } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -184,7 +182,6 @@ interface ReceiptCaptureProps {
 }
 
 function ReceiptCapture({ onClose }: ReceiptCaptureProps) {
-  const userId = useUserId();
   const { createReceipt } = useReceipts();
   const { location, getSuggestedVendors } = useGeolocation();
 
@@ -199,6 +196,7 @@ function ReceiptCapture({ onClose }: ReceiptCaptureProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const suggestedVendors = getSuggestedVendors([]);
 
@@ -226,7 +224,7 @@ function ReceiptCapture({ onClose }: ReceiptCaptureProps) {
     }
   }, []);
 
-  // Capture photo
+  // Capture photo from camera
   const capturePhoto = useCallback(() => {
     if (!videoRef.current || !canvasRef.current) return;
 
@@ -240,29 +238,51 @@ function ReceiptCapture({ onClose }: ReceiptCaptureProps) {
       ctx.drawImage(video, 0, 0);
       const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
       setImageData(dataUrl);
-
-      // Also get as blob for upload
       canvas.toBlob(
-        (blob) => {
-          if (blob) setImageBlob(blob);
-        },
+        (blob) => { if (blob) setImageBlob(blob); },
         'image/jpeg',
         0.8
       );
-
       setStep('form');
       stopCamera();
     }
   }, [stopCamera]);
 
+  // Handle file picked from gallery
+  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      setImageData(ev.target?.result as string);
+    };
+    reader.readAsDataURL(file);
+    setImageBlob(file);
+    stopCamera();
+    setStep('form');
+  }, [stopCamera]);
+
   // Save receipt
   const handleSave = async () => {
-    if (!imageBlob || !userId) return;
+    if (!imageBlob) return;
 
     setSaving(true);
     try {
-      // Upload to Firebase Storage
-      const { imageUrl, originalImageUrl, thumbnailUrl, imageHash } = await uploadReceiptImage(userId, imageBlob);
+      const formData = new FormData();
+      formData.append('image', imageBlob, 'receipt.jpg');
+
+      const uploadRes = await fetch('/api/receipts/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!uploadRes.ok) {
+        const err = await uploadRes.json();
+        throw new Error(err.error || 'Upload failed');
+      }
+
+      const { imageUrl, originalImageUrl, thumbnailUrl, imageHash } = await uploadRes.json();
 
       await createReceipt({
         imageUrl,
@@ -294,7 +314,6 @@ function ReceiptCapture({ onClose }: ReceiptCaptureProps) {
     startCamera();
   });
 
-  // Cleanup on unmount
   const handleClose = () => {
     stopCamera();
     onClose();
@@ -302,6 +321,15 @@ function ReceiptCapture({ onClose }: ReceiptCaptureProps) {
 
   return (
     <div className="fixed inset-0 bg-black z-50 flex flex-col">
+      {/* Hidden file input for gallery uploads */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleFileChange}
+      />
+
       {step === 'camera' ? (
         <>
           {/* Camera view */}
@@ -319,14 +347,28 @@ function ReceiptCapture({ onClose }: ReceiptCaptureProps) {
             <button
               onClick={handleClose}
               className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center text-white"
+              aria-label="Close"
             >
               ✕
             </button>
+            {/* Shutter */}
             <button
               onClick={capturePhoto}
               className="w-16 h-16 rounded-full bg-white border-4 border-white/50"
+              aria-label="Take photo"
             />
-            <div className="w-12 h-12" /> {/* Spacer */}
+            {/* Gallery picker */}
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center text-white"
+              aria-label="Upload from gallery"
+            >
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                <rect x="3" y="3" width="18" height="18" rx="2" />
+                <circle cx="8.5" cy="8.5" r="1.5" />
+                <path d="M21 15l-5-5L5 21" />
+              </svg>
+            </button>
           </div>
         </>
       ) : (
@@ -397,6 +439,7 @@ function ReceiptCapture({ onClose }: ReceiptCaptureProps) {
                   onClick={() => {
                     setStep('camera');
                     setImageData(null);
+                    setImageBlob(null);
                     startCamera();
                   }}
                   className="flex-1 py-3 rounded-lg border border-white/30 text-white font-medium"

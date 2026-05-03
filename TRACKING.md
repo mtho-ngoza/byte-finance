@@ -1,7 +1,7 @@
 # ByteFinance - Development Status
 
 > Quick reference for feature implementation status.
-> Based on TECH_SPEC.md — feature-first view, no need to read the codebase.
+> Ref: TECH_SPEC.md (core app) + .kiro/ByteReceipt_MVP.md (receipt capture)
 
 ---
 
@@ -17,31 +17,32 @@
 
 | # | Feature | Status | Notes |
 |---|---------|--------|-------|
-| 1 | Authentication | ✅ Done | Firebase Auth config, Google Sign-In, dev bypass active |
-| 2 | User Profile & Pay Day Config | ✅ Done | UserProfile created on sign-in, preferences stored, pay day hook |
-| 3 | Pay Cycle Logic | ✅ Done | Fixed + last working day modes, all SA public holidays, cycle boundaries |
-| 4 | Commitments (recurring templates) | ✅ Done | API routes (GET/POST/PATCH/DELETE), `use-commitments` hook, settings UI |
-| 5 | Goals | ✅ Done | API routes, `use-goals` hook, goals page with create/delete/progress |
-| 6 | Cycles (auto-generated pay periods) | ✅ Done | API routes, `use-cycles` hook, auto-spawns items from commitments |
-| 7 | Cycle Items (status flow) | ✅ Done | API routes, `use-cycle-items` hook, optimistic updates, status toggle |
-| 8 | Smart Linking (auto goal contributions) | ✅ Done | Wired in `use-cycle-items` — marking paid auto-contributes to linked goal |
-| 9 | Dashboard (Now view) | ✅ Done | Cycle progress, goals summary, due/upcoming/paid sections, year + account filters, add item, pay day countdown, cycle navigation, inline amount editing |
-| 10 | Plan View (Commitments + Goals) | ✅ Done | `/plan` page — commitments grouped by category, goals with progress bars, monthly totals |
-| 11 | Cycle Detail View | ✅ Done | `/cycle/[id]` — items by category, edit/skip/reorder, drag-and-drop |
-| 12 | Offline Support | 🔄 In Progress | Firestore IndexedDB persistence enabled, sync indicator in header |
-| 13 | Responsive Design | 🔄 In Progress | Mobile-first layout done, desktop side nav needs polish |
+| 1 | Authentication | ✅ Done | Firebase Auth, Google Sign-In, dev bypass (`SKIP_AUTH=true`) |
+| 2 | User Profile | ✅ Done | Pay day config, preferences stored |
+| 3 | Pay Cycle Logic | ✅ Done | Calendar month cycles, SA holidays removed for simplicity |
+| 4 | Commitments | ✅ Done | API routes + Settings UI with drag-to-reorder |
+| 5 | Goals | ✅ Done | API routes + Goals page with progress bars |
+| 6 | Cycles | ✅ Done | API routes, auto-spawns items from commitments |
+| 7 | Cycle Items | ✅ Done | Status flow (upcoming→due→paid→skipped), smart linking |
+| 8 | Dashboard (Now) | ✅ Done | Progress bar, goals summary, year/account filters, add item |
+| 9 | Offline Support | 🔄 Partial | IndexedDB persistence enabled, sync indicator in header |
+| 10 | Responsive Design | ✅ Done | Mobile-first, bottom nav, side nav on desktop |
 
 ---
 
-## Phase 2: Intelligence
+## Phase 2: Intelligence Layer
 
 | # | Feature | Status | Notes |
 |---|---------|--------|-------|
-| 14 | History View | ✅ Done | `/history` — bar chart, category donut, past cycles list, year selector |
-| 15 | Monthly Snapshots | ⏳ Todo | Aggregated data written by Cloud Function for trend queries |
-| 16 | Trend Analysis | ⏳ Todo | Cloud Function scaffold exists (`functions/src/trend-analyzer.ts`) |
-| 17 | Smart Advisor | ⏳ Todo | Cloud Function scaffold exists (`functions/src/smart-advisor.ts`) |
-| 18 | In-App Notifications / Insights | ⏳ Todo | Alerts, milestones, reminders — Cloud Function + dismiss UI |
+| 11 | Plan View | ✅ Done | Commitments grouped by category, goals management |
+| 12 | Cycle Detail | ✅ Done | Full item list, edit amounts, skip, income entry |
+| 13 | History View | ✅ Done | Past cycles, spending chart, category breakdown |
+| 14 | Monthly Snapshots | ✅ Done | Aggregated data for trend queries |
+| 15 | Trend Analyzer | ✅ Done | Cloud Function scaffold — nightly, YoY/MoM/3-month avg |
+| 16 | Smart Advisor | ✅ Done | Cloud Function scaffold — weekly, Gemini integration |
+| 17 | Insights UI | ✅ Done | Dashboard cards, dismiss/snooze, type-specific styling |
+| 18 | Data Export | ✅ Done | JSON + CSV from Settings |
+| 19 | Push Notifications | ⏳ Todo | FCM integration (deferred) |
 
 ---
 
@@ -49,33 +50,60 @@
 
 | # | Feature | Status | Notes |
 |---|---------|--------|-------|
-| 19 | Data Importer (text) | ⏳ Todo | AI parsing of plain text expense lists |
-| 20 | Bank Statement Import | ⏳ Todo | PDF/CSV parsing via Gemini |
-| 21 | Push Notifications | ⏳ Todo | FCM integration |
-| 22 | Data Export | ⏳ Todo | JSON/CSV export from Settings |
-| 23 | PWA Optimization | ⏳ Todo | Manifest exists, install prompt + icons needed |
+| 20 | Data Importer (text) | ⏳ Todo | Gemini text parsing |
+| 21 | Bank Statement Import | ⏳ Todo | PDF/CSV via Gemini |
+| 22 | PWA Polish | ✅ Done | Icons, install prompt, offline fallback, service worker |
 
 ---
 
-## Enhancements (Nice to Have)
+## Phase 4: ByteReceipt (Receipt Capture)
 
-| Feature | Notes |
-|---------|-------|
-| Hybrid Goal Creation | Let user choose monthly_fixed vs deadline_fixed mode, calculate the other automatically |
-| Goal Edit Form | Edit existing goals (name, target, deadline) |
-| Commitment Templates | Pre-built commitment sets for common scenarios |
-| Dark/Light Theme Toggle | Currently dark only |
+_Ref: `.kiro/ByteReceipt_MVP.md`_
+
+| # | Feature | Status | Notes |
+|---|---------|--------|-------|
+| 23 | Receipt data model | ✅ Done | `Receipt` type, `PendingReceipt`, `KnownVendor` in `types/index.ts` |
+| 24 | Firebase Storage setup | ✅ Done | Admin SDK with storage, upload route stores 3 variants |
+| 25 | Web Workers (compress/hash) | ⏳ Todo | Currently using same image for all 3 variants — no compression yet |
+| 26 | Offline upload queue | ⏳ Todo | IndexedDB queue + Background Sync not yet implemented |
+| 27 | Receipt upload hook | ✅ Done | `use-receipt-upload` via API route |
+| 28 | Geolocation + vendor lookup | ✅ Done | `use-geolocation` hook, GPS watch, vendor suggestions |
+| 29 | Receipts API | ✅ Done | GET/POST/PATCH/DELETE, duplicate detection via hash, Storage cleanup on delete |
+| 30 | Receipt capture UI | ✅ Done | Camera, overlay form, vendor chips, retake/save |
+| 31 | Receipt FAB | ✅ Done | Floating "+" on receipts page |
+| 32 | Receipts list page | ✅ Done | "Needs Attention" section + all receipts grid |
+| 33 | Receipt detail view | ✅ Done | Full image, edit metadata, delete |
+| 34 | Navigation | ✅ Done | Receipts in both desktop nav and mobile bottom bar |
+
+**Still needed for full ByteReceipt MVP:**
+- Web Worker for image compression (currently uploading uncompressed)
+- IndexedDB offline queue + Background Sync (currently fails silently offline)
+- Receipt detail as separate page (`/receipts/[id]`) — currently modal only
+
+---
+
+## Phase 5: ByteReceipt Enhancements (Future)
+
+| # | Feature | Status |
+|---|---------|--------|
+| Link receipts to CycleItems | ⏳ Todo |
+| AI receipt extraction (GPT-4o Vision) | ⏳ Todo |
+| Sage Business Cloud integration | ⏳ Todo |
+| Email invoice harvesting | ⏳ Todo |
+| Bank statement reconciliation | ⏳ Todo |
+| Tax season export (ZIP) | ⏳ Todo |
 
 ---
 
 ## Progress Overview
 
 ```
-Phase 1 (MVP):    ████████████████████  11 / 13 features
-Phase 2:          ████░░░░░░░░░░░░░░░░  1 / 5 features
-Phase 3:          ░░░░░░░░░░░░░░░░░░░░  0 / 5 features
-─────────────────────────────────────────────────────────
-Total:            ████████████░░░░░░░░  12 / 23 features (52%)
+Phase 1 (Core):       ████████████████████  9 / 10 features
+Phase 2 (Intelligence):████████████████░░░░  8 / 9 features
+Phase 3 (AI & Polish): ████████████░░░░░░░░  1 / 3 features
+Phase 4 (ByteReceipt): ████████████████░░░░  10 / 12 features
+─────────────────────────────────────────────────────────────
+Total:                 ████████████████░░░░  28 / 34 features (82%)
 ```
 
 ---
@@ -84,27 +112,13 @@ Total:            ████████████░░░░░░░░  
 
 | Route | Works? |
 |-------|--------|
-| `/` (Dashboard) | ✅ Full — cycle progress, goals, items, filters |
-| `/goals` | ✅ Full — create, view, delete, progress, linked commitments shown |
-| `/goals/[id]` | ✅ Full — contribution history, linked commitments, timeline, progress |
-| `/settings` | ✅ Pay day config only (commitments moved to /plan) |
-| `/plan` | ✅ Full — commitments by category, goals with progress |
-| `/history` | ✅ Full — bar chart, category breakdown, past cycles list |
-| `/cycle/[id]` | ✅ Full — items by category, edit, skip, reorder |
+| `/` (Dashboard) | ✅ Full |
+| `/goals` | ✅ Full |
+| `/settings` | ✅ Commitments CRUD |
+| `/receipts` | ✅ Capture, list, detail |
+| `/plan` | ✅ Commitments + Goals |
+| `/history` | ✅ Charts + past cycles |
 | `/login` | ✅ Renders (bypassed in dev) |
-
----
-
-## Data Model (Current)
-
-The app was refactored from Folders/Expenses to the new model:
-
-| Old (removed) | New |
-|---------------|-----|
-| `Folder` | `Cycle` (auto-generated) |
-| `BaseExpense` | `Commitment` (recurring template) |
-| `Expense` | `CycleItem` (instance per cycle) |
-| `SavingsPot` / `Investment` | Merged into `Goal` (with `allowWithdrawals` + `investmentTracking`) |
 
 ---
 
@@ -113,46 +127,12 @@ The app was refactored from Folders/Expenses to the new model:
 | Item | Status | Notes |
 |------|--------|-------|
 | Firebase Project | ✅ Ready | `byte-finance-prod` |
-| Firebase Config | ✅ Done | `firebase.json`, `.firebaserc`, indexes updated |
-| Cloud Functions | ✅ Scaffold | v2 syntax, needs Blaze plan to deploy |
+| Firebase Auth | ✅ Ready | Credentials in `.env.local` |
+| Firestore | ✅ Ready | Indexes deployed |
+| Firebase Storage | ✅ Ready | Receipt uploads working |
+| Cloud Functions | ✅ Scaffold | Needs Blaze plan to deploy |
 | Vercel Deployment | ⏳ Todo | Not configured |
-| API Routes | ✅ Done | `/commitments`, `/cycles`, `/cycle-items`, `/goals` |
 
 ---
 
-## Next Up
-
-1. ~~**Plan View**~~ ✅ Done — commitments CRUD merged from Settings
-2. ~~**Cycle Detail**~~ ✅ Done — `/cycle/[id]` with edit/skip/reorder, drag-and-drop
-3. ~~**History View**~~ ✅ Done — `/history` with bar chart, category donut, past cycles
-4. ~~**Goal Detail View**~~ ✅ Done — `/goals/[id]` with contribution history, linked commitments, timeline
-5. **Monthly Snapshots** — Aggregated data for trend queries
-
----
-
-## Resume Point (26 April 2026)
-
-**What's working:**
-- Full MVP functional: Dashboard, Plan, Goals, History, Cycle Detail, Goal Detail
-- Goals show linked commitments and compute monthly target dynamically
-- Goal Detail page shows contribution history grouped by month, timeline, linked commitments
-- Contributions dated correctly per cycle month (not current date)
-- Cycle navigation with context-aware labels (Unpaid/Missed for past cycles)
-- Smart linking: commitments auto-contribute to linked goals when paid
-- Skip/delete items from dashboard and cycle detail
-- Dev auth bypass configured (SKIP_AUTH=true)
-
-**To run locally:**
-```bash
-npm run dev:win
-# Seed data: node scripts/seed-2026.mjs --reset
-```
-
-**Next session priorities:**
-1. Complete offline support (sync indicator)
-2. Polish responsive design for desktop
-3. Monthly Snapshots for trend analysis
-
----
-
-*Last Updated: 26 April 2026*
+*Last Updated: May 2026*
