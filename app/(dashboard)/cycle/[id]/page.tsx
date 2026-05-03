@@ -188,6 +188,9 @@ export default function CycleDetailPage() {
         vatPercentage={vatPercentage}
       />
 
+      {/* Snapshot */}
+      <SnapshotSection cycleId={cycleId} />
+
       {/* Items by Category */}
       {CATEGORY_ORDER.map((category) => {
         const categoryItems = itemsByCategory.get(category);
@@ -925,6 +928,147 @@ function IncomeEntry({ cycle, cycleId, totalCommitted, vatPercentage }: IncomeEn
       ) : (
         <p className="text-sm text-text-secondary">
           No income set. Add your income to see disposable amount.
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// SnapshotSection Component
+// ---------------------------------------------------------------------------
+
+interface SnapshotSectionProps {
+  cycleId: string;
+}
+
+function SnapshotSection({ cycleId }: SnapshotSectionProps) {
+  const [loading, setLoading] = useState(false);
+  const [snapshot, setSnapshot] = useState<{
+    totalCommitted: number;
+    totalPaid: number;
+    categoryBreakdown: Record<string, number>;
+    topItems: Array<{ label: string; amount: number }>;
+    goalsProgress: number;
+  } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchSnapshot = async () => {
+    try {
+      const res = await fetch(`/api/analytics/snapshot?cycleId=${cycleId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setSnapshot(data);
+        setError(null);
+      } else if (res.status === 404) {
+        setSnapshot(null);
+      }
+    } catch {
+      // Snapshot doesn't exist yet
+    }
+  };
+
+  // Fetch on mount
+  useEffect(() => {
+    fetchSnapshot();
+  }, [cycleId]);
+
+  const generateSnapshot = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/analytics/snapshot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cycleId }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to generate snapshot');
+      }
+
+      const data = await res.json();
+      setSnapshot(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to generate snapshot');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="p-4 rounded-xl border border-border bg-surface">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-medium text-text-primary">Monthly Snapshot</h3>
+        <button
+          onClick={generateSnapshot}
+          disabled={loading}
+          className="text-xs px-3 py-1 rounded-lg bg-primary text-background font-medium disabled:opacity-50 hover:bg-primary/90 transition-colors"
+        >
+          {loading ? 'Generating...' : snapshot ? 'Refresh' : 'Generate'}
+        </button>
+      </div>
+
+      {error && (
+        <p className="text-xs text-error mb-2">{error}</p>
+      )}
+
+      {snapshot ? (
+        <div className="space-y-3">
+          {/* Summary */}
+          <div className="grid grid-cols-3 gap-3 text-center">
+            <div>
+              <p className="text-xs text-text-secondary">Committed</p>
+              <AmountDisplay amount={snapshot.totalCommitted} size="sm" />
+            </div>
+            <div>
+              <p className="text-xs text-text-secondary">Paid</p>
+              <AmountDisplay amount={snapshot.totalPaid} size="sm" />
+            </div>
+            <div>
+              <p className="text-xs text-text-secondary">Goals</p>
+              <p className="text-sm font-semibold text-text-primary">{snapshot.goalsProgress}%</p>
+            </div>
+          </div>
+
+          {/* Top Items */}
+          {snapshot.topItems.length > 0 && (
+            <div>
+              <p className="text-xs text-text-secondary mb-1">Top Expenses</p>
+              <div className="space-y-1">
+                {snapshot.topItems.slice(0, 3).map((item, i) => (
+                  <div key={i} className="flex items-center justify-between text-xs">
+                    <span className="text-text-primary truncate">{item.label}</span>
+                    <AmountDisplay amount={item.amount} size="xs" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Category Breakdown */}
+          <div>
+            <p className="text-xs text-text-secondary mb-1">By Category</p>
+            <div className="flex flex-wrap gap-1">
+              {Object.entries(snapshot.categoryBreakdown)
+                .filter(([, amount]) => amount > 0)
+                .sort(([, a], [, b]) => b - a)
+                .slice(0, 5)
+                .map(([category, amount]) => (
+                  <span
+                    key={category}
+                    className="text-[10px] px-2 py-0.5 bg-background rounded-full text-text-secondary"
+                  >
+                    {category}: R{(amount / 100).toLocaleString()}
+                  </span>
+                ))}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <p className="text-xs text-text-secondary">
+          No snapshot yet. Generate one to save aggregated data for trend analysis.
         </p>
       )}
     </div>
