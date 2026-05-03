@@ -63,6 +63,14 @@
         { "fieldPath": "year", "order": "DESCENDING" },
         { "fieldPath": "month", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "insights",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "isDismissed", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

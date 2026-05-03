@@ -88,6 +88,67 @@ function VatConfig() {
 }
 
 // ---------------------------------------------------------------------------
+// Export Data Component
+// ---------------------------------------------------------------------------
+
+function ExportData() {
+  const [exporting, setExporting] = useState<'json' | 'csv' | null>(null);
+
+  const handleExport = async (format: 'json' | 'csv') => {
+    setExporting(format);
+    try {
+      const res = await fetch(`/api/export?format=${format}`);
+      if (!res.ok) throw new Error('Export failed');
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `byte-finance-export-${new Date().toISOString().split('T')[0]}.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Export failed:', err);
+      alert('Export failed. Please try again.');
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  return (
+    <div className="p-4 bg-surface border border-border rounded-lg space-y-4">
+      <div className="grid grid-cols-2 gap-3">
+        <button
+          onClick={() => handleExport('json')}
+          disabled={exporting !== null}
+          className="py-3 px-4 bg-background border border-border rounded-lg hover:border-primary transition-colors disabled:opacity-50"
+        >
+          <p className="text-sm font-medium text-text-primary">
+            {exporting === 'json' ? 'Exporting...' : 'Export JSON'}
+          </p>
+          <p className="text-xs text-text-secondary mt-0.5">Complete backup</p>
+        </button>
+        <button
+          onClick={() => handleExport('csv')}
+          disabled={exporting !== null}
+          className="py-3 px-4 bg-background border border-border rounded-lg hover:border-primary transition-colors disabled:opacity-50"
+        >
+          <p className="text-sm font-medium text-text-primary">
+            {exporting === 'csv' ? 'Exporting...' : 'Export CSV'}
+          </p>
+          <p className="text-xs text-text-secondary mt-0.5">Spreadsheet format</p>
+        </button>
+      </div>
+      <p className="text-xs text-text-secondary">
+        JSON includes all data. CSV contains cycle items only.
+      </p>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main Settings Page
 // ---------------------------------------------------------------------------
 
@@ -141,6 +202,17 @@ export default function SettingsPage() {
             </svg>
           </Link>
         </div>
+      </section>
+
+      {/* Export Data */}
+      <section>
+        <div className="mb-4">
+          <h2 className="text-base font-semibold text-text-primary">Export Data</h2>
+          <p className="text-sm text-text-secondary mt-1">
+            Download your financial data for backup or analysis.
+          </p>
+        </div>
+        <ExportData />
       </section>
     </div>
   );
