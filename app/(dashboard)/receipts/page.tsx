@@ -4,6 +4,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useReceipts } from '@/hooks/use-receipts';
 import { useGeolocation } from '@/hooks/use-geolocation';
 import { useReceiptQueue } from '@/hooks/use-receipt-queue';
+import { useReceiptUpload } from '@/hooks/use-receipt-upload';
 import { AmountDisplay } from '@/components/shared/amount-display';
 import { CurrencyInput } from '@/components/shared/currency-input';
 import type { Receipt, PendingReceipt } from '@/types';
@@ -236,9 +237,8 @@ interface ReceiptCaptureProps {
 }
 
 function ReceiptCapture({ onClose }: ReceiptCaptureProps) {
-  const { createReceipt } = useReceipts();
   const { location, getSuggestedVendors } = useGeolocation();
-  const { addToQueue, removeFromQueue } = useReceiptQueue();
+  const { upload, status: uploadStatus, isUploading: saving } = useReceiptUpload();
 
   const [step, setStep] = useState<'camera' | 'form'>('camera');
   const [imageData, setImageData] = useState<string | null>(null);
@@ -246,8 +246,6 @@ function ReceiptCapture({ onClose }: ReceiptCaptureProps) {
   const [amount, setAmount] = useState(0);
   const [vendor, setVendor] = useState('');
   const [note, setNote] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [uploadStatus, setUploadStatus] = useState<string>('');
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -319,167 +317,25 @@ function ReceiptCapture({ onClose }: ReceiptCaptureProps) {
     setStep('form');
   }, [stopCamera]);
 
-  // Run a worker and return its result, with a timeout fallback
-  const runWorker = useCallback(<T,>(workerPath: string, message: object, timeoutMs = 15000): Promise<T> => {
-    return new Promise((resolve, reject) => {
-      let worker: Worker;
-      try {
-        worker = new Worker(workerPath);
-      } catch (err) {
-        reject(err);
-        return;
-      }
-
-      const timer = setTimeout(() => {
-        worker.terminate();
-        reject(new Error(`Worker ${workerPath} timed out`));
-      }, timeoutMs);
-
-      worker.onmessage = (event) => {
-        clearTimeout(timer);
-        worker.terminate();
-        if (event.data.error) {
-          reject(new Error(event.data.error));
-        } else {
-          resolve(event.data as T);
-        }
-      };
-
-      worker.onerror = (err) => {
-        clearTimeout(timer);
-        worker.terminate();
-        reject(err);
-      };
-
-      worker.postMessage(message);
-    });
-  }, []);
-
-  // Save receipt — queue FIRST, then upload, then remove from queue on success
+  // Save receipt via the upload hook
   const handleSave = async () => {
     if (!imageBlob) return;
 
-    setSaving(true);
-    try {
-      // Step 1: Hash the original blob for duplicate detection
-      let imageHash = '';
-      try {
-        setUploadStatus('Hashing…');
-        const hashResult = await runWorker<{ hash: string }>(
-          '/workers/hash.worker.js',
-          { blob: imageBlob }
-        );
-        imageHash = hashResult.hash;
-      } catch (hashErr) {
-        console.warn('Hash worker failed, using fallback hash:', hashErr);
-        // Fallback: use timestamp-based pseudo-hash so queue entry is still valid
-        imageHash = `fallback-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      }
+    const result = await upload({
+      imageBlob,
+      amount,
+      vendor,
+      note,
+      location: location
+        ? { lat: location.lat, lng: location.lng, accuracy: location.accuracy }
+        : undefined,
+    });
 
-      // Step 2: Compress the blob (fall back to original if worker fails)
-      let compressedBlob: Blob | undefined;
-      try {
-        setUploadStatus('Compressing…');
-        const compressResult = await runWorker<{ blob: Blob }>(
-          '/workers/compress.worker.js',
-          { blob: imageBlob }
-        );
-        compressedBlob = compressResult.blob;
-      } catch (compressErr) {
-        console.warn('Compress worker failed, will upload original:', compressErr);
-      }
-
-      // Step 3: Save to IndexedDB BEFORE any upload attempt (safety net)
-      const pendingId = `pending-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      const pendingReceipt: PendingReceipt = {
-        id: pendingId,
-        imageBlob,
-        compressedBlob,
-        imageHash,
-        amountInCents: amount > 0 ? amount : undefined,
-        vendor: vendor.trim() || undefined,
-        note: note.trim() || undefined,
-        location: location ? {
-          lat: location.lat,
-          lng: location.lng,
-          accuracy: location.accuracy,
-        } : undefined,
-        capturedAt: Date.now(),
-        uploadAttempts: 0,
-      };
-
-      setUploadStatus('Queuing…');
-      await addToQueue(pendingReceipt);
-
-      // Step 4: Register Background Sync so the SW can retry if the tab closes
-      if ('serviceWorker' in navigator) {
-        try {
-          const sw = await navigator.serviceWorker.ready;
-          // Background Sync API — not available in all browsers (graceful degradation)
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const swWithSync = sw as any;
-          if (swWithSync.sync) {
-            await swWithSync.sync.register('receipt-upload');
-          }
-        } catch (syncErr) {
-          // Graceful degradation — retry will happen on next app open instead
-          console.warn('Background Sync registration failed:', syncErr);
-        }
-      }
-
-      // Step 5: Attempt upload now (optimistic — may fail if offline)
-      setUploadStatus('Uploading…');
-      const uploadBlob = compressedBlob ?? imageBlob;
-      const formData = new FormData();
-      formData.append('image', uploadBlob, 'receipt.jpg');
-
-      const uploadRes = await fetch('/api/receipts/upload', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!uploadRes.ok) {
-        const err = await uploadRes.json();
-        throw new Error(err.error || 'Upload failed');
-      }
-
-      const {
-        imageUrl,
-        originalImageUrl,
-        thumbnailUrl,
-        imageHash: serverHash,
-      } = await uploadRes.json();
-
-      await createReceipt({
-        imageUrl,
-        originalImageUrl,
-        thumbnailUrl,
-        imageHash: imageHash.startsWith('fallback-') ? serverHash : imageHash,
-        amountInCents: amount > 0 ? amount : undefined,
-        vendor: vendor.trim() || undefined,
-        note: note.trim() || undefined,
-        location: location ? {
-          lat: location.lat,
-          lng: location.lng,
-          accuracy: location.accuracy,
-        } : undefined,
-        capturedAt: new Date().toISOString(),
-      });
-
-      // Step 6: Upload succeeded — remove from queue
-      await removeFromQueue(pendingId);
-
-      onClose();
-    } catch (err) {
-      console.error('Save error:', err);
-      // Receipt is already in IndexedDB queue — it will retry on next app open
-      // or when Background Sync fires. Inform the user but don't block them.
-      alert('Upload failed. Your receipt has been saved locally and will upload automatically when you reconnect.');
-      onClose();
-    } finally {
-      setSaving(false);
-      setUploadStatus('');
+    if (!result.success && result.error) {
+      alert(result.error);
     }
+
+    onClose();
   };
 
   // Start camera on mount
