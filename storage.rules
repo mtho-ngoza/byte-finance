@@ -2,25 +2,21 @@ rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
-    // Receipt images - users can only access their own
-    match /users/{userId}/receipts/{receiptId}/{allPaths=**} {
-      // Allow read if authenticated and owns the file
+    // Receipt images — users can only access their own receipts
+    // Path structure: users/{userId}/receipts/{receiptId}/{filename}
+    // Filenames: original.jpg, image.jpg, thumb.jpg
+    match /users/{userId}/receipts/{receiptId}/{filename} {
+      // Read: authenticated owner only
       allow read: if request.auth != null && request.auth.uid == userId;
 
-      // Allow write if authenticated, owns the folder, and file is valid
+      // Write: authenticated owner, image files only, max 10MB
       allow write: if request.auth != null
                    && request.auth.uid == userId
-                   && request.resource.size < 10 * 1024 * 1024  // Max 10MB
+                   && request.resource.size < 10 * 1024 * 1024
                    && request.resource.contentType.matches('image/.*');
-    }
 
-    // Thumbnails
-    match /users/{userId}/receipts/{receiptId}/thumb_{size} {
-      allow read: if request.auth != null && request.auth.uid == userId;
-      allow write: if request.auth != null
-                   && request.auth.uid == userId
-                   && request.resource.size < 500 * 1024  // Max 500KB for thumbs
-                   && request.resource.contentType.matches('image/.*');
+      // Delete: authenticated owner only
+      allow delete: if request.auth != null && request.auth.uid == userId;
     }
   }
 }

@@ -1,0 +1,16 @@
+{
+  "_note": "Apply this lifecycle rule via Google Cloud Console or gcloud CLI to auto-delete original.jpg files after 30 days.",
+  "_command": "gcloud storage buckets update gs://byte-finance-prod.firebasestorage.app --lifecycle-file=storage-lifecycle.json",
+  "_console": "https://console.cloud.google.com/storage/browser/byte-finance-prod.firebasestorage.app",
+  "lifecycle": {
+    "rule": [
+      {
+        "action": { "type": "Delete" },
+        "condition": {
+          "age": 30,
+          "matchesSuffix": ["/original.jpg"]
+        }
+      }
+    ]
+  }
+}
