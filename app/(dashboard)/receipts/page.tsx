@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useReceipts } from '@/hooks/use-receipts';
 import { useGeolocation } from '@/hooks/use-geolocation';
+import { useReceiptQueue } from '@/hooks/use-receipt-queue';
 import { AmountDisplay } from '@/components/shared/amount-display';
 import { CurrencyInput } from '@/components/shared/currency-input';
-import type { Receipt } from '@/types';
+import type { Receipt, PendingReceipt } from '@/types';
 
 // ---------------------------------------------------------------------------
 // Main Receipts Page
@@ -13,8 +14,35 @@ import type { Receipt } from '@/types';
 
 export default function ReceiptsPage() {
   const { receipts, needsAttention, complete, loading, deleteReceipt } = useReceipts();
+  const { processQueue, getQueue } = useReceiptQueue();
   const [showCapture, setShowCapture] = useState(false);
   const [selectedReceipt, setSelectedReceipt] = useState<Receipt | null>(null);
+  const [pendingQueue, setPendingQueue] = useState<PendingReceipt[]>([]);
+
+  // Process any queued uploads on page open and refresh the pending count
+  useEffect(() => {
+    let cancelled = false;
+
+    async function init() {
+      try {
+        // Refresh pending count first
+        const queue = await getQueue();
+        if (!cancelled) setPendingQueue(queue);
+
+        // Then attempt to process (will update queue on success)
+        await processQueue();
+
+        // Refresh again after processing
+        const updated = await getQueue();
+        if (!cancelled) setPendingQueue(updated);
+      } catch {
+        // IndexedDB may be unavailable in some environments — degrade gracefully
+      }
+    }
+
+    init();
+    return () => { cancelled = true; };
+  }, [getQueue, processQueue]);
 
   if (loading) {
     return (
@@ -39,6 +67,32 @@ export default function ReceiptsPage() {
             {receipts.length} receipt{receipts.length !== 1 ? 's' : ''}
           </p>
         </div>
+
+        {/* Pending upload indicator */}
+        {pendingQueue.length > 0 && (
+          <div className="flex flex-col items-end gap-1">
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface border border-border text-sm">
+              <span
+                className="inline-block animate-spin text-primary"
+                aria-hidden="true"
+                style={{ display: 'inline-block' }}
+              >
+                ⟳
+              </span>
+              <span className="text-text-secondary">
+                {pendingQueue.length} pending
+              </span>
+            </div>
+            {pendingQueue.filter((p) => p.uploadAttempts > 2).length > 0 && (
+              <div className="flex items-center gap-1 text-xs text-warning">
+                <span>⚠️</span>
+                <span>
+                  {pendingQueue.filter((p) => p.uploadAttempts > 2).length} failed
+                </span>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Needs Attention Section */}
@@ -184,6 +238,7 @@ interface ReceiptCaptureProps {
 function ReceiptCapture({ onClose }: ReceiptCaptureProps) {
   const { createReceipt } = useReceipts();
   const { location, getSuggestedVendors } = useGeolocation();
+  const { addToQueue, removeFromQueue } = useReceiptQueue();
 
   const [step, setStep] = useState<'camera' | 'form'>('camera');
   const [imageData, setImageData] = useState<string | null>(null);
@@ -265,7 +320,7 @@ function ReceiptCapture({ onClose }: ReceiptCaptureProps) {
   }, [stopCamera]);
 
   // Run a worker and return its result, with a timeout fallback
-  const runWorker = useCallback(<T>(workerPath: string, message: object, timeoutMs = 15000): Promise<T> => {
+  const runWorker = useCallback(<T,>(workerPath: string, message: object, timeoutMs = 15000): Promise<T> => {
     return new Promise((resolve, reject) => {
       let worker: Worker;
       try {
@@ -300,14 +355,14 @@ function ReceiptCapture({ onClose }: ReceiptCaptureProps) {
     });
   }, []);
 
-  // Save receipt — hash original, compress, upload compressed
+  // Save receipt — queue FIRST, then upload, then remove from queue on success
   const handleSave = async () => {
     if (!imageBlob) return;
 
     setSaving(true);
     try {
       // Step 1: Hash the original blob for duplicate detection
-      let imageHash: string | undefined;
+      let imageHash = '';
       try {
         setUploadStatus('Hashing…');
         const hashResult = await runWorker<{ hash: string }>(
@@ -316,24 +371,65 @@ function ReceiptCapture({ onClose }: ReceiptCaptureProps) {
         );
         imageHash = hashResult.hash;
       } catch (hashErr) {
-        console.warn('Hash worker failed, continuing without hash:', hashErr);
+        console.warn('Hash worker failed, using fallback hash:', hashErr);
+        // Fallback: use timestamp-based pseudo-hash so queue entry is still valid
+        imageHash = `fallback-${Date.now()}-${Math.random().toString(36).slice(2)}`;
       }
 
       // Step 2: Compress the blob (fall back to original if worker fails)
-      let uploadBlob = imageBlob;
+      let compressedBlob: Blob | undefined;
       try {
         setUploadStatus('Compressing…');
         const compressResult = await runWorker<{ blob: Blob }>(
           '/workers/compress.worker.js',
           { blob: imageBlob }
         );
-        uploadBlob = compressResult.blob;
+        compressedBlob = compressResult.blob;
       } catch (compressErr) {
-        console.warn('Compress worker failed, uploading original:', compressErr);
+        console.warn('Compress worker failed, will upload original:', compressErr);
       }
 
-      // Step 3: Upload the compressed blob (server also stores original path)
+      // Step 3: Save to IndexedDB BEFORE any upload attempt (safety net)
+      const pendingId = `pending-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const pendingReceipt: PendingReceipt = {
+        id: pendingId,
+        imageBlob,
+        compressedBlob,
+        imageHash,
+        amountInCents: amount > 0 ? amount : undefined,
+        vendor: vendor.trim() || undefined,
+        note: note.trim() || undefined,
+        location: location ? {
+          lat: location.lat,
+          lng: location.lng,
+          accuracy: location.accuracy,
+        } : undefined,
+        capturedAt: Date.now(),
+        uploadAttempts: 0,
+      };
+
+      setUploadStatus('Queuing…');
+      await addToQueue(pendingReceipt);
+
+      // Step 4: Register Background Sync so the SW can retry if the tab closes
+      if ('serviceWorker' in navigator) {
+        try {
+          const sw = await navigator.serviceWorker.ready;
+          // Background Sync API — not available in all browsers (graceful degradation)
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const swWithSync = sw as any;
+          if (swWithSync.sync) {
+            await swWithSync.sync.register('receipt-upload');
+          }
+        } catch (syncErr) {
+          // Graceful degradation — retry will happen on next app open instead
+          console.warn('Background Sync registration failed:', syncErr);
+        }
+      }
+
+      // Step 5: Attempt upload now (optimistic — may fail if offline)
       setUploadStatus('Uploading…');
+      const uploadBlob = compressedBlob ?? imageBlob;
       const formData = new FormData();
       formData.append('image', uploadBlob, 'receipt.jpg');
 
@@ -358,8 +454,7 @@ function ReceiptCapture({ onClose }: ReceiptCaptureProps) {
         imageUrl,
         originalImageUrl,
         thumbnailUrl,
-        // Prefer client-side hash (computed from original bytes); fall back to server hash
-        imageHash: imageHash ?? serverHash,
+        imageHash: imageHash.startsWith('fallback-') ? serverHash : imageHash,
         amountInCents: amount > 0 ? amount : undefined,
         vendor: vendor.trim() || undefined,
         note: note.trim() || undefined,
@@ -371,10 +466,16 @@ function ReceiptCapture({ onClose }: ReceiptCaptureProps) {
         capturedAt: new Date().toISOString(),
       });
 
+      // Step 6: Upload succeeded — remove from queue
+      await removeFromQueue(pendingId);
+
       onClose();
     } catch (err) {
       console.error('Save error:', err);
-      alert('Failed to save receipt. Please try again.');
+      // Receipt is already in IndexedDB queue — it will retry on next app open
+      // or when Background Sync fires. Inform the user but don't block them.
+      alert('Upload failed. Your receipt has been saved locally and will upload automatically when you reconnect.');
+      onClose();
     } finally {
       setSaving(false);
       setUploadStatus('');
