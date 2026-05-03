@@ -37,6 +37,16 @@ export async function POST(request: NextRequest) {
   const db = getAdminDb();
   const now = FieldValue.serverTimestamp();
 
+  // Check if cycle already exists - if so, return it without spawning duplicates
+  const cycleRef = db.collection(`users/${userId}/cycles`).doc(id);
+  const existingCycle = await cycleRef.get();
+  if (existingCycle.exists) {
+    return NextResponse.json(
+      { id, ...existingCycle.data(), alreadyExists: true },
+      { status: 200 }
+    );
+  }
+
   // Get active commitments to spawn items (unless skipSpawn is true)
   let commitments: Array<Record<string, unknown>> = [];
   if (!skipSpawn) {
@@ -59,7 +69,6 @@ export async function POST(request: NextRequest) {
   );
 
   // Create cycle
-  const cycleRef = db.collection(`users/${userId}/cycles`).doc(id);
   const cycleData = {
     startDate: Timestamp.fromDate(new Date(startDate)),
     endDate: Timestamp.fromDate(new Date(endDate)),
