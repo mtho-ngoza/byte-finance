@@ -222,7 +222,12 @@ export default function DashboardPage() {
               <h2 className="text-sm text-text-secondary">
                 {currentCycle.status === 'active' ? 'Current Cycle' : 'Past Cycle'}
               </h2>
-              <p className="text-lg font-semibold text-text-primary">{formatCycleId(currentCycle.id)}</p>
+              <Link
+                href={`/cycle/${currentCycle.id}`}
+                className="text-lg font-semibold text-text-primary hover:text-primary transition-colors"
+              >
+                {formatCycleId(currentCycle.id)}
+              </Link>
             </div>
             {/* Next button */}
             <button
