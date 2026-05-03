@@ -5,15 +5,17 @@ import Link from 'next/link';
 import { useCycles } from '@/hooks/use-cycles';
 import { useCycleItems } from '@/hooks/use-cycle-items';
 import { useGoals } from '@/hooks/use-goals';
+import { useInsights } from '@/hooks/use-insights';
 import { useUserProfile } from '@/hooks/use-user-profile';
 import { useAppStore } from '@/stores/app-store';
 import { FilterBar } from '@/components/shared/filter-bar';
 import { AmountDisplay } from '@/components/shared/amount-display';
-import type { CycleItem, CycleItemStatus, Goal } from '@/types';
+import type { CycleItem, CycleItemStatus, Goal, Insight } from '@/types';
 
 export default function DashboardPage() {
   const { cycles, loading: cyclesLoading } = useCycles();
   const { activeGoals, loading: goalsLoading } = useGoals();
+  const { insights, dismiss: dismissInsight, snooze: snoozeInsight } = useInsights();
   const { loading: profileLoading } = useUserProfile();
   const { selectedYear, accountFilter, currentCycleId, setCurrentCycleId } = useAppStore();
   const [creatingCycle, setCreatingCycle] = useState(false);
@@ -301,6 +303,21 @@ export default function DashboardPage() {
               <GoalSummaryRow key={goal.id} goal={goal} />
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Insights */}
+      {insights.length > 0 && (
+        <div className="space-y-2">
+          <h2 className="text-sm font-medium text-text-primary">Insights</h2>
+          {insights.slice(0, 3).map((insight) => (
+            <InsightCard
+              key={insight.id}
+              insight={insight}
+              onDismiss={() => dismissInsight(insight.id)}
+              onSnooze={() => snoozeInsight(insight.id, 7)}
+            />
+          ))}
         </div>
       )}
 
@@ -752,5 +769,78 @@ function AddItemButton({ cycleId }: AddItemButtonProps) {
         <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
       </svg>
     </button>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// InsightCard Component
+// ---------------------------------------------------------------------------
+
+const INSIGHT_ICONS: Record<Insight['type'], { icon: string; color: string }> = {
+  alert: { icon: '⚠️', color: 'border-warning bg-warning/5' },
+  trend: { icon: '📈', color: 'border-blue-500 bg-blue-500/5' },
+  suggestion: { icon: '💡', color: 'border-primary bg-primary/5' },
+  achievement: { icon: '🏆', color: 'border-green-500 bg-green-500/5' },
+};
+
+interface InsightCardProps {
+  insight: Insight;
+  onDismiss: () => void;
+  onSnooze: () => void;
+}
+
+function InsightCard({ insight, onDismiss, onSnooze }: InsightCardProps) {
+  const [showMenu, setShowMenu] = useState(false);
+  const config = INSIGHT_ICONS[insight.type];
+
+  return (
+    <div className={`p-3 rounded-lg border ${config.color} relative`}>
+      <div className="flex items-start gap-3">
+        <span className="text-lg">{config.icon}</span>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium text-text-primary">{insight.title}</p>
+          <p className="text-xs text-text-secondary mt-0.5">{insight.message}</p>
+        </div>
+        <div className="relative">
+          <button
+            onClick={() => setShowMenu(!showMenu)}
+            className="w-6 h-6 flex items-center justify-center rounded hover:bg-background/50 text-text-secondary"
+            aria-label="Insight actions"
+          >
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 16 16">
+              <circle cx="8" cy="3" r="1.5" />
+              <circle cx="8" cy="8" r="1.5" />
+              <circle cx="8" cy="13" r="1.5" />
+            </svg>
+          </button>
+
+          {showMenu && (
+            <>
+              <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)} />
+              <div className="absolute right-0 top-full mt-1 w-28 bg-surface border border-border rounded-lg shadow-lg z-20 py-1">
+                <button
+                  onClick={() => {
+                    setShowMenu(false);
+                    onSnooze();
+                  }}
+                  className="w-full px-3 py-1.5 text-left text-sm text-text-primary hover:bg-background transition-colors"
+                >
+                  Snooze 7d
+                </button>
+                <button
+                  onClick={() => {
+                    setShowMenu(false);
+                    onDismiss();
+                  }}
+                  className="w-full px-3 py-1.5 text-left text-sm text-text-secondary hover:bg-background transition-colors"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
