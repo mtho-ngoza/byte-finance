@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 const NAV_ITEMS = [
   { label: 'Now', href: '/', icon: '⊞' },
   { label: 'Plan', href: '/plan', icon: '⊟' },
+  { label: 'Receipts', href: '/receipts', icon: '▤' },
   { label: 'History', href: '/history', icon: '◉' },
   { label: 'Goals', href: '/goals', icon: '◎' },
   { label: 'Settings', href: '/settings', icon: '⊙' },
