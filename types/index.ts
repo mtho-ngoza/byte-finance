@@ -227,9 +227,85 @@ export interface MonthlySnapshot {
 }
 
 /**
+ * Receipt - Captured expense receipt with image
+ */
+export interface Receipt {
+  id: string;
+
+  // Image storage
+  imageUrl: string;                 // Compressed version (permanent)
+  originalImageUrl?: string;        // Full resolution (30-day retention)
+  thumbnailUrl?: string;            // Grid preview
+
+  // Duplicate detection (SHA-256 of original image)
+  imageHash: string;
+
+  // Quick inputs
+  amountInCents?: number;           // Integer! Never float.
+  vendor?: string;                  // "Engen", "Makro", etc.
+  note?: string;                    // Quick context
+
+  // Location capture
+  location?: {
+    lat: number;
+    lng: number;
+    accuracy: number;               // meters
+    vendorMatch?: string;           // If GPS matched a known vendor
+  };
+
+  // Auto-captured
+  capturedAt: Timestamp;
+
+  // Completion status
+  needsAttention: boolean;          // True if amountInCents or vendor missing
+
+  // Future linking
+  cycleItemId?: string;
+  cycleId?: string;
+
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+/**
+ * Pending receipt for offline queue (IndexedDB)
+ */
+export interface PendingReceipt {
+  id: string;                       // Temporary local ID
+  imageBlob: Blob;                  // Original image
+  compressedBlob?: Blob;            // Compressed (if worker finished)
+  imageHash: string;                // SHA-256
+  amountInCents?: number;
+  vendor?: string;
+  note?: string;
+  location?: {
+    lat: number;
+    lng: number;
+    accuracy: number;
+  };
+  capturedAt: number;               // Unix timestamp
+  uploadAttempts: number;           // Retry counter
+  lastAttempt?: number;             // Last retry timestamp
+}
+
+/**
+ * Known vendor for GPS matching
+ */
+export interface KnownVendor {
+  name: string;
+  keywords: string[];
+  locations?: Array<{
+    lat: number;
+    lng: number;
+    radius: number;                 // meters
+  }>;
+}
+
+/**
  * Helper type for creating new documents (without id and timestamps)
  */
 export type CreateCommitment = Omit<Commitment, 'id' | 'createdAt' | 'updatedAt'>;
 export type CreateGoal = Omit<Goal, 'id' | 'createdAt' | 'updatedAt' | 'completedAt' | 'contributions' | 'withdrawals' | 'currentAmount' | 'isOnTrack'>;
 export type CreateCycle = Omit<Cycle, 'id' | 'createdAt' | 'updatedAt'>;
 export type CreateCycleItem = Omit<CycleItem, 'id' | 'createdAt' | 'updatedAt'>;
+export type CreateReceipt = Omit<Receipt, 'id' | 'createdAt' | 'updatedAt'>;
