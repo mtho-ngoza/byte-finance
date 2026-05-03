@@ -3,8 +3,10 @@
 import { useState, useRef, useCallback } from 'react';
 import { useReceipts } from '@/hooks/use-receipts';
 import { useGeolocation } from '@/hooks/use-geolocation';
+import { useUserId } from '@/hooks/use-user-id';
 import { AmountDisplay } from '@/components/shared/amount-display';
 import { CurrencyInput } from '@/components/shared/currency-input';
+import { uploadReceiptImage } from '@/lib/receipt-upload';
 import type { Receipt } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -182,11 +184,13 @@ interface ReceiptCaptureProps {
 }
 
 function ReceiptCapture({ onClose }: ReceiptCaptureProps) {
+  const userId = useUserId();
   const { createReceipt } = useReceipts();
   const { location, getSuggestedVendors } = useGeolocation();
 
   const [step, setStep] = useState<'camera' | 'form'>('camera');
   const [imageData, setImageData] = useState<string | null>(null);
+  const [imageBlob, setImageBlob] = useState<Blob | null>(null);
   const [amount, setAmount] = useState(0);
   const [vendor, setVendor] = useState('');
   const [note, setNote] = useState('');
@@ -236,6 +240,16 @@ function ReceiptCapture({ onClose }: ReceiptCaptureProps) {
       ctx.drawImage(video, 0, 0);
       const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
       setImageData(dataUrl);
+
+      // Also get as blob for upload
+      canvas.toBlob(
+        (blob) => {
+          if (blob) setImageBlob(blob);
+        },
+        'image/jpeg',
+        0.8
+      );
+
       setStep('form');
       stopCamera();
     }
@@ -243,21 +257,17 @@ function ReceiptCapture({ onClose }: ReceiptCaptureProps) {
 
   // Save receipt
   const handleSave = async () => {
-    if (!imageData) return;
+    if (!imageBlob || !userId) return;
 
     setSaving(true);
     try {
-      // For MVP, use data URL directly (in production, upload to Storage first)
-      // Generate a simple hash for duplicate detection
-      const hashBuffer = await crypto.subtle.digest(
-        'SHA-256',
-        new TextEncoder().encode(imageData)
-      );
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      const imageHash = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+      // Upload to Firebase Storage
+      const { imageUrl, originalImageUrl, thumbnailUrl, imageHash } = await uploadReceiptImage(userId, imageBlob);
 
       await createReceipt({
-        imageUrl: imageData, // For MVP, store as data URL
+        imageUrl,
+        originalImageUrl,
+        thumbnailUrl,
         imageHash,
         amountInCents: amount > 0 ? amount : undefined,
         vendor: vendor.trim() || undefined,
