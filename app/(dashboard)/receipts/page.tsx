@@ -139,9 +139,9 @@ function ReceiptCard({ receipt, onClick }: ReceiptCardProps) {
     >
       {/* Image */}
       <div className="aspect-[4/3] bg-background relative">
-        {receipt.imageUrl ? (
+        {receipt.thumbnailUrl || receipt.imageUrl ? (
           <img
-            src={receipt.imageUrl}
+            src={receipt.thumbnailUrl || receipt.imageUrl}
             alt="Receipt"
             className="w-full h-full object-cover"
           />
@@ -491,9 +491,9 @@ function ReceiptDetail({ receipt, onClose, onDelete }: ReceiptDetailProps) {
 
       {/* Image */}
       <div className="flex-1 overflow-auto">
-        {receipt.imageUrl && (
+        {(receipt.originalImageUrl || receipt.imageUrl) && (
           <img
-            src={receipt.imageUrl}
+            src={receipt.originalImageUrl || receipt.imageUrl}
             alt="Receipt"
             className="w-full object-contain"
           />
