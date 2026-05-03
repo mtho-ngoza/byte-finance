@@ -192,6 +192,7 @@ function ReceiptCapture({ onClose }: ReceiptCaptureProps) {
   const [vendor, setVendor] = useState('');
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState<string>('');
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -263,14 +264,78 @@ function ReceiptCapture({ onClose }: ReceiptCaptureProps) {
     setStep('form');
   }, [stopCamera]);
 
-  // Save receipt
+  // Run a worker and return its result, with a timeout fallback
+  const runWorker = useCallback(<T>(workerPath: string, message: object, timeoutMs = 15000): Promise<T> => {
+    return new Promise((resolve, reject) => {
+      let worker: Worker;
+      try {
+        worker = new Worker(workerPath);
+      } catch (err) {
+        reject(err);
+        return;
+      }
+
+      const timer = setTimeout(() => {
+        worker.terminate();
+        reject(new Error(`Worker ${workerPath} timed out`));
+      }, timeoutMs);
+
+      worker.onmessage = (event) => {
+        clearTimeout(timer);
+        worker.terminate();
+        if (event.data.error) {
+          reject(new Error(event.data.error));
+        } else {
+          resolve(event.data as T);
+        }
+      };
+
+      worker.onerror = (err) => {
+        clearTimeout(timer);
+        worker.terminate();
+        reject(err);
+      };
+
+      worker.postMessage(message);
+    });
+  }, []);
+
+  // Save receipt — hash original, compress, upload compressed
   const handleSave = async () => {
     if (!imageBlob) return;
 
     setSaving(true);
     try {
+      // Step 1: Hash the original blob for duplicate detection
+      let imageHash: string | undefined;
+      try {
+        setUploadStatus('Hashing…');
+        const hashResult = await runWorker<{ hash: string }>(
+          '/workers/hash.worker.js',
+          { blob: imageBlob }
+        );
+        imageHash = hashResult.hash;
+      } catch (hashErr) {
+        console.warn('Hash worker failed, continuing without hash:', hashErr);
+      }
+
+      // Step 2: Compress the blob (fall back to original if worker fails)
+      let uploadBlob = imageBlob;
+      try {
+        setUploadStatus('Compressing…');
+        const compressResult = await runWorker<{ blob: Blob }>(
+          '/workers/compress.worker.js',
+          { blob: imageBlob }
+        );
+        uploadBlob = compressResult.blob;
+      } catch (compressErr) {
+        console.warn('Compress worker failed, uploading original:', compressErr);
+      }
+
+      // Step 3: Upload the compressed blob (server also stores original path)
+      setUploadStatus('Uploading…');
       const formData = new FormData();
-      formData.append('image', imageBlob, 'receipt.jpg');
+      formData.append('image', uploadBlob, 'receipt.jpg');
 
       const uploadRes = await fetch('/api/receipts/upload', {
         method: 'POST',
@@ -282,13 +347,19 @@ function ReceiptCapture({ onClose }: ReceiptCaptureProps) {
         throw new Error(err.error || 'Upload failed');
       }
 
-      const { imageUrl, originalImageUrl, thumbnailUrl, imageHash } = await uploadRes.json();
+      const {
+        imageUrl,
+        originalImageUrl,
+        thumbnailUrl,
+        imageHash: serverHash,
+      } = await uploadRes.json();
 
       await createReceipt({
         imageUrl,
         originalImageUrl,
         thumbnailUrl,
-        imageHash,
+        // Prefer client-side hash (computed from original bytes); fall back to server hash
+        imageHash: imageHash ?? serverHash,
         amountInCents: amount > 0 ? amount : undefined,
         vendor: vendor.trim() || undefined,
         note: note.trim() || undefined,
@@ -306,6 +377,7 @@ function ReceiptCapture({ onClose }: ReceiptCaptureProps) {
       alert('Failed to save receipt. Please try again.');
     } finally {
       setSaving(false);
+      setUploadStatus('');
     }
   };
 
@@ -451,7 +523,7 @@ function ReceiptCapture({ onClose }: ReceiptCaptureProps) {
                   disabled={saving}
                   className="flex-1 py-3 rounded-lg bg-primary text-black font-medium disabled:opacity-50"
                 >
-                  {saving ? 'Saving...' : 'Save'}
+                  {saving ? (uploadStatus || 'Saving…') : 'Save'}
                 </button>
               </div>
             </div>
