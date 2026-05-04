@@ -263,6 +263,11 @@ export interface Receipt {
   cycleItemId?: string;
   cycleId?: string;
 
+  // Sage Business Cloud integration
+  sageTransactionId?: string;
+  sagePushedAt?: Timestamp;
+  sageMatchStatus?: 'pending' | 'matched' | 'pushed' | 'unmatched';
+
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }

@@ -9,15 +9,15 @@
  */
 
 import { onSchedule } from 'firebase-functions/v2/scheduler';
-import { defineSecret } from 'firebase-functions/params';
 import { logger } from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const db = admin.firestore();
 
-// Define the Gemini API key as a secret
-const geminiApiKey = defineSecret('GEMINI_API_KEY');
+// Gemini API key from environment variable
+// Set via: firebase functions:config:set gemini.api_key="YOUR_KEY"
+// Or set GEMINI_API_KEY in .env file in functions directory
 
 // Types
 type Category =
@@ -83,14 +83,13 @@ export const smartAdvisor = onSchedule(
   {
     schedule: 'every sunday 08:00',
     timeZone: 'Africa/Johannesburg',
-    secrets: [geminiApiKey],
   },
   async () => {
     logger.info('Smart Advisor started');
 
-    const apiKey = geminiApiKey.value();
+    const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      logger.error('GEMINI_API_KEY secret not configured');
+      logger.error('GEMINI_API_KEY environment variable not configured');
       return;
     }
 

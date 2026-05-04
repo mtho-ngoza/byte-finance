@@ -7,6 +7,113 @@ import { db } from '@/lib/firebase';
 import { useUserId } from '@/hooks/use-user-id';
 import { useUserProfile } from '@/hooks/use-user-profile';
 import { Skeleton } from '@/components/shared/skeleton';
+import { useSage } from '@/hooks/use-sage';
+
+// ---------------------------------------------------------------------------
+// Sage Business Cloud Connection Component
+// ---------------------------------------------------------------------------
+
+function SageConnection() {
+  const { connectionStatus, statusLoading, connect, disconnect } = useSage();
+  const [disconnecting, setDisconnecting] = useState(false);
+
+  // Show success/error banners from OAuth redirect query params
+  const [banner, setBanner] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('sage_connected') === '1') {
+      setBanner({ type: 'success', message: 'Sage Business Cloud connected successfully.' });
+      // Clean up query param without reload
+      const url = new URL(window.location.href);
+      url.searchParams.delete('sage_connected');
+      window.history.replaceState({}, '', url.toString());
+    } else if (params.get('sage_error')) {
+      setBanner({ type: 'error', message: `Sage connection failed: ${params.get('sage_error')}` });
+      const url = new URL(window.location.href);
+      url.searchParams.delete('sage_error');
+      window.history.replaceState({}, '', url.toString());
+    }
+  }, []);
+
+  const handleDisconnect = async () => {
+    if (!confirm('Disconnect Sage Business Cloud? You can reconnect at any time.')) return;
+    setDisconnecting(true);
+    try {
+      await disconnect();
+      setBanner({ type: 'success', message: 'Sage disconnected.' });
+    } catch (err) {
+      console.error(err);
+      setBanner({ type: 'error', message: 'Failed to disconnect Sage. Please try again.' });
+    } finally {
+      setDisconnecting(false);
+    }
+  };
+
+  if (statusLoading) {
+    return <Skeleton height={80} className="w-full" />;
+  }
+
+  return (
+    <div className="p-4 bg-surface border border-border rounded-lg space-y-4">
+      {banner && (
+        <div
+          className={`px-3 py-2 rounded-lg text-sm ${
+            banner.type === 'success'
+              ? 'bg-green-500/10 border border-green-500/30 text-green-400'
+              : 'bg-danger/10 border border-danger/30 text-danger'
+          }`}
+        >
+          {banner.message}
+        </div>
+      )}
+
+      {connectionStatus?.connected ? (
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-green-500/15 flex items-center justify-center flex-shrink-0">
+              <svg className="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-text-primary">
+                {connectionStatus.companyName || 'Connected'}
+              </p>
+              {connectionStatus.connectedAt && (
+                <p className="text-xs text-text-secondary">
+                  Connected {new Date(connectionStatus.connectedAt).toLocaleDateString('en-ZA')}
+                </p>
+              )}
+            </div>
+          </div>
+          <button
+            onClick={handleDisconnect}
+            disabled={disconnecting}
+            className="px-3 py-1.5 text-sm border border-danger/40 text-danger rounded-lg hover:bg-danger/5 transition-colors disabled:opacity-50"
+          >
+            {disconnecting ? 'Disconnecting…' : 'Disconnect'}
+          </button>
+        </div>
+      ) : (
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-sm text-text-secondary">
+              Link your Sage account to push receipts directly to transactions.
+            </p>
+          </div>
+          <button
+            onClick={connect}
+            className="flex-shrink-0 px-4 py-2 bg-primary text-black font-medium rounded-lg text-sm hover:bg-primary/90 transition-colors"
+          >
+            Connect
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // VAT Config Component
@@ -159,6 +266,17 @@ export default function SettingsPage() {
       <div>
         <h1 className="text-xl font-semibold text-text-primary">Settings</h1>
       </div>
+
+      {/* Sage Business Cloud */}
+      <section>
+        <div className="mb-4">
+          <h2 className="text-base font-semibold text-text-primary">Sage Business Cloud</h2>
+          <p className="text-sm text-text-secondary mt-1">
+            Connect your Sage account to match and push receipts to transactions.
+          </p>
+        </div>
+        <SageConnection />
+      </section>
 
       {/* VAT Config */}
       <section>

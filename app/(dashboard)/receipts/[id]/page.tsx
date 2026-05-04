@@ -3,6 +3,7 @@
 import { use, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useReceipts } from '@/hooks/use-receipts';
+import { useSage, type SageMatch } from '@/hooks/use-sage';
 import { AmountDisplay } from '@/components/shared/amount-display';
 import { CurrencyInput } from '@/components/shared/currency-input';
 import type { Receipt } from '@/types';
@@ -23,6 +24,14 @@ export default function ReceiptDetailPage({ params }: ReceiptDetailPageProps) {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [zoomed, setZoomed] = useState(false);
+
+  // Sage integration state
+  const { connectionStatus, findMatches, pushToSage } = useSage();
+  const [sageMatches, setSageMatches] = useState<SageMatch[] | null>(null);
+  const [sageLoading, setSageLoading] = useState(false);
+  const [sageError, setSageError] = useState<string | null>(null);
+  const [selectedMatch, setSelectedMatch] = useState<string | null>(null);
+  const [pushing, setPushing] = useState(false);
 
   const receipt = receipts.find((r) => r.id === id) ?? null;
 
@@ -78,6 +87,41 @@ export default function ReceiptDetailPage({ params }: ReceiptDetailPageProps) {
       console.error('Delete error:', err);
       alert('Failed to delete receipt.');
       setDeleting(false);
+    }
+  };
+
+  const handleFindMatches = async () => {
+    if (!receipt) return;
+    setSageLoading(true);
+    setSageError(null);
+    setSageMatches(null);
+    setSelectedMatch(null);
+    try {
+      const matches = await findMatches(receipt.id);
+      setSageMatches(matches);
+      if (matches.length === 0) setSageError('No matching Sage transactions found.');
+    } catch (err) {
+      console.error('Sage match error:', err);
+      setSageError(err instanceof Error ? err.message : 'Failed to find matches.');
+    } finally {
+      setSageLoading(false);
+    }
+  };
+
+  const handlePushToSage = async () => {
+    if (!receipt || !selectedMatch) return;
+    setPushing(true);
+    setSageError(null);
+    try {
+      await pushToSage(receipt.id, selectedMatch);
+      // Receipt will update via Firestore subscription
+      setSageMatches(null);
+      setSelectedMatch(null);
+    } catch (err) {
+      console.error('Sage push error:', err);
+      setSageError(err instanceof Error ? err.message : 'Failed to push to Sage.');
+    } finally {
+      setPushing(false);
     }
   };
 
@@ -238,6 +282,106 @@ export default function ReceiptDetailPage({ params }: ReceiptDetailPageProps) {
           </>
         )}
       </div>
+
+      {/* Sage Business Cloud push panel */}
+      {!editing && connectionStatus?.connected && !receipt.needsAttention && (
+        <div className="rounded-xl border border-border bg-surface p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            {/* Sage logo placeholder */}
+            <div className="w-6 h-6 rounded bg-green-600/20 flex items-center justify-center flex-shrink-0">
+              <span className="text-xs font-bold text-green-400">S</span>
+            </div>
+            <p className="text-sm font-medium text-text-primary">Sage Business Cloud</p>
+          </div>
+
+          {receipt.sageMatchStatus === 'pushed' ? (
+            /* Already pushed */
+            <div className="flex items-center gap-2 text-sm text-green-400">
+              <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+              <span>
+                Linked to transaction{' '}
+                <span className="font-mono text-xs text-text-secondary">
+                  {receipt.sageTransactionId}
+                </span>
+              </span>
+            </div>
+          ) : (
+            /* Not yet pushed */
+            <>
+              {sageError && (
+                <p className="text-xs text-danger">{sageError}</p>
+              )}
+
+              {sageMatches === null ? (
+                <button
+                  onClick={handleFindMatches}
+                  disabled={sageLoading}
+                  className="w-full py-2 border border-border rounded-lg text-sm text-text-primary hover:border-primary transition-colors disabled:opacity-50"
+                >
+                  {sageLoading ? 'Searching Sage…' : 'Find Sage Match'}
+                </button>
+              ) : sageMatches.length === 0 ? (
+                <div className="space-y-2">
+                  <p className="text-xs text-text-secondary">No matching transactions found.</p>
+                  <button
+                    onClick={handleFindMatches}
+                    className="text-xs text-primary hover:underline"
+                  >
+                    Try again
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-xs text-text-secondary">Select a transaction to link:</p>
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                    {sageMatches.map((match) => (
+                      <button
+                        key={match.id}
+                        onClick={() => setSelectedMatch(match.id === selectedMatch ? null : match.id)}
+                        className={`w-full text-left px-3 py-2 rounded-lg border text-sm transition-colors ${
+                          selectedMatch === match.id
+                            ? 'border-primary bg-primary/10'
+                            : 'border-border hover:border-primary/50'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-text-primary truncate">{match.description}</span>
+                          <span className="text-text-primary font-medium flex-shrink-0">
+                            R {match.total_amount.toFixed(2)}
+                          </span>
+                        </div>
+                        <p className="text-xs text-text-secondary mt-0.5">
+                          {new Date(match.date).toLocaleDateString('en-ZA')}
+                          {match.reference && ` · ${match.reference}`}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+
+                  {selectedMatch && (
+                    <button
+                      onClick={handlePushToSage}
+                      disabled={pushing}
+                      className="w-full py-2.5 bg-green-600 text-white font-medium rounded-lg text-sm hover:bg-green-700 transition-colors disabled:opacity-50"
+                    >
+                      {pushing ? 'Linking…' : 'Link & Push to Sage'}
+                    </button>
+                  )}
+
+                  <button
+                    onClick={() => { setSageMatches(null); setSelectedMatch(null); setSageError(null); }}
+                    className="w-full text-xs text-text-secondary hover:text-text-primary transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
 
       {/* Delete */}
       {!editing && (
