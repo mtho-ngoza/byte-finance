@@ -95,7 +95,7 @@ export async function POST(
   const formData = new FormData();
   formData.append(
     'file',
-    new Blob([imageBuffer], { type: contentType }),
+    new Blob([new Uint8Array(imageBuffer)], { type: contentType }),
     filename
   );
 
