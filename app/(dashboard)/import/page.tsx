@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { useCycles } from '@/hooks/use-cycles';
 import type { ParsedItem } from '@/app/api/import/parse/route';
 
@@ -288,6 +289,15 @@ export default function ImportPage() {
         <p className="text-sm text-text-secondary mt-1">
           Paste your Samsung Notes expense text and let AI extract the items.
         </p>
+        <a
+          href="/import/statement"
+          className="inline-flex items-center gap-1.5 mt-2 text-xs text-primary hover:underline"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          Import from bank statement (PDF/CSV) →
+        </a>
       </div>
 
       {/* Cycle selector */}
