@@ -50,9 +50,9 @@
 
 | # | Feature | Status | Notes |
 |---|---------|--------|-------|
-| 20 | Data Importer (text) | ⏳ Todo | Gemini text parsing |
+| 20 | Data Importer (text) | ✅ Done | Gemini 1.5 Flash, Samsung Notes format, editable preview, bulk import |
 | 21 | Bank Statement Import | ⏳ Todo | PDF/CSV via Gemini |
-| 22 | PWA Polish | ✅ Done | Icons, install prompt, offline fallback, service worker |
+| 22 | PWA Polish | 🔄 Partial | Service worker + offline fallback done. Install prompt not triggering — needs HTTPS + valid icons |
 
 ---
 
