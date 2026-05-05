@@ -104,6 +104,7 @@ export default function ReceiptDetailPage({ params }: ReceiptDetailPageProps) {
   };
 
   const handleDelete = () => {
+    if (!receipt) return;
     confirm('This will permanently delete the receipt.', async () => {
       setDeleting(true);
       try {
