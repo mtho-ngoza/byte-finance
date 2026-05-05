@@ -495,6 +495,9 @@ function SortableItemRow({ item, cycleId, userId, onStatusChange, onAmountChange
               </span>
             )}
             {item.linkedGoalId && <span className="text-primary">linked</span>}
+            {item.receiptId && (
+              <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary text-[10px]">📷 receipt</span>
+            )}
             {!item.commitmentId && (
               <span className="px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400 text-[10px]">
                 one-off
@@ -610,6 +613,18 @@ function SortableItemRow({ item, cycleId, userId, onStatusChange, onAmountChange
           onClose={() => setEditingItem(false)}
         />
       )}
+
+      {/* Receipt Picker Modal */}
+      {attachingReceipt && userId && (
+        <ReceiptPickerModal
+          itemId={item.id}
+          cycleId={cycleId}
+          userId={userId}
+          currentReceiptId={item.receiptId}
+          onClose={() => setAttachingReceipt(false)}
+          onAttached={() => { setAttachingReceipt(false); toast('Receipt attached', 'success'); }}
+        />
+      )}
     </>
   );
 }
@@ -722,6 +737,114 @@ function EditItemModal({ item, userId, onClose }: EditItemModalProps) {
           >
             {saving ? 'Saving...' : 'Save'}
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ReceiptPickerModal
+// ---------------------------------------------------------------------------
+
+interface ReceiptPickerModalProps {
+  itemId: string;
+  cycleId: string;
+  userId: string;
+  currentReceiptId?: string;
+  onClose: () => void;
+  onAttached: () => void;
+}
+
+function ReceiptPickerModal({ itemId, cycleId, userId, currentReceiptId, onClose, onAttached }: ReceiptPickerModalProps) {
+  const [receipts, setReceipts] = useState<Array<{ id: string; thumbnailUrl?: string; imageUrl?: string; vendor?: string; amountInCents?: number; capturedAt?: unknown }>>([]);
+  const [loading, setLoading] = useState(true);
+  const [attaching, setAttaching] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/receipts')
+      .then((r) => r.json())
+      .then((d) => { setReceipts(d.receipts ?? []); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, []);
+
+  const handleAttach = async (receiptId: string) => {
+    setAttaching(true);
+    try {
+      // Link receipt → item
+      await fetch(`/api/receipts/${receiptId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cycleItemId: itemId, cycleId }),
+      });
+      // Link item → receipt
+      const itemRef = doc(db, `users/${userId}/cycleItems`, itemId);
+      await updateDoc(itemRef, { receiptId, updatedAt: Timestamp.now() });
+      onAttached();
+    } catch (err) {
+      console.error('Attach failed:', err);
+    } finally {
+      setAttaching(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-50 p-4">
+      <div className="bg-surface border border-border rounded-2xl w-full sm:max-w-md max-h-[70vh] flex flex-col">
+        <div className="flex items-center justify-between p-4 border-b border-border">
+          <h3 className="text-sm font-semibold text-text-primary">Attach Receipt</h3>
+          <button onClick={onClose} className="text-text-secondary hover:text-text-primary">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4">
+          {loading ? (
+            <div className="grid grid-cols-3 gap-2 animate-pulse">
+              {[1,2,3,4,5,6].map((i) => <div key={i} className="aspect-square bg-background rounded-lg" />)}
+            </div>
+          ) : receipts.length === 0 ? (
+            <div className="text-center py-8 text-text-secondary text-sm">
+              <p className="text-2xl mb-2">📷</p>
+              <p>No receipts yet. Capture one first.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-3 gap-2">
+              {receipts.map((r) => {
+                const isSelected = r.id === currentReceiptId;
+                return (
+                  <button
+                    key={r.id}
+                    onClick={() => handleAttach(r.id)}
+                    disabled={attaching}
+                    className={`relative aspect-square rounded-lg overflow-hidden border-2 transition-colors ${
+                      isSelected ? 'border-primary' : 'border-transparent hover:border-primary/50'
+                    }`}
+                  >
+                    {r.thumbnailUrl || r.imageUrl ? (
+                      <img src={r.thumbnailUrl || r.imageUrl} alt="Receipt" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full bg-background flex items-center justify-center text-text-secondary text-xl">📄</div>
+                    )}
+                    {r.amountInCents && (
+                      <div className="absolute bottom-0 left-0 right-0 bg-black/60 px-1.5 py-0.5 text-[10px] text-white font-mono">
+                        R{(r.amountInCents / 100).toFixed(0)}
+                      </div>
+                    )}
+                    {isSelected && (
+                      <div className="absolute top-1 right-1 w-5 h-5 bg-primary rounded-full flex items-center justify-center">
+                        <svg className="w-3 h-3 text-black" fill="none" viewBox="0 0 12 12" stroke="currentColor" strokeWidth="2">
+                          <polyline points="1.5,6 4.5,9 10.5,3" />
+                        </svg>
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
     </div>

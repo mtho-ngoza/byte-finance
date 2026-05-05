@@ -59,6 +59,8 @@ export default function ReceiptsPage() {
     );
   }
 
+  const unlinked = complete.filter((r) => !r.cycleItemId);
+
   return (
     <div className="space-y-6 pb-20">
       {/* Header */}
@@ -67,6 +69,11 @@ export default function ReceiptsPage() {
           <h1 className="text-xl font-semibold text-text-primary">Receipts</h1>
           <p className="text-sm text-text-secondary">
             {receipts.length} receipt{receipts.length !== 1 ? 's' : ''}
+            {unlinked.length > 0 && (
+              <span className="ml-2 px-1.5 py-0.5 rounded-full bg-warning/10 text-warning text-[10px] font-medium">
+                {unlinked.length} unlinked
+              </span>
+            )}
           </p>
         </div>
 
