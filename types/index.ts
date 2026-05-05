@@ -174,7 +174,8 @@ export interface CycleItem {
 
   // Item details
   label: string;
-  amount: number;                   // cents
+  amount: number;                   // Committed/budgeted amount in cents
+  actualAmount?: number;            // What was actually spent (for variable items). Falls back to amount if not set.
   category: Category;
   accountType: 'personal' | 'business';
 
@@ -187,6 +188,9 @@ export interface CycleItem {
 
   // Smart linking
   linkedGoalId?: string;
+
+  // Receipt attachment
+  receiptId?: string;               // Linked receipt for this item
 
   // Metadata
   notes?: string;

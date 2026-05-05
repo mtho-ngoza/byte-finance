@@ -457,7 +457,7 @@ function GoalSummaryRow({ goal }: GoalSummaryRowProps) {
 
 interface CycleItemRowProps {
   item: CycleItem;
-  onStatusChange: (id: string, status: CycleItemStatus) => Promise<void>;
+  onStatusChange: (id: string, status: CycleItemStatus, actualAmount?: number) => Promise<void>;
   onAmountChange: (id: string, amount: number) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
 }
@@ -467,14 +467,34 @@ function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete }: CycleI
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
   const [showMenu, setShowMenu] = useState(false);
+  // Actual amount prompt for variable items
+  const [showActualPrompt, setShowActualPrompt] = useState(false);
+  const [actualValue, setActualValue] = useState('');
 
   const isSkipped = item.status === 'skipped';
+  const isPaid = item.status === 'paid';
+  const isDue = item.status === 'due';
+  const hasVariance = isPaid && item.actualAmount !== undefined && item.actualAmount !== item.amount;
 
   const handleToggle = async () => {
+    if (item.status === 'paid') {
+      // Unpaying — no prompt needed
+      setLoading(true);
+      try { await onStatusChange(item.id, 'upcoming'); } finally { setLoading(false); }
+      return;
+    }
+    // Marking paid — show actual amount prompt
+    setActualValue((item.amount / 100).toFixed(2));
+    setShowActualPrompt(true);
+  };
+
+  const handleConfirmPaid = async () => {
+    setShowActualPrompt(false);
     setLoading(true);
     try {
-      const newStatus: CycleItemStatus = item.status === 'paid' ? 'upcoming' : 'paid';
-      await onStatusChange(item.id, newStatus);
+      const actual = Math.round(parseFloat(actualValue) * 100);
+      const actualAmount = !isNaN(actual) && actual >= 0 ? actual : undefined;
+      await onStatusChange(item.id, 'paid', actualAmount);
     } finally {
       setLoading(false);
     }
@@ -524,9 +544,6 @@ function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete }: CycleI
     setShowMenu(false);
     await onDelete(item.id);
   };
-
-  const isPaid = item.status === 'paid';
-  const isDue = item.status === 'due';
 
   return (
     <div
@@ -592,11 +609,61 @@ function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete }: CycleI
         <button
           onClick={handleAmountClick}
           disabled={isSkipped}
-          className={`hover:bg-background px-2 py-1 rounded transition-colors ${isPaid || isSkipped ? 'opacity-50' : ''}`}
-          title="Click to edit amount"
+          className={`hover:bg-background px-2 py-1 rounded transition-colors text-right ${isPaid || isSkipped ? 'opacity-50' : ''}`}
+          title="Click to edit committed amount"
         >
-          <AmountDisplay amount={item.amount} size="sm" />
+          {hasVariance ? (
+            <div>
+              <AmountDisplay amount={item.actualAmount!} size="sm" className="text-primary" />
+              <p className="text-[10px] text-text-secondary line-through">
+                {(item.amount / 100).toLocaleString('en-ZA', { style: 'currency', currency: 'ZAR' }).replace('ZAR', 'R')}
+              </p>
+            </div>
+          ) : (
+            <AmountDisplay amount={item.amount} size="sm" />
+          )}
         </button>
+      )}
+
+      {/* Actual amount prompt */}
+      {showActualPrompt && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-surface border border-border rounded-xl w-full max-w-xs p-4 space-y-4">
+            <div>
+              <h3 className="text-sm font-semibold text-text-primary">How much did you spend?</h3>
+              <p className="text-xs text-text-secondary mt-1">
+                Committed: R{(item.amount / 100).toFixed(2)} · Change if actual differs
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-text-secondary font-mono">R</span>
+              <input
+                type="number"
+                value={actualValue}
+                onChange={(e) => setActualValue(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleConfirmPaid(); if (e.key === 'Escape') setShowActualPrompt(false); }}
+                autoFocus
+                step="0.01"
+                min="0"
+                className="flex-1 px-3 py-2 text-sm rounded-lg border border-primary bg-background text-text-primary focus:outline-none font-mono"
+              />
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowActualPrompt(false)}
+                className="flex-1 py-2 rounded-lg border border-border text-text-secondary text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmPaid}
+                className="flex-1 py-2 rounded-lg bg-primary text-background font-medium text-sm"
+              >
+                Mark Paid
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Menu button */}

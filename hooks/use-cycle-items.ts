@@ -27,11 +27,11 @@ interface UseCycleItemsResult {
   attentionItems: CycleItem[];
   /** Total committed amount in cents */
   totalCommitted: number;
-  /** Total paid amount in cents */
+  /** Total paid amount in cents (uses actualAmount when set) */
   totalPaid: number;
   /** Update item status with optimistic update */
-  updateStatus: (itemId: string, status: CycleItemStatus) => Promise<void>;
-  /** Update item amount with optimistic update */
+  updateStatus: (itemId: string, status: CycleItemStatus, actualAmount?: number) => Promise<void>;
+  /** Update item committed amount with optimistic update */
   updateAmount: (itemId: string, newAmount: number) => Promise<void>;
 }
 
@@ -86,15 +86,15 @@ export function useCycleItems(cycleId: string | null): UseCycleItemsResult {
   // Items needing attention (due status)
   const attentionItems = items.filter((item) => item.status === 'due');
 
-  // Totals
+  // Totals — use actualAmount for paid variable items when set
   const totalCommitted = items.reduce((sum, i) => sum + i.amount, 0);
   const totalPaid = items
     .filter((i) => i.status === 'paid')
-    .reduce((sum, i) => sum + i.amount, 0);
+    .reduce((sum, i) => sum + (i.actualAmount ?? i.amount), 0);
 
   // Update status with optimistic update and smart linking
   const updateStatus = useCallback(
-    async (itemId: string, status: CycleItemStatus) => {
+    async (itemId: string, status: CycleItemStatus, actualAmount?: number) => {
       if (!userId || !cycleId) return;
 
       const item = items.find((i) => i.id === itemId);
@@ -102,50 +102,57 @@ export function useCycleItems(cycleId: string | null): UseCycleItemsResult {
 
       const previousStatus = item.status;
       const now = Timestamp.now();
+      // The effective paid amount: use actualAmount if provided, else existing actualAmount, else committed amount
+      const effectiveAmount = actualAmount ?? item.actualAmount ?? item.amount;
 
       // Optimistic update
       const optimisticItem: CycleItem = {
         ...item,
         status,
+        actualAmount: status === 'paid' && actualAmount !== undefined ? actualAmount : item.actualAmount,
         paidDate: status === 'paid' ? now : undefined,
         updatedAt: now,
       };
       setOptimisticItem(itemId, optimisticItem);
 
       try {
-        // Update item
         const itemRef = doc(db, `users/${userId}/cycleItems`, itemId);
-        await updateDoc(itemRef, {
+        const updateData: Record<string, unknown> = {
           status,
           paidDate: status === 'paid' ? now : null,
           updatedAt: now,
-        });
+        };
+        if (status === 'paid' && actualAmount !== undefined) {
+          updateData.actualAmount = actualAmount;
+        }
+        await updateDoc(itemRef, updateData);
 
-        // Update cycle totals
+        // Update cycle totals using effective amount
         const cycleRef = doc(db, `users/${userId}/cycles`, cycleId);
+        const previousEffective = item.actualAmount ?? item.amount;
         if (status === 'paid' && previousStatus !== 'paid') {
           await updateDoc(cycleRef, {
-            totalPaid: increment(item.amount),
+            totalPaid: increment(effectiveAmount),
             paidCount: increment(1),
             updatedAt: now,
           });
         } else if (previousStatus === 'paid' && status !== 'paid') {
           await updateDoc(cycleRef, {
-            totalPaid: increment(-item.amount),
+            totalPaid: increment(-previousEffective),
             paidCount: increment(-1),
             updatedAt: now,
           });
         }
 
-        // Smart linking: record contribution to goal
+        // Smart linking: use effective amount for goal contribution
         if (item.linkedGoalId && status === 'paid' && previousStatus !== 'paid') {
           const goalRef = doc(db, `users/${userId}/goals`, item.linkedGoalId);
           await updateDoc(goalRef, {
-            currentAmount: increment(item.amount),
+            currentAmount: increment(effectiveAmount),
             contributions: arrayUnion({
               id: `${itemId}-${Date.now()}`,
               date: now,
-              amount: item.amount,
+              amount: effectiveAmount,
               cycleId,
               cycleItemId: itemId,
             }),
@@ -153,20 +160,16 @@ export function useCycleItems(cycleId: string | null): UseCycleItemsResult {
           });
         }
 
-        // Reverse contribution if unpaid
         if (item.linkedGoalId && previousStatus === 'paid' && status !== 'paid') {
           const goalRef = doc(db, `users/${userId}/goals`, item.linkedGoalId);
           await updateDoc(goalRef, {
-            currentAmount: increment(-item.amount),
+            currentAmount: increment(-previousEffective),
             updatedAt: now,
           });
-          // Note: We don't remove from contributions array to keep history
         }
 
-        // Clear optimistic update
         removeOptimisticItem(itemId);
       } catch (error) {
-        // Rollback on error
         removeOptimisticItem(itemId);
         throw error;
       }

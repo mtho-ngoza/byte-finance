@@ -370,6 +370,7 @@ function SortableItemRow({ item, cycleId, userId, onStatusChange, onAmountChange
   const [editValue, setEditValue] = useState('');
   const [showMenu, setShowMenu] = useState(false);
   const [editingItem, setEditingItem] = useState(false);
+  const [attachingReceipt, setAttachingReceipt] = useState(false);
 
   const isPaid = item.status === 'paid';
   const isSkipped = item.status === 'skipped';
@@ -552,6 +553,31 @@ function SortableItemRow({ item, cycleId, userId, onStatusChange, onAmountChange
                 >
                   Edit
                 </button>
+                <button
+                  onClick={() => {
+                    setShowMenu(false);
+                    setAttachingReceipt(true);
+                  }}
+                  className="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-background transition-colors"
+                >
+                  {item.receiptId ? 'Change receipt' : 'Attach receipt'}
+                </button>
+                {item.receiptId && (
+                  <button
+                    onClick={async () => {
+                      setShowMenu(false);
+                      if (!userId) return;
+                      const ref = doc(db, `users/${userId}/cycleItems`, item.id);
+                      await updateDoc(ref, { receiptId: null, updatedAt: Timestamp.now() });
+                      // Also unlink from receipt
+                      const receiptRef = doc(db, `users/${userId}/receipts`, item.receiptId!);
+                      await updateDoc(receiptRef, { cycleItemId: null, cycleId: null, updatedAt: Timestamp.now() });
+                    }}
+                    className="w-full px-3 py-2 text-left text-sm text-warning hover:bg-background transition-colors"
+                  >
+                    Detach receipt
+                  </button>
+                )}
                 <button
                   onClick={handleSkip}
                   className="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-background transition-colors"
