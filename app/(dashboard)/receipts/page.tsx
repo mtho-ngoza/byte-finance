@@ -145,6 +145,9 @@ export default function ReceiptsPage() {
         )}
       </section>
 
+      {/* Tax Export */}
+      <TaxExportSection receiptsCount={receipts.length} />
+
       {/* Capture FAB */}
       <button
         onClick={() => setShowCapture(true)}
@@ -223,6 +226,102 @@ function ReceiptCard({ receipt }: ReceiptCardProps) {
 
 // ---------------------------------------------------------------------------
 // ReceiptCapture Component
+// ---------------------------------------------------------------------------
+
+interface ReceiptCaptureProps {
+  onClose: () => void;
+}
+
+// ---------------------------------------------------------------------------
+// TaxExportSection
+// ---------------------------------------------------------------------------
+
+function TaxExportSection({ receiptsCount }: { receiptsCount: number }) {
+  const [showPanel, setShowPanel] = useState(false);
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [exporting, setExporting] = useState<'csv' | 'zip' | null>(null);
+  const { toast } = useToast();
+
+  const handleExport = async (format: 'csv' | 'zip') => {
+    setExporting(format);
+    try {
+      const params = new URLSearchParams({ format });
+      if (from) params.set('from', from);
+      if (to) params.set('to', to);
+      const res = await fetch(`/api/receipts/export?${params}`);
+      if (!res.ok) { toast('Export failed', 'error'); return; }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const dateLabel = from && to ? `${from}_to_${to}` : new Date().toISOString().slice(0, 10);
+      a.download = `receipts-${dateLabel}.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast(`Exported ${format.toUpperCase()} successfully`, 'success');
+    } catch {
+      toast('Export failed', 'error');
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  if (receiptsCount === 0) return null;
+
+  return (
+    <div className="rounded-xl border border-border bg-surface p-4">
+      <button
+        onClick={() => setShowPanel(!showPanel)}
+        className="w-full flex items-center justify-between text-sm"
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-lg">🧾</span>
+          <span className="font-medium text-text-primary">Tax Export</span>
+        </div>
+        <svg className={`w-4 h-4 text-text-secondary transition-transform ${showPanel ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {showPanel && (
+        <div className="mt-4 space-y-4">
+          <p className="text-xs text-text-secondary">Filter by date range (optional) then export all receipts as CSV or ZIP with images.</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-text-secondary mb-1">From</label>
+              <input type="date" value={from} onChange={(e) => setFrom(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary text-sm focus:outline-none focus:border-primary" />
+            </div>
+            <div>
+              <label className="block text-xs text-text-secondary mb-1">To</label>
+              <input type="date" value={to} onChange={(e) => setTo(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary text-sm focus:outline-none focus:border-primary" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <button onClick={() => handleExport('csv')} disabled={exporting !== null}
+              className="py-2.5 rounded-lg border border-border text-sm text-text-primary hover:border-primary transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
+              {exporting === 'csv' ? <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg> : '📄'}
+              CSV Summary
+            </button>
+            <button onClick={() => handleExport('zip')} disabled={exporting !== null}
+              className="py-2.5 rounded-lg bg-primary text-background text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
+              {exporting === 'zip' ? <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg> : '📦'}
+              ZIP + Images
+            </button>
+          </div>
+          <p className="text-[10px] text-text-secondary">ZIP includes all receipt images + CSV. May take a moment for large collections.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ReceiptCapture
 // ---------------------------------------------------------------------------
 
 interface ReceiptCaptureProps {
