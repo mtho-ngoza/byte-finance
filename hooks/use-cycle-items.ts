@@ -233,7 +233,7 @@ export function useCycleItems(cycleId: string | null): UseCycleItemsResult {
 
       const now = Timestamp.now();
       const paymentId = `pay-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-      const newPayment = { id: paymentId, amount: paymentAmount, date: now, note: note ?? null };
+      const newPayment = { id: paymentId, amount: paymentAmount, date: now, note: note ?? undefined };
       const newTotal = (item.totalPaidAmount ?? 0) + paymentAmount;
       const newStatus: CycleItemStatus = newTotal >= item.amount ? 'paid' : 'partial';
 
