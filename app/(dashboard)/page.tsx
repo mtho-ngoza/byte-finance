@@ -10,6 +10,7 @@ import { useUserProfile } from '@/hooks/use-user-profile';
 import { useAppStore } from '@/stores/app-store';
 import { FilterBar } from '@/components/shared/filter-bar';
 import { AmountDisplay } from '@/components/shared/amount-display';
+import { useToast } from '@/components/shared/toast';
 import type { CycleItem, CycleItemStatus, Goal, Insight } from '@/types';
 
 export default function DashboardPage() {
@@ -470,6 +471,7 @@ function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete }: CycleI
   // Actual amount prompt for variable items
   const [showActualPrompt, setShowActualPrompt] = useState(false);
   const [actualValue, setActualValue] = useState('');
+  const { toast, confirm } = useToast();
 
   const isSkipped = item.status === 'skipped';
   const isPaid = item.status === 'paid';
@@ -539,10 +541,12 @@ function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete }: CycleI
     }
   };
 
-  const handleDelete = async () => {
-    if (!confirm('Delete this item?')) return;
-    setShowMenu(false);
-    await onDelete(item.id);
+  const handleDelete = () => {
+    confirm('This will permanently delete the item.', async () => {
+      setShowMenu(false);
+      await onDelete(item.id);
+      toast('Item deleted', 'success');
+    }, { title: 'Delete Item', confirmLabel: 'Delete', danger: true });
   };
 
   return (

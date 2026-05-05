@@ -8,6 +8,7 @@ import { useUserId } from '@/hooks/use-user-id';
 import { useUserProfile } from '@/hooks/use-user-profile';
 import { Skeleton } from '@/components/shared/skeleton';
 import { useSage } from '@/hooks/use-sage';
+import { useToast } from '@/components/shared/toast';
 
 // ---------------------------------------------------------------------------
 // Sage Business Cloud Connection Component
@@ -16,6 +17,7 @@ import { useSage } from '@/hooks/use-sage';
 function SageConnection() {
   const { connectionStatus, statusLoading, connect, disconnect } = useSage();
   const [disconnecting, setDisconnecting] = useState(false);
+  const { toast, confirm } = useToast();
 
   // Show success/error banners from OAuth redirect query params
   const [banner, setBanner] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -37,18 +39,19 @@ function SageConnection() {
     }
   }, []);
 
-  const handleDisconnect = async () => {
-    if (!confirm('Disconnect Sage Business Cloud? You can reconnect at any time.')) return;
-    setDisconnecting(true);
-    try {
-      await disconnect();
-      setBanner({ type: 'success', message: 'Sage disconnected.' });
-    } catch (err) {
-      console.error(err);
-      setBanner({ type: 'error', message: 'Failed to disconnect Sage. Please try again.' });
-    } finally {
-      setDisconnecting(false);
-    }
+  const handleDisconnect = () => {
+    confirm('You can reconnect at any time.', async () => {
+      setDisconnecting(true);
+      try {
+        await disconnect();
+        setBanner({ type: 'success', message: 'Sage disconnected.' });
+      } catch (err) {
+        console.error(err);
+        setBanner({ type: 'error', message: 'Failed to disconnect Sage. Please try again.' });
+      } finally {
+        setDisconnecting(false);
+      }
+    }, { title: 'Disconnect Sage Business Cloud', confirmLabel: 'Disconnect', danger: true });
   };
 
   if (statusLoading) {
@@ -200,6 +203,7 @@ function VatConfig() {
 
 function ExportData() {
   const [exporting, setExporting] = useState<'json' | 'csv' | null>(null);
+  const { toast } = useToast();
 
   const handleExport = async (format: 'json' | 'csv') => {
     setExporting(format);
@@ -218,7 +222,7 @@ function ExportData() {
       URL.revokeObjectURL(url);
     } catch (err) {
       console.error('Export failed:', err);
-      alert('Export failed. Please try again.');
+      toast('Export failed. Please try again.', 'error');
     } finally {
       setExporting(null);
     }

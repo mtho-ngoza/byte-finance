@@ -27,6 +27,7 @@ import { useCycles } from '@/hooks/use-cycles';
 import { useUserProfile } from '@/hooks/use-user-profile';
 import { AmountDisplay } from '@/components/shared/amount-display';
 import { CurrencyInput } from '@/components/shared/currency-input';
+import { useToast } from '@/components/shared/toast';
 import type { CycleItem, CycleItemStatus, Category, Cycle } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -371,6 +372,7 @@ function SortableItemRow({ item, cycleId, userId, onStatusChange, onAmountChange
   const [showMenu, setShowMenu] = useState(false);
   const [editingItem, setEditingItem] = useState(false);
   const [attachingReceipt, setAttachingReceipt] = useState(false);
+  const { toast, confirm } = useToast();
 
   const isPaid = item.status === 'paid';
   const isSkipped = item.status === 'skipped';
@@ -397,14 +399,17 @@ function SortableItemRow({ item, cycleId, userId, onStatusChange, onAmountChange
     }
   };
 
-  const handleDelete = async () => {
-    if (!userId || !confirm('Delete this item?')) return;
+  const handleDelete = () => {
+    if (!userId) return;
     setShowMenu(false);
-    try {
-      await deleteDoc(doc(db, `users/${userId}/cycleItems`, item.id));
-    } catch (err) {
-      console.error('Delete failed:', err);
-    }
+    confirm('This will permanently delete the item.', async () => {
+      try {
+        await deleteDoc(doc(db, `users/${userId}/cycleItems`, item.id));
+        toast('Item deleted', 'success');
+      } catch (err) {
+        console.error('Delete failed:', err);
+      }
+    }, { title: 'Delete Item', confirmLabel: 'Delete', danger: true });
   };
 
   const handleAmountClick = () => {

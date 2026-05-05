@@ -3,10 +3,12 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useGoals, GoalWithComputed } from '@/hooks/use-goals';
+import { useToast } from '@/components/shared/toast';
 
 export default function GoalsPage() {
   const { goals, loading, activeGoals, goalsByType, totalProgress, totalTarget, commitments } = useGoals();
   const [showForm, setShowForm] = useState(false);
+  const { toast, confirm } = useToast();
 
   const formatAmount = (cents: number) => {
     return `R${(cents / 100).toLocaleString('en-ZA', { minimumFractionDigits: 0 })}`;
@@ -39,9 +41,11 @@ export default function GoalsPage() {
     setShowForm(false);
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Delete this goal?')) return;
-    await fetch(`/api/goals/${id}`, { method: 'DELETE' });
+  const handleDelete = (id: string) => {
+    confirm('This will permanently delete the goal.', async () => {
+      await fetch(`/api/goals/${id}`, { method: 'DELETE' });
+      toast('Goal deleted', 'success');
+    }, { title: 'Delete Goal', confirmLabel: 'Delete', danger: true });
   };
 
   if (loading) {

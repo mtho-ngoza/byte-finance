@@ -6,6 +6,7 @@ import { useCommitments } from '@/hooks/use-commitments';
 import { useGoals, GoalWithComputed } from '@/hooks/use-goals';
 import { AmountDisplay } from '@/components/shared/amount-display';
 import { CurrencyInput } from '@/components/shared/currency-input';
+import { useToast } from '@/components/shared/toast';
 import type { Category, Commitment } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -47,6 +48,7 @@ export default function PlanPage() {
   const [showCommitmentForm, setShowCommitmentForm] = useState(false);
   const [showGoalForm, setShowGoalForm] = useState(false);
   const [editingCommitment, setEditingCommitment] = useState<Commitment | null>(null);
+  const { toast, confirm } = useToast();
 
   const loading = commitmentsLoading || goalsLoading;
 
@@ -136,8 +138,10 @@ export default function PlanPage() {
                   goals={activeGoals}
                   onEdit={setEditingCommitment}
                   onDelete={async (id) => {
-                    if (!confirm('Delete this commitment?')) return;
-                    await fetch(`/api/commitments/${id}`, { method: 'DELETE' });
+                    confirm('This will permanently delete the commitment.', async () => {
+                      await fetch(`/api/commitments/${id}`, { method: 'DELETE' });
+                      toast('Commitment deleted', 'success');
+                    }, { title: 'Delete Commitment', confirmLabel: 'Delete', danger: true });
                   }}
                 />
               );
@@ -188,8 +192,10 @@ export default function PlanPage() {
                 key={goal.id}
                 goal={goal}
                 onDelete={async (id) => {
-                  if (!confirm('Delete this goal?')) return;
-                  await fetch(`/api/goals/${id}`, { method: 'DELETE' });
+                  confirm('This will permanently delete the goal.', async () => {
+                    await fetch(`/api/goals/${id}`, { method: 'DELETE' });
+                    toast('Goal deleted', 'success');
+                  }, { title: 'Delete Goal', confirmLabel: 'Delete', danger: true });
                 }}
               />
             ))}

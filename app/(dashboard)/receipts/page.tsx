@@ -8,6 +8,7 @@ import { useReceiptQueue } from '@/hooks/use-receipt-queue';
 import { useReceiptUpload } from '@/hooks/use-receipt-upload';
 import { AmountDisplay } from '@/components/shared/amount-display';
 import { CurrencyInput } from '@/components/shared/currency-input';
+import { useToast } from '@/components/shared/toast';
 import type { Receipt, PendingReceipt } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -224,6 +225,7 @@ interface ReceiptCaptureProps {
 function ReceiptCapture({ onClose }: ReceiptCaptureProps) {
   const { location, getSuggestedVendors } = useGeolocation();
   const { upload, status: uploadStatus, isUploading: saving } = useReceiptUpload();
+  const { toast, confirm } = useToast();
 
   const [step, setStep] = useState<'camera' | 'form'>('camera');
   const [imageData, setImageData] = useState<string | null>(null);
@@ -251,7 +253,7 @@ function ReceiptCapture({ onClose }: ReceiptCaptureProps) {
       }
     } catch (err) {
       console.error('Camera error:', err);
-      alert('Could not access camera. Please grant permission.');
+      toast('Could not access camera. Please grant permission.', 'error');
     }
   }, []);
 
@@ -317,7 +319,7 @@ function ReceiptCapture({ onClose }: ReceiptCaptureProps) {
     });
 
     if (!result.success && result.error) {
-      alert(result.error);
+      toast(result.error, 'error');
     }
 
     onClose();
@@ -494,6 +496,7 @@ function ReceiptDetail({ receipt, onClose, onDelete }: ReceiptDetailProps) {
   const [note, setNote] = useState(receipt.note ?? '');
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const { toast, confirm } = useToast();
 
   const capturedAt = receipt.capturedAt
     ? new Date(typeof receipt.capturedAt === 'string' ? receipt.capturedAt : receipt.capturedAt.toDate()).toLocaleString('en-ZA')
@@ -510,22 +513,23 @@ function ReceiptDetail({ receipt, onClose, onDelete }: ReceiptDetailProps) {
       setEditing(false);
     } catch (err) {
       console.error('Update error:', err);
-      alert('Failed to update receipt.');
+      toast('Failed to update receipt.', 'error');
     } finally {
       setSaving(false);
     }
   };
 
-  const handleDelete = async () => {
-    if (!confirm('Delete this receipt?')) return;
-    setDeleting(true);
-    try {
-      await onDelete();
-    } catch (err) {
-      console.error('Delete error:', err);
-      alert('Failed to delete receipt.');
-      setDeleting(false);
-    }
+  const handleDelete = () => {
+    confirm('This will permanently delete the receipt.', async () => {
+      setDeleting(true);
+      try {
+        await onDelete();
+      } catch (err) {
+        console.error('Delete error:', err);
+        toast('Failed to delete receipt.', 'error');
+        setDeleting(false);
+      }
+    }, { title: 'Delete Receipt', confirmLabel: 'Delete', danger: true });
   };
 
   return (

@@ -6,6 +6,7 @@ import { useReceipts } from '@/hooks/use-receipts';
 import { useSage, type SageMatch } from '@/hooks/use-sage';
 import { AmountDisplay } from '@/components/shared/amount-display';
 import { CurrencyInput } from '@/components/shared/currency-input';
+import { useToast } from '@/components/shared/toast';
 import type { Receipt } from '@/types';
 
 interface ReceiptDetailPageProps {
@@ -24,6 +25,8 @@ export default function ReceiptDetailPage({ params }: ReceiptDetailPageProps) {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [zoomed, setZoomed] = useState(false);
+
+  const { toast, confirm } = useToast();
 
   // Sage integration state
   const { connectionStatus, findMatches, pushToSage } = useSage();
@@ -70,24 +73,26 @@ export default function ReceiptDetailPage({ params }: ReceiptDetailPageProps) {
       setEditing(false);
     } catch (err) {
       console.error('Update error:', err);
-      alert('Failed to update receipt.');
+      toast('Failed to update receipt.', 'error');
     } finally {
       setSaving(false);
     }
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!receipt) return;
-    if (!confirm('Delete this receipt? This cannot be undone.')) return;
-    setDeleting(true);
-    try {
-      await deleteReceipt(receipt.id);
-      router.push('/receipts');
-    } catch (err) {
-      console.error('Delete error:', err);
-      alert('Failed to delete receipt.');
-      setDeleting(false);
-    }
+    confirm('This will permanently delete the receipt.', async () => {
+      setDeleting(true);
+      try {
+        await deleteReceipt(receipt.id);
+        router.push('/receipts');
+        toast('Receipt deleted', 'success');
+      } catch (err) {
+        console.error('Delete error:', err);
+        toast('Failed to delete receipt.', 'error');
+        setDeleting(false);
+      }
+    }, { title: 'Delete Receipt', confirmLabel: 'Delete', danger: true });
   };
 
   const handleFindMatches = async () => {
