@@ -16,9 +16,10 @@ export type Category =
   | 'other';
 
 /**
- * Status flow for cycle items: upcoming → due → paid (or skipped)
+ * Status flow for cycle items: upcoming → due → partial → paid (or skipped)
+ * partial = some payments made but committed amount not fully covered
  */
-export type CycleItemStatus = 'upcoming' | 'due' | 'paid' | 'skipped';
+export type CycleItemStatus = 'upcoming' | 'due' | 'partial' | 'paid' | 'skipped';
 
 /**
  * User profile with preferences
@@ -185,6 +186,15 @@ export interface CycleItem {
   // Timing
   dueDate?: Timestamp;
   paidDate?: Timestamp;
+
+  // Partial payments — multiple spend entries against one committed item
+  payments?: Array<{
+    id: string;
+    amount: number;                 // cents paid in this transaction
+    date: Timestamp;
+    note?: string;
+  }>;
+  totalPaidAmount?: number;         // Denormalized sum of payments in cents
 
   // Smart linking
   linkedGoalId?: string;

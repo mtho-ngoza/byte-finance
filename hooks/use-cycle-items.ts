@@ -21,18 +21,15 @@ import type { CycleItem, CycleItemStatus, Category } from '@/types';
 interface UseCycleItemsResult {
   items: CycleItem[];
   loading: boolean;
-  /** Items grouped by category */
   itemsByCategory: Map<Category, CycleItem[]>;
-  /** Items that need attention (due or overdue) */
   attentionItems: CycleItem[];
-  /** Total committed amount in cents */
   totalCommitted: number;
-  /** Total paid amount in cents (uses actualAmount when set) */
+  /** Total paid amount in cents (uses payments sum or actualAmount when set) */
   totalPaid: number;
-  /** Update item status with optimistic update */
   updateStatus: (itemId: string, status: CycleItemStatus, actualAmount?: number) => Promise<void>;
-  /** Update item committed amount with optimistic update */
   updateAmount: (itemId: string, newAmount: number) => Promise<void>;
+  /** Add a partial payment to a variable item */
+  addPayment: (itemId: string, paymentAmount: number, note?: string) => Promise<void>;
 }
 
 export function useCycleItems(cycleId: string | null): UseCycleItemsResult {
@@ -86,11 +83,14 @@ export function useCycleItems(cycleId: string | null): UseCycleItemsResult {
   // Items needing attention (due status)
   const attentionItems = items.filter((item) => item.status === 'due');
 
-  // Totals — use actualAmount for paid variable items when set
+  // Totals — use payments sum when available, else actualAmount, else committed amount
   const totalCommitted = items.reduce((sum, i) => sum + i.amount, 0);
   const totalPaid = items
-    .filter((i) => i.status === 'paid')
-    .reduce((sum, i) => sum + (i.actualAmount ?? i.amount), 0);
+    .filter((i) => i.status === 'paid' || i.status === 'partial')
+    .reduce((sum, i) => {
+      if (i.totalPaidAmount !== undefined) return sum + i.totalPaidAmount;
+      return sum + (i.actualAmount ?? i.amount);
+    }, 0);
 
   // Update status with optimistic update and smart linking
   const updateStatus = useCallback(
@@ -224,6 +224,46 @@ export function useCycleItems(cycleId: string | null): UseCycleItemsResult {
     [userId, cycleId, items, setOptimisticItem, removeOptimisticItem]
   );
 
+  // Add a partial payment to a variable item
+  const addPayment = useCallback(
+    async (itemId: string, paymentAmount: number, note?: string) => {
+      if (!userId || !cycleId) return;
+      const item = items.find((i) => i.id === itemId);
+      if (!item) return;
+
+      const now = Timestamp.now();
+      const paymentId = `pay-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      const newPayment = { id: paymentId, amount: paymentAmount, date: now, note: note ?? null };
+      const newTotal = (item.totalPaidAmount ?? 0) + paymentAmount;
+      const newStatus: CycleItemStatus = newTotal >= item.amount ? 'paid' : 'partial';
+
+      // Optimistic update
+      const optimisticItem: CycleItem = {
+        ...item,
+        payments: [...(item.payments ?? []), newPayment],
+        totalPaidAmount: newTotal,
+        status: newStatus,
+        paidDate: newStatus === 'paid' ? now : undefined,
+        updatedAt: now,
+      };
+      setOptimisticItem(itemId, optimisticItem);
+
+      try {
+        const res = await fetch(`/api/cycle-items/${itemId}/pay`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ amount: paymentAmount, note }),
+        });
+        if (!res.ok) throw new Error('Payment failed');
+        removeOptimisticItem(itemId);
+      } catch (error) {
+        removeOptimisticItem(itemId);
+        throw error;
+      }
+    },
+    [userId, cycleId, items, setOptimisticItem, removeOptimisticItem]
+  );
+
   return {
     items,
     loading,
@@ -233,5 +273,6 @@ export function useCycleItems(cycleId: string | null): UseCycleItemsResult {
     totalPaid,
     updateStatus,
     updateAmount,
+    addPayment,
   };
 }

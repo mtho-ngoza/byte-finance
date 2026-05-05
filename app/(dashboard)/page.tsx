@@ -130,6 +130,7 @@ export default function DashboardPage() {
     totalPaid,
     updateStatus,
     updateAmount,
+    addPayment,
   } = useCycleItems(currentCycle?.id ?? null);
 
   // Delete item handler
@@ -166,6 +167,7 @@ export default function DashboardPage() {
   // Group items by status
   const dueItems = items.filter((i) => i.status === 'due');
   const upcomingItems = items.filter((i) => i.status === 'upcoming');
+  const partialItems = items.filter((i) => i.status === 'partial');
   const paidItems = items.filter((i) => i.status === 'paid');
   const skippedItems = items.filter((i) => i.status === 'skipped');
 
@@ -334,7 +336,7 @@ export default function DashboardPage() {
           </h3>
           <div className="space-y-2">
             {dueItems.map((item) => (
-              <CycleItemRow key={item.id} item={item} onStatusChange={updateStatus} onAmountChange={updateAmount} onDelete={deleteItem} />
+              <CycleItemRow key={item.id} item={item} onStatusChange={updateStatus} onAmountChange={updateAmount} onDelete={deleteItem} onAddPayment={addPayment} />
             ))}
           </div>
         </section>
@@ -348,7 +350,25 @@ export default function DashboardPage() {
           </h3>
           <div className="space-y-2">
             {upcomingItems.map((item) => (
-              <CycleItemRow key={item.id} item={item} onStatusChange={updateStatus} onAmountChange={updateAmount} onDelete={deleteItem} />
+              <CycleItemRow key={item.id} item={item} onStatusChange={updateStatus} onAmountChange={updateAmount} onDelete={deleteItem} onAddPayment={addPayment} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Partial Items — in progress */}
+      {partialItems.length > 0 && (
+        <section>
+          <h3 className="text-sm font-medium text-warning mb-2 flex items-center gap-1.5">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 16 16">
+              <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.5" />
+              <path d="M5 8h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+            In Progress ({partialItems.length})
+          </h3>
+          <div className="space-y-2">
+            {partialItems.map((item) => (
+              <CycleItemRow key={item.id} item={item} onStatusChange={updateStatus} onAmountChange={updateAmount} onDelete={deleteItem} onAddPayment={addPayment} />
             ))}
           </div>
         </section>
@@ -366,7 +386,7 @@ export default function DashboardPage() {
           </h3>
           <div className="space-y-2">
             {paidItems.map((item) => (
-              <CycleItemRow key={item.id} item={item} onStatusChange={updateStatus} onAmountChange={updateAmount} onDelete={deleteItem} />
+              <CycleItemRow key={item.id} item={item} onStatusChange={updateStatus} onAmountChange={updateAmount} onDelete={deleteItem} onAddPayment={addPayment} />
             ))}
           </div>
         </section>
@@ -380,7 +400,7 @@ export default function DashboardPage() {
           </h3>
           <div className="space-y-2 opacity-60">
             {skippedItems.map((item) => (
-              <CycleItemRow key={item.id} item={item} onStatusChange={updateStatus} onAmountChange={updateAmount} onDelete={deleteItem} />
+              <CycleItemRow key={item.id} item={item} onStatusChange={updateStatus} onAmountChange={updateAmount} onDelete={deleteItem} onAddPayment={addPayment} />
             ))}
           </div>
         </section>
@@ -461,42 +481,45 @@ interface CycleItemRowProps {
   onStatusChange: (id: string, status: CycleItemStatus, actualAmount?: number) => Promise<void>;
   onAmountChange: (id: string, amount: number) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
+  onAddPayment: (id: string, amount: number, note?: string) => Promise<void>;
 }
 
-function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete }: CycleItemRowProps) {
+function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete, onAddPayment }: CycleItemRowProps) {
   const [loading, setLoading] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
   const [showMenu, setShowMenu] = useState(false);
-  // Actual amount prompt for variable items
-  const [showActualPrompt, setShowActualPrompt] = useState(false);
-  const [actualValue, setActualValue] = useState('');
+  const [showPaymentPrompt, setShowPaymentPrompt] = useState(false);
+  const [paymentValue, setPaymentValue] = useState('');
+  const [paymentNote, setPaymentNote] = useState('');
   const { toast, confirm } = useToast();
 
   const isSkipped = item.status === 'skipped';
   const isPaid = item.status === 'paid';
+  const isPartial = item.status === 'partial';
   const isDue = item.status === 'due';
-  const hasVariance = isPaid && item.actualAmount !== undefined && item.actualAmount !== item.amount;
+  const totalPaidSoFar = item.totalPaidAmount ?? 0;
+  const remaining = item.amount - totalPaidSoFar;
 
   const handleToggle = async () => {
-    if (item.status === 'paid') {
-      // Unpaying — no prompt needed
+    if (isPaid) {
       setLoading(true);
       try { await onStatusChange(item.id, 'upcoming'); } finally { setLoading(false); }
       return;
     }
-    // Marking paid — show actual amount prompt
-    setActualValue((item.amount / 100).toFixed(2));
-    setShowActualPrompt(true);
+    // Open payment prompt for all items
+    setPaymentValue((remaining / 100).toFixed(2));
+    setPaymentNote('');
+    setShowPaymentPrompt(true);
   };
 
-  const handleConfirmPaid = async () => {
-    setShowActualPrompt(false);
+  const handleConfirmPayment = async () => {
+    setShowPaymentPrompt(false);
     setLoading(true);
     try {
-      const actual = Math.round(parseFloat(actualValue) * 100);
-      const actualAmount = !isNaN(actual) && actual >= 0 ? actual : undefined;
-      await onStatusChange(item.id, 'paid', actualAmount);
+      const amt = Math.round(parseFloat(paymentValue) * 100);
+      if (isNaN(amt) || amt <= 0) return;
+      await onAddPayment(item.id, amt, paymentNote.trim() || undefined);
     } finally {
       setLoading(false);
     }
@@ -564,14 +587,19 @@ function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete }: CycleI
         className={`w-5 h-5 rounded border-2 shrink-0 flex items-center justify-center transition-colors disabled:opacity-50 ${
           isPaid
             ? 'bg-primary border-primary'
+            : isPartial
+            ? 'bg-warning/20 border-warning'
             : 'bg-transparent border-border hover:border-primary'
         }`}
-        aria-label={isPaid ? 'Mark as unpaid' : 'Mark as paid'}
+        aria-label={isPaid ? 'Mark as unpaid' : 'Add payment'}
       >
         {isPaid && (
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="black" strokeWidth="2">
             <polyline points="1.5,5 4,7.5 8.5,2.5" />
           </svg>
+        )}
+        {isPartial && (
+          <span className="text-warning text-[8px] font-bold leading-none">+</span>
         )}
       </button>
 
@@ -616,12 +644,10 @@ function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete }: CycleI
           className={`hover:bg-background px-2 py-1 rounded transition-colors text-right ${isPaid || isSkipped ? 'opacity-50' : ''}`}
           title="Click to edit committed amount"
         >
-          {hasVariance ? (
+          {isPartial ? (
             <div>
-              <AmountDisplay amount={item.actualAmount!} size="sm" className="text-primary" />
-              <p className="text-[10px] text-text-secondary line-through">
-                {(item.amount / 100).toLocaleString('en-ZA', { style: 'currency', currency: 'ZAR' }).replace('ZAR', 'R')}
-              </p>
+              <AmountDisplay amount={totalPaidSoFar} size="sm" className="text-warning" />
+              <p className="text-[10px] text-text-secondary">of <span className="font-mono">R{(item.amount / 100).toFixed(0)}</span></p>
             </div>
           ) : (
             <AmountDisplay amount={item.amount} size="sm" />
@@ -629,41 +655,52 @@ function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete }: CycleI
         </button>
       )}
 
-      {/* Actual amount prompt */}
-      {showActualPrompt && (
+      {/* Payment prompt */}
+      {showPaymentPrompt && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-surface border border-border rounded-xl w-full max-w-xs p-4 space-y-4">
             <div>
-              <h3 className="text-sm font-semibold text-text-primary">How much did you spend?</h3>
+              <h3 className="text-sm font-semibold text-text-primary">Add Payment — {item.label}</h3>
               <p className="text-xs text-text-secondary mt-1">
-                Committed: R{(item.amount / 100).toFixed(2)} · Change if actual differs
+                {isPartial
+                  ? `Paid R${(totalPaidSoFar / 100).toFixed(2)} · R${(remaining / 100).toFixed(2)} remaining`
+                  : `Committed: R${(item.amount / 100).toFixed(2)}`}
               </p>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-text-secondary font-mono">R</span>
+            <div>
+              <label className="block text-xs text-text-secondary mb-1">Amount paid (R)</label>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-text-secondary font-mono">R</span>
+                <input
+                  type="number"
+                  value={paymentValue}
+                  onChange={(e) => setPaymentValue(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleConfirmPayment(); if (e.key === 'Escape') setShowPaymentPrompt(false); }}
+                  autoFocus
+                  step="0.01"
+                  min="0"
+                  className="flex-1 px-3 py-2 text-sm rounded-lg border border-primary bg-background text-text-primary focus:outline-none font-mono"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs text-text-secondary mb-1">Note (optional)</label>
               <input
-                type="number"
-                value={actualValue}
-                onChange={(e) => setActualValue(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') handleConfirmPaid(); if (e.key === 'Escape') setShowActualPrompt(false); }}
-                autoFocus
-                step="0.01"
-                min="0"
-                className="flex-1 px-3 py-2 text-sm rounded-lg border border-primary bg-background text-text-primary focus:outline-none font-mono"
+                type="text"
+                value={paymentNote}
+                onChange={(e) => setPaymentNote(e.target.value)}
+                placeholder="e.g. Engen Sandton"
+                className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background text-text-primary focus:outline-none focus:border-primary"
               />
             </div>
             <div className="flex gap-2">
-              <button
-                onClick={() => setShowActualPrompt(false)}
-                className="flex-1 py-2 rounded-lg border border-border text-text-secondary text-sm"
-              >
+              <button onClick={() => setShowPaymentPrompt(false)}
+                className="flex-1 py-2 rounded-lg border border-border text-text-secondary text-sm">
                 Cancel
               </button>
-              <button
-                onClick={handleConfirmPaid}
-                className="flex-1 py-2 rounded-lg bg-primary text-background font-medium text-sm"
-              >
-                Mark Paid
+              <button onClick={handleConfirmPayment}
+                className="flex-1 py-2 rounded-lg bg-primary text-background font-medium text-sm">
+                Add Payment
               </button>
             </div>
           </div>
@@ -915,3 +952,4 @@ function InsightCard({ insight, onDismiss, onSnooze }: InsightCardProps) {
     </div>
   );
 }
+
