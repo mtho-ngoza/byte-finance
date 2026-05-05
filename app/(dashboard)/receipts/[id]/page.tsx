@@ -25,6 +25,7 @@ export default function ReceiptDetailPage({ params }: ReceiptDetailPageProps) {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [zoomed, setZoomed] = useState(false);
+  const [extracting, setExtracting] = useState(false);
 
   const { toast, confirm } = useToast();
 
@@ -79,8 +80,30 @@ export default function ReceiptDetailPage({ params }: ReceiptDetailPageProps) {
     }
   };
 
-  const handleDelete = () => {
+  const handleExtract = async () => {
     if (!receipt) return;
+    setExtracting(true);
+    try {
+      const res = await fetch('/api/receipts/extract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ receiptId: receipt.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) { toast(data.error ?? 'Extraction failed', 'error'); return; }
+      if (data.amountInCents) setAmount(data.amountInCents);
+      if (data.vendor) setVendor(data.vendor);
+      if (!editing) setEditing(true);
+      const conf = data.confidence === 'high' ? 'High confidence' : data.confidence === 'medium' ? 'Medium confidence — review' : 'Low confidence — please review';
+      toast(`${data.vendor ?? '?'} · R${((data.amountInCents ?? 0) / 100).toFixed(2)} · ${conf}`, 'info', 5000);
+    } catch {
+      toast('Failed to extract receipt data', 'error');
+    } finally {
+      setExtracting(false);
+    }
+  };
+
+  const handleDelete = () => {
     confirm('This will permanently delete the receipt.', async () => {
       setDeleting(true);
       try {
@@ -171,6 +194,27 @@ export default function ReceiptDetailPage({ params }: ReceiptDetailPageProps) {
           <span className="text-sm">Receipts</span>
         </button>
         <div className="flex items-center gap-2">
+          {/* Extract with AI button */}
+          {imageUrl && (
+            <button
+              onClick={handleExtract}
+              disabled={extracting}
+              className="w-9 h-9 flex items-center justify-center rounded-lg border border-border text-text-secondary hover:text-primary hover:border-primary transition-colors disabled:opacity-50"
+              aria-label="Extract with AI"
+              title="Extract amount & vendor with AI"
+            >
+              {extracting ? (
+                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+              ) : (
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                </svg>
+              )}
+            </button>
+          )}
           {/* Download button */}
           {imageUrl && (
             <a
