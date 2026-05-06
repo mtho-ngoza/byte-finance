@@ -640,7 +640,10 @@ function SortableItemRow({ item, cycleId, userId, onStatusChange, onAmountChange
           cycleId={cycleId}
           userId={userId}
           onClose={() => setAttachingReceipt(false)}
-          onAttached={() => { setAttachingReceipt(false); toast('Receipt attached', 'success'); }}
+          onAttached={(detached) => {
+            setAttachingReceipt(false);
+            toast(detached ? 'Receipt detached' : 'Receipt attached', 'success');
+          }}
         />
       )}
     </>
@@ -773,11 +776,10 @@ interface ReceiptPickerModalProps {
   cycleId: string;
   userId: string;
   onClose: () => void;
-  onAttached: () => void;
+  onAttached: (detached: boolean) => void;
 }
 
-function ReceiptPickerModal({ item, cycleId, userId, onClose, onAttached }: ReceiptPickerModalProps) {
-  const hasPayments = (item.payments?.length ?? 0) > 0;
+function ReceiptPickerModal({ item, cycleId, userId, onClose, onAttached }: ReceiptPickerModalProps) {  const hasPayments = (item.payments?.length ?? 0) > 0;
   const [selectedPaymentId, setSelectedPaymentId] = useState<string | null>(
     hasPayments ? null : '__item__'
   );
@@ -792,37 +794,55 @@ function ReceiptPickerModal({ item, cycleId, userId, onClose, onAttached }: Rece
       .catch(() => setLoading(false));
   }, []);
 
-  // Attach receipt to a specific payment entry
+  // Attach (or detach if already selected) a receipt to a specific payment entry
   const handleAttachToPayment = async (receiptId: string) => {
     if (!selectedPaymentId) return;
     setAttaching(true);
+
+    const isDetach = receiptId === currentReceiptId;
+
     try {
       const itemRef = doc(db, `users/${userId}/cycleItems`, item.id);
 
       if (selectedPaymentId === '__item__') {
-        // Item-level attach (no payments)
-        await fetch(`/api/receipts/${receiptId}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cycleItemId: item.id, cycleId }),
-        });
-        await updateDoc(itemRef, { receiptId, updatedAt: Timestamp.now() });
+        // Item-level attach/detach (no payments)
+        if (isDetach) {
+          await updateDoc(itemRef, { receiptId: null, updatedAt: Timestamp.now() });
+          await fetch(`/api/receipts/${receiptId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cycleItemId: null, cycleId: null }),
+          });
+        } else {
+          await fetch(`/api/receipts/${receiptId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cycleItemId: item.id, cycleId }),
+          });
+          await updateDoc(itemRef, { receiptId, updatedAt: Timestamp.now() });
+        }
       } else {
-        // Payment-level attach — update the specific payment in the array
+        // Payment-level attach/detach
         const updatedPayments = (item.payments ?? []).map((p: PaymentEntry) =>
-          p.id === selectedPaymentId ? { ...p, receiptId } : p
+          p.id === selectedPaymentId
+            ? { ...p, receiptId: isDetach ? undefined : receiptId }
+            : p
         );
         await updateDoc(itemRef, { payments: updatedPayments, updatedAt: Timestamp.now() });
-        // Also mark the receipt as linked so it doesn't show as unlinked
         await fetch(`/api/receipts/${receiptId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cycleItemId: item.id, cycleId }),
+          body: JSON.stringify(
+            isDetach
+              ? { cycleItemId: null, cycleId: null }
+              : { cycleItemId: item.id, cycleId }
+          ),
         });
       }
-      onAttached();
+
+      onAttached(isDetach);
     } catch (err) {
-      console.error('Attach failed:', err);
+      console.error('Attach/detach failed:', err);
     } finally {
       setAttaching(false);
     }
@@ -927,10 +947,13 @@ function ReceiptPickerModal({ item, cycleId, userId, onClose, onAttached }: Rece
                           </div>
                         )}
                         {isSelected && (
-                          <div className="absolute top-1 right-1 w-5 h-5 bg-primary rounded-full flex items-center justify-center">
-                            <svg className="w-3 h-3 text-black" fill="none" viewBox="0 0 12 12" stroke="currentColor" strokeWidth="2">
-                              <polyline points="1.5,6 4.5,9 10.5,3" />
-                            </svg>
+                          <div className="absolute inset-0 bg-primary/10 flex flex-col items-center justify-center gap-1">
+                            <div className="w-5 h-5 bg-primary rounded-full flex items-center justify-center">
+                              <svg className="w-3 h-3 text-black" fill="none" viewBox="0 0 12 12" stroke="currentColor" strokeWidth="2">
+                                <polyline points="1.5,6 4.5,9 10.5,3" />
+                              </svg>
+                            </div>
+                            <span className="text-[9px] text-primary font-medium">tap to remove</span>
                           </div>
                         )}
                       </button>
