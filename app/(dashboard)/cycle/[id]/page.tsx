@@ -28,6 +28,7 @@ import { useUserProfile } from '@/hooks/use-user-profile';
 import { AmountDisplay } from '@/components/shared/amount-display';
 import { CurrencyInput } from '@/components/shared/currency-input';
 import { useToast } from '@/components/shared/toast';
+import { FloatingMenu } from '@/components/shared/floating-menu';
 import type { CycleItem, CycleItemStatus, Category, Cycle } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -369,7 +370,6 @@ function SortableItemRow({ item, cycleId, userId, onStatusChange, onAmountChange
   const [loading, setLoading] = useState(false);
   const [editingAmount, setEditingAmount] = useState(false);
   const [editValue, setEditValue] = useState('');
-  const [showMenu, setShowMenu] = useState(false);
   const [editingItem, setEditingItem] = useState(false);
   const [attachingReceipt, setAttachingReceipt] = useState(false);
   const { toast, confirm } = useToast();
@@ -390,7 +390,6 @@ function SortableItemRow({ item, cycleId, userId, onStatusChange, onAmountChange
 
   const handleSkip = async () => {
     setLoading(true);
-    setShowMenu(false);
     try {
       const newStatus: CycleItemStatus = isSkipped ? 'upcoming' : 'skipped';
       await onStatusChange(item.id, newStatus);
@@ -401,7 +400,6 @@ function SortableItemRow({ item, cycleId, userId, onStatusChange, onAmountChange
 
   const handleDelete = () => {
     if (!userId) return;
-    setShowMenu(false);
     confirm('This will permanently delete the item.', async () => {
       try {
         await deleteDoc(doc(db, `users/${userId}/cycleItems`, item.id));
@@ -535,73 +533,59 @@ function SortableItemRow({ item, cycleId, userId, onStatusChange, onAmountChange
         )}
 
         {/* Menu button */}
-        <div className="relative">
+        <FloatingMenu
+          trigger={
+            <button
+              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-background text-text-secondary hover:text-text-primary transition-colors"
+              aria-label="Item menu"
+            >
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 16 16">
+                <circle cx="8" cy="3" r="1.5" />
+                <circle cx="8" cy="8" r="1.5" />
+                <circle cx="8" cy="13" r="1.5" />
+              </svg>
+            </button>
+          }
+        >
           <button
-            onClick={() => setShowMenu(!showMenu)}
-            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-background text-text-secondary hover:text-text-primary transition-colors"
-            aria-label="Item menu"
+            onClick={() => setEditingItem(true)}
+            className="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-background transition-colors"
           >
-            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 16 16">
-              <circle cx="8" cy="3" r="1.5" />
-              <circle cx="8" cy="8" r="1.5" />
-              <circle cx="8" cy="13" r="1.5" />
-            </svg>
+            Edit
           </button>
-
-          {showMenu && (
-            <>
-              <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)} />
-              <div className="absolute right-0 top-full mt-1 w-36 bg-surface border border-border rounded-lg shadow-lg z-20 py-1">
-                <button
-                  onClick={() => {
-                    setShowMenu(false);
-                    setEditingItem(true);
-                  }}
-                  className="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-background transition-colors"
-                >
-                  Edit
-                </button>
-                <button
-                  onClick={() => {
-                    setShowMenu(false);
-                    setAttachingReceipt(true);
-                  }}
-                  className="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-background transition-colors"
-                >
-                  {item.receiptId ? 'Change receipt' : 'Attach receipt'}
-                </button>
-                {item.receiptId && (
-                  <button
-                    onClick={async () => {
-                      setShowMenu(false);
-                      if (!userId) return;
-                      const ref = doc(db, `users/${userId}/cycleItems`, item.id);
-                      await updateDoc(ref, { receiptId: null, updatedAt: Timestamp.now() });
-                      // Also unlink from receipt
-                      const receiptRef = doc(db, `users/${userId}/receipts`, item.receiptId!);
-                      await updateDoc(receiptRef, { cycleItemId: null, cycleId: null, updatedAt: Timestamp.now() });
-                    }}
-                    className="w-full px-3 py-2 text-left text-sm text-warning hover:bg-background transition-colors"
-                  >
-                    Detach receipt
-                  </button>
-                )}
-                <button
-                  onClick={handleSkip}
-                  className="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-background transition-colors"
-                >
-                  {isSkipped ? 'Unskip' : 'Skip'}
-                </button>
-                <button
-                  onClick={handleDelete}
-                  className="w-full px-3 py-2 text-left text-sm text-error hover:bg-background transition-colors"
-                >
-                  Delete
-                </button>
-              </div>
-            </>
+          <button
+            onClick={() => setAttachingReceipt(true)}
+            className="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-background transition-colors"
+          >
+            {item.receiptId ? 'Change receipt' : 'Attach receipt'}
+          </button>
+          {item.receiptId && (
+            <button
+              onClick={async () => {
+                if (!userId) return;
+                const ref = doc(db, `users/${userId}/cycleItems`, item.id);
+                await updateDoc(ref, { receiptId: null, updatedAt: Timestamp.now() });
+                const receiptRef = doc(db, `users/${userId}/receipts`, item.receiptId!);
+                await updateDoc(receiptRef, { cycleItemId: null, cycleId: null, updatedAt: Timestamp.now() });
+              }}
+              className="w-full px-3 py-2 text-left text-sm text-warning hover:bg-background transition-colors"
+            >
+              Detach receipt
+            </button>
           )}
-        </div>
+          <button
+            onClick={handleSkip}
+            className="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-background transition-colors"
+          >
+            {isSkipped ? 'Unskip' : 'Skip'}
+          </button>
+          <button
+            onClick={handleDelete}
+            className="w-full px-3 py-2 text-left text-sm text-error hover:bg-background transition-colors"
+          >
+            Delete
+          </button>
+        </FloatingMenu>
       </div>
 
       {/* Edit Modal */}

@@ -11,6 +11,7 @@ import { useAppStore } from '@/stores/app-store';
 import { FilterBar } from '@/components/shared/filter-bar';
 import { AmountDisplay } from '@/components/shared/amount-display';
 import { useToast } from '@/components/shared/toast';
+import { FloatingMenu } from '@/components/shared/floating-menu';
 import type { CycleItem, CycleItemStatus, Goal, Insight } from '@/types';
 
 export default function DashboardPage() {
@@ -488,7 +489,6 @@ function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete, onAddPay
   const [loading, setLoading] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
-  const [showMenu, setShowMenu] = useState(false);
   const [showPaymentPrompt, setShowPaymentPrompt] = useState(false);
   const [paymentValue, setPaymentValue] = useState('');
   const [paymentNote, setPaymentNote] = useState('');
@@ -555,7 +555,6 @@ function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete, onAddPay
 
   const handleSkip = async () => {
     setLoading(true);
-    setShowMenu(false);
     try {
       const newStatus: CycleItemStatus = isSkipped ? 'upcoming' : 'skipped';
       await onStatusChange(item.id, newStatus);
@@ -566,7 +565,6 @@ function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete, onAddPay
 
   const handleDelete = () => {
     confirm('This will permanently delete the item.', async () => {
-      setShowMenu(false);
       await onDelete(item.id);
       toast('Item deleted', 'success');
     }, { title: 'Delete Item', confirmLabel: 'Delete', danger: true });
@@ -708,40 +706,34 @@ function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete, onAddPay
       )}
 
       {/* Menu button */}
-      <div className="relative">
+      <FloatingMenu
+        trigger={
+          <button
+            className="w-7 h-7 flex items-center justify-center rounded hover:bg-background text-text-secondary hover:text-text-primary transition-colors"
+            aria-label="Item menu"
+          >
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 16 16">
+              <circle cx="8" cy="3" r="1.5" />
+              <circle cx="8" cy="8" r="1.5" />
+              <circle cx="8" cy="13" r="1.5" />
+            </svg>
+          </button>
+        }
+      >
         <button
-          onClick={() => setShowMenu(!showMenu)}
-          className="w-7 h-7 flex items-center justify-center rounded hover:bg-background text-text-secondary hover:text-text-primary transition-colors"
-          aria-label="Item menu"
+          onClick={handleSkip}
+          disabled={loading}
+          className="w-full px-3 py-1.5 text-left text-sm text-text-primary hover:bg-background transition-colors disabled:opacity-50"
         >
-          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 16 16">
-            <circle cx="8" cy="3" r="1.5" />
-            <circle cx="8" cy="8" r="1.5" />
-            <circle cx="8" cy="13" r="1.5" />
-          </svg>
+          {isSkipped ? 'Unskip' : 'Skip'}
         </button>
-
-        {showMenu && (
-          <>
-            <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)} />
-            <div className="absolute right-0 top-full mt-1 w-28 bg-surface border border-border rounded-lg shadow-lg z-20 py-1">
-              <button
-                onClick={handleSkip}
-                disabled={loading}
-                className="w-full px-3 py-1.5 text-left text-sm text-text-primary hover:bg-background transition-colors disabled:opacity-50"
-              >
-                {isSkipped ? 'Unskip' : 'Skip'}
-              </button>
-              <button
-                onClick={handleDelete}
-                className="w-full px-3 py-1.5 text-left text-sm text-error hover:bg-background transition-colors"
-              >
-                Delete
-              </button>
-            </div>
-          </>
-        )}
-      </div>
+        <button
+          onClick={handleDelete}
+          className="w-full px-3 py-1.5 text-left text-sm text-error hover:bg-background transition-colors"
+        >
+          Delete
+        </button>
+      </FloatingMenu>
     </div>
   );
 }
@@ -898,7 +890,6 @@ interface InsightCardProps {
 }
 
 function InsightCard({ insight, onDismiss, onSnooze }: InsightCardProps) {
-  const [showMenu, setShowMenu] = useState(false);
   const config = INSIGHT_ICONS[insight.type];
 
   return (
@@ -909,45 +900,33 @@ function InsightCard({ insight, onDismiss, onSnooze }: InsightCardProps) {
           <p className="text-sm font-medium text-text-primary">{insight.title}</p>
           <p className="text-xs text-text-secondary mt-0.5">{insight.message}</p>
         </div>
-        <div className="relative">
+        <FloatingMenu
+          trigger={
+            <button
+              className="w-6 h-6 flex items-center justify-center rounded hover:bg-background/50 text-text-secondary"
+              aria-label="Insight actions"
+            >
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 16 16">
+                <circle cx="8" cy="3" r="1.5" />
+                <circle cx="8" cy="8" r="1.5" />
+                <circle cx="8" cy="13" r="1.5" />
+              </svg>
+            </button>
+          }
+        >
           <button
-            onClick={() => setShowMenu(!showMenu)}
-            className="w-6 h-6 flex items-center justify-center rounded hover:bg-background/50 text-text-secondary"
-            aria-label="Insight actions"
+            onClick={onSnooze}
+            className="w-full px-3 py-1.5 text-left text-sm text-text-primary hover:bg-background transition-colors"
           >
-            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 16 16">
-              <circle cx="8" cy="3" r="1.5" />
-              <circle cx="8" cy="8" r="1.5" />
-              <circle cx="8" cy="13" r="1.5" />
-            </svg>
+            Snooze 7d
           </button>
-
-          {showMenu && (
-            <>
-              <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)} />
-              <div className="absolute right-0 top-full mt-1 w-28 bg-surface border border-border rounded-lg shadow-lg z-20 py-1">
-                <button
-                  onClick={() => {
-                    setShowMenu(false);
-                    onSnooze();
-                  }}
-                  className="w-full px-3 py-1.5 text-left text-sm text-text-primary hover:bg-background transition-colors"
-                >
-                  Snooze 7d
-                </button>
-                <button
-                  onClick={() => {
-                    setShowMenu(false);
-                    onDismiss();
-                  }}
-                  className="w-full px-3 py-1.5 text-left text-sm text-text-secondary hover:bg-background transition-colors"
-                >
-                  Dismiss
-                </button>
-              </div>
-            </>
-          )}
-        </div>
+          <button
+            onClick={onDismiss}
+            className="w-full px-3 py-1.5 text-left text-sm text-text-secondary hover:bg-background transition-colors"
+          >
+            Dismiss
+          </button>
+        </FloatingMenu>
       </div>
     </div>
   );

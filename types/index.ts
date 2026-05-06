@@ -193,6 +193,7 @@ export interface CycleItem {
     amount: number;                 // cents paid in this transaction
     date: Timestamp;
     note?: string;
+    receiptId?: string;             // Receipt linked to this specific payment
   }>;
   totalPaidAmount?: number;         // Denormalized sum of payments in cents
 
