@@ -768,7 +768,7 @@ function EditItemModal({ item, userId, onClose }: EditItemModalProps) {
 // ReceiptPickerModal
 // ---------------------------------------------------------------------------
 
-type ReceiptItem = { id: string; thumbnailUrl?: string; imageUrl?: string; vendor?: string; amountInCents?: number };
+type ReceiptItem = { id: string; thumbnailUrl?: string; imageUrl?: string; vendor?: string; amountInCents?: number; cycleItemId?: string };
 type PaymentEntry = { id: string; amount: number; date: unknown; note?: string; receiptId?: string };
 
 interface ReceiptPickerModalProps {
@@ -922,14 +922,16 @@ function ReceiptPickerModal({ item, cycleId, userId, onClose, onAttached }: Rece
                 <div className="grid grid-cols-3 gap-2 animate-pulse">
                   {[1,2,3,4,5,6].map((i) => <div key={i} className="aspect-square bg-background rounded-lg" />)}
                 </div>
-              ) : receipts.length === 0 ? (
+              ) : receipts.filter((r) => !r.cycleItemId || r.id === currentReceiptId).length === 0 ? (
                 <div className="text-center py-8 text-text-secondary text-sm">
                   <p className="text-2xl mb-2">📷</p>
                   <p>No receipts yet. Capture one first.</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-3 gap-2">
-                  {receipts.map((r) => {
+                  {receipts
+                    .filter((r) => !r.cycleItemId || r.id === currentReceiptId)
+                    .map((r) => {
                     const isSelected = r.id === currentReceiptId;
                     return (
                       <button
@@ -963,6 +965,12 @@ function ReceiptPickerModal({ item, cycleId, userId, onClose, onAttached }: Rece
                       </button>
                     );
                   })}
+                  {receipts.filter((r) => !r.cycleItemId || r.id === currentReceiptId).length === 0 && (
+                    <div className="col-span-3 text-center py-8 text-text-secondary text-sm">
+                      <p className="text-2xl mb-2">📷</p>
+                      <p>All receipts are already linked to other payments.</p>
+                    </div>
+                  )}
                 </div>
               )}
             </>
