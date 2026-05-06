@@ -518,9 +518,19 @@ function SortableItemRow({ item, cycleId, userId, onStatusChange, onAmountChange
               </span>
             )}
             {item.linkedGoalId && <span className="text-primary">linked</span>}
-            {item.receiptId && (
+            {/* Per-payment receipt badges */}
+            {(item.payments?.length ?? 0) > 0 ? (
+              (() => {
+                const linkedCount = (item.payments ?? []).filter((p: { receiptId?: string }) => p.receiptId).length;
+                return linkedCount > 0 ? (
+                  <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary text-[10px]">
+                    📷 {linkedCount}/{item.payments!.length}
+                  </span>
+                ) : null;
+              })()
+            ) : item.receiptId ? (
               <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary text-[10px]">📷 receipt</span>
-            )}
+            ) : null}
             {!item.commitmentId && (
               <span className="px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400 text-[10px]">
                 one-off
@@ -582,9 +592,9 @@ function SortableItemRow({ item, cycleId, userId, onStatusChange, onAmountChange
             onClick={() => setAttachingReceipt(true)}
             className="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-background transition-colors"
           >
-            {item.receiptId ? 'Change receipt' : 'Attach receipt'}
+            {(item.payments?.length ?? 0) > 0 ? 'Manage receipts' : item.receiptId ? 'Change receipt' : 'Attach receipt'}
           </button>
-          {item.receiptId && (
+          {item.receiptId && (item.payments?.length ?? 0) === 0 && (
             <button
               onClick={async () => {
                 if (!userId) return;
@@ -626,10 +636,9 @@ function SortableItemRow({ item, cycleId, userId, onStatusChange, onAmountChange
       {/* Receipt Picker Modal */}
       {attachingReceipt && userId && (
         <ReceiptPickerModal
-          itemId={item.id}
+          item={item}
           cycleId={cycleId}
           userId={userId}
-          currentReceiptId={item.receiptId}
           onClose={() => setAttachingReceipt(false)}
           onAttached={() => { setAttachingReceipt(false); toast('Receipt attached', 'success'); }}
         />
@@ -756,17 +765,23 @@ function EditItemModal({ item, userId, onClose }: EditItemModalProps) {
 // ReceiptPickerModal
 // ---------------------------------------------------------------------------
 
+type ReceiptItem = { id: string; thumbnailUrl?: string; imageUrl?: string; vendor?: string; amountInCents?: number };
+type PaymentEntry = { id: string; amount: number; date: unknown; note?: string; receiptId?: string };
+
 interface ReceiptPickerModalProps {
-  itemId: string;
+  item: CycleItem;
   cycleId: string;
   userId: string;
-  currentReceiptId?: string;
   onClose: () => void;
   onAttached: () => void;
 }
 
-function ReceiptPickerModal({ itemId, cycleId, userId, currentReceiptId, onClose, onAttached }: ReceiptPickerModalProps) {
-  const [receipts, setReceipts] = useState<Array<{ id: string; thumbnailUrl?: string; imageUrl?: string; vendor?: string; amountInCents?: number; capturedAt?: unknown }>>([]);
+function ReceiptPickerModal({ item, cycleId, userId, onClose, onAttached }: ReceiptPickerModalProps) {
+  const hasPayments = (item.payments?.length ?? 0) > 0;
+  const [selectedPaymentId, setSelectedPaymentId] = useState<string | null>(
+    hasPayments ? null : '__item__'
+  );
+  const [receipts, setReceipts] = useState<ReceiptItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [attaching, setAttaching] = useState(false);
 
@@ -777,18 +792,28 @@ function ReceiptPickerModal({ itemId, cycleId, userId, currentReceiptId, onClose
       .catch(() => setLoading(false));
   }, []);
 
-  const handleAttach = async (receiptId: string) => {
+  // Attach receipt to a specific payment entry
+  const handleAttachToPayment = async (receiptId: string) => {
+    if (!selectedPaymentId) return;
     setAttaching(true);
     try {
-      // Link receipt → item
-      await fetch(`/api/receipts/${receiptId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cycleItemId: itemId, cycleId }),
-      });
-      // Link item → receipt
-      const itemRef = doc(db, `users/${userId}/cycleItems`, itemId);
-      await updateDoc(itemRef, { receiptId, updatedAt: Timestamp.now() });
+      const itemRef = doc(db, `users/${userId}/cycleItems`, item.id);
+
+      if (selectedPaymentId === '__item__') {
+        // Item-level attach (no payments)
+        await fetch(`/api/receipts/${receiptId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cycleItemId: item.id, cycleId }),
+        });
+        await updateDoc(itemRef, { receiptId, updatedAt: Timestamp.now() });
+      } else {
+        // Payment-level attach — update the specific payment in the array
+        const updatedPayments = (item.payments ?? []).map((p: PaymentEntry) =>
+          p.id === selectedPaymentId ? { ...p, receiptId } : p
+        );
+        await updateDoc(itemRef, { payments: updatedPayments, updatedAt: Timestamp.now() });
+      }
       onAttached();
     } catch (err) {
       console.error('Attach failed:', err);
@@ -797,11 +822,17 @@ function ReceiptPickerModal({ itemId, cycleId, userId, currentReceiptId, onClose
     }
   };
 
+  const currentReceiptId = selectedPaymentId === '__item__'
+    ? item.receiptId
+    : item.payments?.find((p: PaymentEntry) => p.id === selectedPaymentId)?.receiptId;
+
   return (
     <div className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-50 p-4">
-      <div className="bg-surface border border-border rounded-2xl w-full sm:max-w-md max-h-[70vh] flex flex-col">
+      <div className="bg-surface border border-border rounded-2xl w-full sm:max-w-md max-h-[80vh] flex flex-col">
         <div className="flex items-center justify-between p-4 border-b border-border">
-          <h3 className="text-sm font-semibold text-text-primary">Attach Receipt</h3>
+          <h3 className="text-sm font-semibold text-text-primary">
+            {selectedPaymentId ? 'Pick a Receipt' : 'Which Payment?'}
+          </h3>
           <button onClick={onClose} className="text-text-secondary hover:text-text-primary">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -809,50 +840,99 @@ function ReceiptPickerModal({ itemId, cycleId, userId, currentReceiptId, onClose
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4">
-          {loading ? (
-            <div className="grid grid-cols-3 gap-2 animate-pulse">
-              {[1,2,3,4,5,6].map((i) => <div key={i} className="aspect-square bg-background rounded-lg" />)}
-            </div>
-          ) : receipts.length === 0 ? (
-            <div className="text-center py-8 text-text-secondary text-sm">
-              <p className="text-2xl mb-2">📷</p>
-              <p>No receipts yet. Capture one first.</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-3 gap-2">
-              {receipts.map((r) => {
-                const isSelected = r.id === currentReceiptId;
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {/* Step 1: pick payment (only for items with payments) */}
+          {hasPayments && !selectedPaymentId && (
+            <div className="space-y-2">
+              <p className="text-xs text-text-secondary">Select the payment to attach a receipt to:</p>
+              {(item.payments ?? []).map((p: PaymentEntry, idx: number) => {
+                const date = p.date && typeof (p.date as { toDate?: () => Date }).toDate === 'function'
+                  ? (p.date as { toDate: () => Date }).toDate().toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })
+                  : '';
                 return (
                   <button
-                    key={r.id}
-                    onClick={() => handleAttach(r.id)}
-                    disabled={attaching}
-                    className={`relative aspect-square rounded-lg overflow-hidden border-2 transition-colors ${
-                      isSelected ? 'border-primary' : 'border-transparent hover:border-primary/50'
-                    }`}
+                    key={p.id}
+                    onClick={() => setSelectedPaymentId(p.id)}
+                    className="w-full flex items-center justify-between p-3 rounded-lg border border-border hover:border-primary bg-background transition-colors text-left"
                   >
-                    {r.thumbnailUrl || r.imageUrl ? (
-                      <img src={r.thumbnailUrl || r.imageUrl} alt="Receipt" className="w-full h-full object-cover" />
+                    <div>
+                      <p className="text-sm font-medium text-text-primary">
+                        Payment {idx + 1} — R{(p.amount / 100).toFixed(2)}
+                      </p>
+                      <p className="text-xs text-text-secondary">
+                        {date}{p.note ? ` · ${p.note}` : ''}
+                      </p>
+                    </div>
+                    {p.receiptId ? (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary">📷 linked</span>
                     ) : (
-                      <div className="w-full h-full bg-background flex items-center justify-center text-text-secondary text-xl">📄</div>
-                    )}
-                    {r.amountInCents && (
-                      <div className="absolute bottom-0 left-0 right-0 bg-black/60 px-1.5 py-0.5 text-[10px] text-white font-mono">
-                        R{(r.amountInCents / 100).toFixed(0)}
-                      </div>
-                    )}
-                    {isSelected && (
-                      <div className="absolute top-1 right-1 w-5 h-5 bg-primary rounded-full flex items-center justify-center">
-                        <svg className="w-3 h-3 text-black" fill="none" viewBox="0 0 12 12" stroke="currentColor" strokeWidth="2">
-                          <polyline points="1.5,6 4.5,9 10.5,3" />
-                        </svg>
-                      </div>
+                      <span className="text-xs text-text-secondary">no receipt</span>
                     )}
                   </button>
                 );
               })}
             </div>
+          )}
+
+          {/* Step 2: pick receipt */}
+          {selectedPaymentId && (
+            <>
+              {hasPayments && (
+                <button
+                  onClick={() => setSelectedPaymentId(null)}
+                  className="flex items-center gap-1 text-xs text-text-secondary hover:text-text-primary"
+                >
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 16 16" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" d="M10 4L6 8l4 4" />
+                  </svg>
+                  Back to payments
+                </button>
+              )}
+              {loading ? (
+                <div className="grid grid-cols-3 gap-2 animate-pulse">
+                  {[1,2,3,4,5,6].map((i) => <div key={i} className="aspect-square bg-background rounded-lg" />)}
+                </div>
+              ) : receipts.length === 0 ? (
+                <div className="text-center py-8 text-text-secondary text-sm">
+                  <p className="text-2xl mb-2">📷</p>
+                  <p>No receipts yet. Capture one first.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-3 gap-2">
+                  {receipts.map((r) => {
+                    const isSelected = r.id === currentReceiptId;
+                    return (
+                      <button
+                        key={r.id}
+                        onClick={() => handleAttachToPayment(r.id)}
+                        disabled={attaching}
+                        className={`relative aspect-square rounded-lg overflow-hidden border-2 transition-colors ${
+                          isSelected ? 'border-primary' : 'border-transparent hover:border-primary/50'
+                        }`}
+                      >
+                        {r.thumbnailUrl || r.imageUrl ? (
+                          <img src={r.thumbnailUrl || r.imageUrl} alt="Receipt" className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full bg-background flex items-center justify-center text-text-secondary text-xl">📄</div>
+                        )}
+                        {r.amountInCents && (
+                          <div className="absolute bottom-0 left-0 right-0 bg-black/60 px-1.5 py-0.5 text-[10px] text-white font-mono">
+                            R{(r.amountInCents / 100).toFixed(0)}
+                          </div>
+                        )}
+                        {isSelected && (
+                          <div className="absolute top-1 right-1 w-5 h-5 bg-primary rounded-full flex items-center justify-center">
+                            <svg className="w-3 h-3 text-black" fill="none" viewBox="0 0 12 12" stroke="currentColor" strokeWidth="2">
+                              <polyline points="1.5,6 4.5,9 10.5,3" />
+                            </svg>
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
