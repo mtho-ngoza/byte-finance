@@ -813,6 +813,12 @@ function ReceiptPickerModal({ item, cycleId, userId, onClose, onAttached }: Rece
           p.id === selectedPaymentId ? { ...p, receiptId } : p
         );
         await updateDoc(itemRef, { payments: updatedPayments, updatedAt: Timestamp.now() });
+        // Also mark the receipt as linked so it doesn't show as unlinked
+        await fetch(`/api/receipts/${receiptId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cycleItemId: item.id, cycleId }),
+        });
       }
       onAttached();
     } catch (err) {
