@@ -12,6 +12,7 @@ import { FilterBar } from '@/components/shared/filter-bar';
 import { AmountDisplay } from '@/components/shared/amount-display';
 import { useToast } from '@/components/shared/toast';
 import { FloatingMenu } from '@/components/shared/floating-menu';
+import { InlineReceiptCapture } from '@/components/shared/inline-receipt-capture';
 import type { CycleItem, CycleItemStatus, Goal, Insight } from '@/types';
 
 export default function DashboardPage() {
@@ -736,17 +737,28 @@ function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete, onAddPay
             </div>
             {/* Receipt picker */}
             <div>
-              <label className="block text-xs text-text-secondary mb-1.5">
-                Receipt (optional)
-                {paymentReceiptId && (
-                  <button
-                    onClick={() => setPaymentReceiptId(undefined)}
-                    className="ml-2 text-primary hover:text-primary/70"
-                  >
-                    clear
-                  </button>
-                )}
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs text-text-secondary">
+                  Receipt (optional)
+                  {paymentReceiptId && (
+                    <button
+                      onClick={() => setPaymentReceiptId(undefined)}
+                      className="ml-2 text-primary hover:text-primary/70"
+                    >
+                      clear
+                    </button>
+                  )}
+                </label>
+                <InlineReceiptCapture
+                  onCaptured={(id) => {
+                    setPaymentReceiptId(id);
+                    // Add to local receipts list so it shows immediately
+                    setReceipts((prev) => [{ id, thumbnailUrl: undefined, imageUrl: undefined }, ...prev]);
+                    setReceiptsLoaded(true);
+                  }}
+                  onError={(msg) => toast(msg, 'error')}
+                />
+              </div>
               {receipts.length === 0 && receiptsLoaded ? (
                 <p className="text-xs text-text-secondary">No receipts captured yet.</p>
               ) : (

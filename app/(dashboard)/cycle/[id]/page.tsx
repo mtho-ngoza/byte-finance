@@ -29,6 +29,7 @@ import { AmountDisplay } from '@/components/shared/amount-display';
 import { CurrencyInput } from '@/components/shared/currency-input';
 import { useToast } from '@/components/shared/toast';
 import { FloatingMenu } from '@/components/shared/floating-menu';
+import { InlineReceiptCapture } from '@/components/shared/inline-receipt-capture';
 import type { CycleItem, CycleItemStatus, Category, Cycle } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -918,6 +919,13 @@ function ReceiptPickerModal({ item, cycleId, userId, onClose, onAttached }: Rece
                   Back to payments
                 </button>
               )}
+              <InlineReceiptCapture
+                onCaptured={(id) => {
+                  // Add to local list and auto-attach
+                  setReceipts((prev) => [{ id }, ...prev]);
+                  handleAttachToPayment(id);
+                }}
+              />
               {loading ? (
                 <div className="grid grid-cols-3 gap-2 animate-pulse">
                   {[1,2,3,4,5,6].map((i) => <div key={i} className="aspect-square bg-background rounded-lg" />)}
