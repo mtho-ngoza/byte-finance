@@ -19,7 +19,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { doc, updateDoc, deleteDoc, Timestamp } from 'firebase/firestore';
+import { doc, updateDoc, deleteDoc, Timestamp, deleteField } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useUserId } from '@/hooks/use-user-id';
 import { useCycleItems } from '@/hooks/use-cycle-items';
@@ -807,7 +807,7 @@ function ReceiptPickerModal({ item, cycleId, userId, onClose, onAttached }: Rece
       if (selectedPaymentId === '__item__') {
         // Item-level attach/detach (no payments)
         if (isDetach) {
-          await updateDoc(itemRef, { receiptId: null, updatedAt: Timestamp.now() });
+          await updateDoc(itemRef, { receiptId: deleteField(), updatedAt: Timestamp.now() });
           await fetch(`/api/receipts/${receiptId}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
@@ -823,11 +823,15 @@ function ReceiptPickerModal({ item, cycleId, userId, onClose, onAttached }: Rece
         }
       } else {
         // Payment-level attach/detach
-        const updatedPayments = (item.payments ?? []).map((p: PaymentEntry) =>
-          p.id === selectedPaymentId
-            ? { ...p, receiptId: isDetach ? undefined : receiptId }
-            : p
-        );
+        const updatedPayments = (item.payments ?? []).map((p: PaymentEntry) => {
+          if (p.id !== selectedPaymentId) return p;
+          if (isDetach) {
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            const { receiptId: _removed, ...rest } = p;
+            return rest;
+          }
+          return { ...p, receiptId };
+        });
         await updateDoc(itemRef, { payments: updatedPayments, updatedAt: Timestamp.now() });
         await fetch(`/api/receipts/${receiptId}`, {
           method: 'PATCH',
