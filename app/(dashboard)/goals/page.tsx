@@ -8,6 +8,9 @@ import { useToast } from '@/components/shared/toast';
 export default function GoalsPage() {
   const { goals, loading, activeGoals, goalsByType, totalProgress, totalTarget, commitments } = useGoals();
   const [showForm, setShowForm] = useState(false);
+  const [search, setSearch] = useState('');
+  const [typeFilter, setTypeFilter] = useState<'all' | 'savings' | 'debt_payoff' | 'investment'>('all');
+  const [showCompleted, setShowCompleted] = useState(false);
   const { toast, confirm } = useToast();
 
   const formatAmount = (cents: number) => {
@@ -18,6 +21,15 @@ export default function GoalsPage() {
     if (target === 0) return 0;
     return Math.min(100, Math.round((current / target) * 100));
   };
+
+  // Filter goals
+  const baseGoals = showCompleted ? goals : activeGoals;
+  const filteredGoals = baseGoals.filter((g) => {
+    if (typeFilter !== 'all' && g.type !== typeFilter) return false;
+    if (search && !g.name.toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
+  const completedCount = goals.filter((g) => g.status === 'completed').length;
 
   const handleCreate = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -185,14 +197,62 @@ export default function GoalsPage() {
         </form>
       )}
 
+      {/* Search + filters */}
+      <div className="space-y-2 mb-4">
+        <div className="relative">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+            <circle cx="11" cy="11" r="8" /><path strokeLinecap="round" d="M21 21l-4.35-4.35" />
+          </svg>
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search goals..."
+            className="w-full pl-9 pr-3 py-2 rounded-lg border border-border bg-surface text-sm text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-primary"
+          />
+          {search && (
+            <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text-primary">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+          )}
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          {(['all', 'savings', 'debt_payoff', 'investment'] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTypeFilter(t)}
+              className={`px-3 py-1 rounded-full text-xs transition-colors ${
+                typeFilter === t
+                  ? 'bg-primary text-background'
+                  : 'bg-surface border border-border text-text-secondary hover:border-primary'
+              }`}
+            >
+              {t === 'all' ? 'All' : t === 'debt_payoff' ? 'Debt Payoff' : t.charAt(0).toUpperCase() + t.slice(1)}
+            </button>
+          ))}
+          {completedCount > 0 && (
+            <button
+              onClick={() => setShowCompleted(!showCompleted)}
+              className={`ml-auto px-3 py-1 rounded-full text-xs transition-colors ${
+                showCompleted
+                  ? 'bg-surface border border-primary text-primary'
+                  : 'bg-surface border border-border text-text-secondary hover:border-primary'
+              }`}
+            >
+              {showCompleted ? 'Hide completed' : `Show completed (${completedCount})`}
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* Goals List */}
-      {activeGoals.length === 0 ? (
+      {filteredGoals.length === 0 ? (
         <div className="text-center py-12 text-text-secondary">
-          <p>No goals yet. Create one to start tracking your progress.</p>
+          <p>{search ? `No goals matching "${search}"` : 'No goals yet. Create one to start tracking your progress.'}</p>
         </div>
       ) : (
         <div className="space-y-3">
-          {activeGoals.map((goal) => (
+          {filteredGoals.map((goal) => (
             <GoalCard key={goal.id} goal={goal} onDelete={handleDelete} formatAmount={formatAmount} />
           ))}
         </div>

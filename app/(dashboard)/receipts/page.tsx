@@ -20,6 +20,9 @@ export default function ReceiptsPage() {
   const { processQueue, getQueue } = useReceiptQueue();
   const [showCapture, setShowCapture] = useState(false);
   const [pendingQueue, setPendingQueue] = useState<PendingReceipt[]>([]);
+  const [search, setSearch] = useState('');
+  const [filterAttention, setFilterAttention] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(12);
 
   // Process any queued uploads on page open and refresh the pending count
   useEffect(() => {
@@ -61,6 +64,25 @@ export default function ReceiptsPage() {
 
   const unlinked = complete.filter((r) => !r.cycleItemId);
 
+  // Search + filter
+  const q = search.toLowerCase();
+  const filteredComplete = complete.filter((r) => {
+    if (filterAttention && !r.needsAttention) return false;
+    if (!q) return true;
+    return (
+      r.vendor?.toLowerCase().includes(q) ||
+      r.note?.toLowerCase().includes(q) ||
+      (r.amountInCents !== undefined && `r${(r.amountInCents / 100).toFixed(0)}`.includes(q))
+    );
+  });
+  const filteredAttention = needsAttention.filter((r) => {
+    if (!q) return true;
+    return r.vendor?.toLowerCase().includes(q) || r.note?.toLowerCase().includes(q);
+  });
+
+  const visibleReceipts = filteredComplete.slice(0, visibleCount);
+  const hasMore = filteredComplete.length > visibleCount;
+
   return (
     <div className="space-y-6 pb-20">
       {/* Header */}
@@ -81,42 +103,58 @@ export default function ReceiptsPage() {
         {pendingQueue.length > 0 && (
           <div className="flex flex-col items-end gap-1">
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface border border-border text-sm">
-              <span
-                className="inline-block animate-spin text-primary"
-                aria-hidden="true"
-                style={{ display: 'inline-block' }}
-              >
-                ⟳
-              </span>
-              <span className="text-text-secondary">
-                {pendingQueue.length} pending
-              </span>
+              <span className="inline-block animate-spin text-primary" aria-hidden="true">⟳</span>
+              <span className="text-text-secondary">{pendingQueue.length} pending</span>
             </div>
             {pendingQueue.filter((p) => p.uploadAttempts > 2).length > 0 && (
               <div className="flex items-center gap-1 text-xs text-warning">
                 <span>⚠️</span>
-                <span>
-                  {pendingQueue.filter((p) => p.uploadAttempts > 2).length} failed
-                </span>
+                <span>{pendingQueue.filter((p) => p.uploadAttempts > 2).length} failed</span>
               </div>
             )}
           </div>
         )}
       </div>
 
-      {/* Needs Attention Section */}
-      {needsAttention.length > 0 && (
+      {/* Search + filter bar */}
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+            <circle cx="11" cy="11" r="8" /><path strokeLinecap="round" d="M21 21l-4.35-4.35" />
+          </svg>
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setVisibleCount(12); }}
+            placeholder="Search vendor, note..."
+            className="w-full pl-9 pr-3 py-2 rounded-lg border border-border bg-surface text-sm text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-primary"
+          />
+          {search && (
+            <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text-primary">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+          )}
+        </div>
+        <button
+          onClick={() => setFilterAttention(!filterAttention)}
+          className={`px-3 py-2 rounded-lg border text-sm transition-colors whitespace-nowrap ${
+            filterAttention ? 'border-warning bg-warning/10 text-warning' : 'border-border text-text-secondary hover:border-primary'
+          }`}
+        >
+          ⚠️ Needs attention
+        </button>
+      </div>
+
+      {/* Needs Attention Section (only when not filtering) */}
+      {!filterAttention && filteredAttention.length > 0 && (
         <section>
           <h2 className="text-sm font-medium text-warning flex items-center gap-1.5 mb-3">
             <span>⚠️</span>
-            Needs Attention ({needsAttention.length})
+            Needs Attention ({filteredAttention.length})
           </h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {needsAttention.map((receipt) => (
-              <ReceiptCard
-                key={receipt.id}
-                receipt={receipt}
-              />
+            {filteredAttention.map((receipt) => (
+              <ReceiptCard key={receipt.id} receipt={receipt} />
             ))}
           </div>
         </section>
@@ -125,23 +163,30 @@ export default function ReceiptsPage() {
       {/* All Receipts */}
       <section>
         <h2 className="text-sm font-medium text-text-primary mb-3">
-          All Receipts
+          {filterAttention ? `Needs Attention (${filteredComplete.length})` : `All Receipts${search ? ` — ${filteredComplete.length} results` : ''}`}
         </h2>
-        {complete.length === 0 && needsAttention.length === 0 ? (
+        {visibleReceipts.length === 0 ? (
           <div className="text-center py-12 text-text-secondary">
-            <p className="text-4xl mb-3">📷</p>
-            <p>No receipts yet.</p>
-            <p className="text-sm mt-1">Tap + to capture your first receipt.</p>
+            <p className="text-4xl mb-3">{search ? '🔍' : '📷'}</p>
+            <p>{search ? `No receipts matching "${search}"` : 'No receipts yet.'}</p>
+            {!search && <p className="text-sm mt-1">Tap + to capture your first receipt.</p>}
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {complete.map((receipt) => (
-              <ReceiptCard
-                key={receipt.id}
-                receipt={receipt}
-              />
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {visibleReceipts.map((receipt) => (
+                <ReceiptCard key={receipt.id} receipt={receipt} />
+              ))}
+            </div>
+            {hasMore && (
+              <button
+                onClick={() => setVisibleCount((c) => c + 12)}
+                className="mt-4 w-full py-2.5 rounded-lg border border-border text-sm text-text-secondary hover:border-primary hover:text-text-primary transition-colors"
+              >
+                Show more ({filteredComplete.length - visibleCount} remaining)
+              </button>
+            )}
+          </>
         )}
       </section>
 

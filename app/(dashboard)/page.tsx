@@ -165,12 +165,18 @@ export default function DashboardPage() {
 
   const loading = cyclesLoading || itemsLoading || goalsLoading;
 
+  // Item search
+  const [itemSearch, setItemSearch] = useState('');
+  const searchedItems = itemSearch
+    ? items.filter((i) => i.label.toLowerCase().includes(itemSearch.toLowerCase()) || i.category.toLowerCase().includes(itemSearch.toLowerCase()))
+    : items;
+
   // Group items by status
-  const dueItems = items.filter((i) => i.status === 'due');
-  const upcomingItems = items.filter((i) => i.status === 'upcoming');
-  const partialItems = items.filter((i) => i.status === 'partial');
-  const paidItems = items.filter((i) => i.status === 'paid');
-  const skippedItems = items.filter((i) => i.status === 'skipped');
+  const dueItems = searchedItems.filter((i) => i.status === 'due');
+  const upcomingItems = searchedItems.filter((i) => i.status === 'upcoming');
+  const partialItems = searchedItems.filter((i) => i.status === 'partial');
+  const paidItems = searchedItems.filter((i) => i.status === 'paid');
+  const skippedItems = searchedItems.filter((i) => i.status === 'skipped');
 
   const remaining = totalCommitted - totalPaid;
   const progressPercent = totalCommitted > 0 ? Math.round((totalPaid / totalCommitted) * 100) : 0;
@@ -325,6 +331,27 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {/* Item search — only show when there are items */}
+      {items.length > 0 && (
+        <div className="relative">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+            <circle cx="11" cy="11" r="8" /><path strokeLinecap="round" d="M21 21l-4.35-4.35" />
+          </svg>
+          <input
+            type="text"
+            value={itemSearch}
+            onChange={(e) => setItemSearch(e.target.value)}
+            placeholder="Search items..."
+            className="w-full pl-9 pr-3 py-2 rounded-lg border border-border bg-surface text-sm text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-primary"
+          />
+          {itemSearch && (
+            <button onClick={() => setItemSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text-primary">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Due Items - Needs attention (or Missed for past cycles) */}
       {dueItems.length > 0 && (
         <section>
@@ -410,6 +437,11 @@ export default function DashboardPage() {
       {items.length === 0 && (
         <div className="text-center py-8 text-text-secondary">
           <p>No items in this cycle yet.</p>
+        </div>
+      )}
+      {items.length > 0 && searchedItems.length === 0 && (
+        <div className="text-center py-8 text-text-secondary">
+          <p>No items matching &quot;{itemSearch}&quot;</p>
         </div>
       )}
 
