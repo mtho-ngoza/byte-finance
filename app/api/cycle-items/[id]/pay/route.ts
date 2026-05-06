@@ -23,7 +23,7 @@ export async function POST(
 
   const { id } = await params;
   const body = await request.json();
-  const { amount, note } = body;
+  const { amount, note, receiptId } = body;
 
   if (!amount || typeof amount !== 'number' || amount <= 0) {
     return NextResponse.json({ error: 'amount must be a positive number' }, { status: 400 });
@@ -49,6 +49,7 @@ export async function POST(
     amount,
     date: new Date(),
     note: note ?? null,
+    ...(receiptId ? { receiptId } : {}),
   };
 
   await ref.update({

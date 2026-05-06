@@ -29,7 +29,7 @@ interface UseCycleItemsResult {
   updateStatus: (itemId: string, status: CycleItemStatus, actualAmount?: number) => Promise<void>;
   updateAmount: (itemId: string, newAmount: number) => Promise<void>;
   /** Add a partial payment to a variable item */
-  addPayment: (itemId: string, paymentAmount: number, note?: string) => Promise<void>;
+  addPayment: (itemId: string, paymentAmount: number, note?: string, receiptId?: string) => Promise<void>;
 }
 
 export function useCycleItems(cycleId: string | null): UseCycleItemsResult {
@@ -226,14 +226,20 @@ export function useCycleItems(cycleId: string | null): UseCycleItemsResult {
 
   // Add a partial payment to a variable item
   const addPayment = useCallback(
-    async (itemId: string, paymentAmount: number, note?: string) => {
+    async (itemId: string, paymentAmount: number, note?: string, receiptId?: string) => {
       if (!userId || !cycleId) return;
       const item = items.find((i) => i.id === itemId);
       if (!item) return;
 
       const now = Timestamp.now();
       const paymentId = `pay-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-      const newPayment = { id: paymentId, amount: paymentAmount, date: now, note: note ?? undefined };
+      const newPayment = {
+        id: paymentId,
+        amount: paymentAmount,
+        date: now,
+        note: note ?? undefined,
+        receiptId: receiptId ?? undefined,
+      };
       const newTotal = (item.totalPaidAmount ?? 0) + paymentAmount;
       const newStatus: CycleItemStatus = newTotal >= item.amount ? 'paid' : 'partial';
 
@@ -252,7 +258,7 @@ export function useCycleItems(cycleId: string | null): UseCycleItemsResult {
         const res = await fetch(`/api/cycle-items/${itemId}/pay`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ amount: paymentAmount, note }),
+          body: JSON.stringify({ amount: paymentAmount, note, receiptId }),
         });
         if (!res.ok) throw new Error('Payment failed');
         removeOptimisticItem(itemId);

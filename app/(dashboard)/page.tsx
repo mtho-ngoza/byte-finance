@@ -482,7 +482,7 @@ interface CycleItemRowProps {
   onStatusChange: (id: string, status: CycleItemStatus, actualAmount?: number) => Promise<void>;
   onAmountChange: (id: string, amount: number) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
-  onAddPayment: (id: string, amount: number, note?: string) => Promise<void>;
+  onAddPayment: (id: string, amount: number, note?: string, receiptId?: string) => Promise<void>;
 }
 
 function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete, onAddPayment }: CycleItemRowProps) {
@@ -492,6 +492,9 @@ function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete, onAddPay
   const [showPaymentPrompt, setShowPaymentPrompt] = useState(false);
   const [paymentValue, setPaymentValue] = useState('');
   const [paymentNote, setPaymentNote] = useState('');
+  const [paymentReceiptId, setPaymentReceiptId] = useState<string | undefined>(undefined);
+  const [receipts, setReceipts] = useState<Array<{ id: string; thumbnailUrl?: string; imageUrl?: string; vendor?: string; amountInCents?: number }>>([]);
+  const [receiptsLoaded, setReceiptsLoaded] = useState(false);
   const { toast, confirm } = useToast();
 
   const isSkipped = item.status === 'skipped';
@@ -510,7 +513,15 @@ function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete, onAddPay
     // Open payment prompt for all items
     setPaymentValue((remaining / 100).toFixed(2));
     setPaymentNote('');
+    setPaymentReceiptId(undefined);
     setShowPaymentPrompt(true);
+    // Lazy-load receipts for the picker
+    if (!receiptsLoaded) {
+      fetch('/api/receipts?limit=12')
+        .then((r) => r.json())
+        .then((d) => { setReceipts(d.receipts ?? []); setReceiptsLoaded(true); })
+        .catch(() => setReceiptsLoaded(true));
+    }
   };
 
   const handleConfirmPayment = async () => {
@@ -519,7 +530,7 @@ function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete, onAddPay
     try {
       const amt = Math.round(parseFloat(paymentValue) * 100);
       if (isNaN(amt) || amt <= 0) return;
-      await onAddPayment(item.id, amt, paymentNote.trim() || undefined);
+      await onAddPayment(item.id, amt, paymentNote.trim() || undefined, paymentReceiptId);
     } finally {
       setLoading(false);
     }
@@ -691,6 +702,52 @@ function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete, onAddPay
                 className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background text-text-primary focus:outline-none focus:border-primary"
               />
             </div>
+            {/* Receipt picker */}
+            <div>
+              <label className="block text-xs text-text-secondary mb-1.5">
+                Receipt (optional)
+                {paymentReceiptId && (
+                  <button
+                    onClick={() => setPaymentReceiptId(undefined)}
+                    className="ml-2 text-primary hover:text-primary/70"
+                  >
+                    clear
+                  </button>
+                )}
+              </label>
+              {receipts.length === 0 && receiptsLoaded ? (
+                <p className="text-xs text-text-secondary">No receipts captured yet.</p>
+              ) : (
+                <div className="grid grid-cols-4 gap-1.5">
+                  {receipts.map((r) => {
+                    const selected = r.id === paymentReceiptId;
+                    return (
+                      <button
+                        key={r.id}
+                        onClick={() => setPaymentReceiptId(selected ? undefined : r.id)}
+                        className={`relative aspect-square rounded-lg overflow-hidden border-2 transition-colors ${
+                          selected ? 'border-primary' : 'border-transparent hover:border-primary/40'
+                        }`}
+                      >
+                        {r.thumbnailUrl || r.imageUrl ? (
+                          <img src={r.thumbnailUrl || r.imageUrl} alt="Receipt" className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full bg-background flex items-center justify-center text-text-secondary text-base">📄</div>
+                        )}
+                        {selected && (
+                          <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
+                            <svg className="w-4 h-4 text-primary" fill="none" viewBox="0 0 16 16">
+                              <circle cx="8" cy="8" r="7" fill="currentColor" fillOpacity="0.2" stroke="currentColor" strokeWidth="1.5" />
+                              <path d="M5 8l2 2 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
             <div className="flex gap-2">
               <button onClick={() => setShowPaymentPrompt(false)}
                 className="flex-1 py-2 rounded-lg border border-border text-text-secondary text-sm">
@@ -698,7 +755,7 @@ function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete, onAddPay
               </button>
               <button onClick={handleConfirmPayment}
                 className="flex-1 py-2 rounded-lg bg-primary text-background font-medium text-sm">
-                Add Payment
+                {paymentReceiptId ? 'Add Payment + Receipt' : 'Add Payment'}
               </button>
             </div>
           </div>
