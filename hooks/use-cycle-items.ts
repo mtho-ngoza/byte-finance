@@ -105,7 +105,7 @@ export function useCycleItems(cycleId: string | null): UseCycleItemsResult {
       // The effective paid amount: use actualAmount if provided, else existing actualAmount, else committed amount
       const effectiveAmount = actualAmount ?? item.actualAmount ?? item.amount;
 
-      // Optimistic update
+      // Optimistic update — preserve payments when reverting status
       const optimisticItem: CycleItem = {
         ...item,
         status,
@@ -127,19 +127,21 @@ export function useCycleItems(cycleId: string | null): UseCycleItemsResult {
         }
         await updateDoc(itemRef, updateData);
 
-        // Update cycle totals using effective amount
+        // Update cycle totals — use totalPaidAmount when payments exist
         const cycleRef = doc(db, `users/${userId}/cycles`, cycleId);
-        const previousEffective = item.actualAmount ?? item.amount;
+        const previousEffective = item.totalPaidAmount ?? item.actualAmount ?? item.amount;
+        const effectiveForCycle = item.totalPaidAmount ?? effectiveAmount;
         if (status === 'paid' && previousStatus !== 'paid') {
           await updateDoc(cycleRef, {
-            totalPaid: increment(effectiveAmount),
+            totalPaid: increment(effectiveForCycle),
             paidCount: increment(1),
             updatedAt: now,
           });
-        } else if (previousStatus === 'paid' && status !== 'paid') {
+        } else if ((previousStatus === 'paid' || previousStatus === 'partial') && status !== 'paid' && status !== 'partial') {
+          // Reverting to upcoming/due/skipped — subtract what was counted
           await updateDoc(cycleRef, {
             totalPaid: increment(-previousEffective),
-            paidCount: increment(-1),
+            paidCount: previousStatus === 'paid' ? increment(-1) : 0,
             updatedAt: now,
           });
         }
@@ -241,7 +243,9 @@ export function useCycleItems(cycleId: string | null): UseCycleItemsResult {
         receiptId: receiptId ?? undefined,
       };
       const newTotal = (item.totalPaidAmount ?? 0) + paymentAmount;
-      const newStatus: CycleItemStatus = newTotal >= item.amount ? 'paid' : 'partial';
+      // Never auto-complete — always stay partial until user explicitly marks done.
+      // This allows overspend tracking for variable items.
+      const newStatus: CycleItemStatus = 'partial';
 
       // Optimistic update
       const optimisticItem: CycleItem = {
@@ -249,7 +253,6 @@ export function useCycleItems(cycleId: string | null): UseCycleItemsResult {
         payments: [...(item.payments ?? []), newPayment],
         totalPaidAmount: newTotal,
         status: newStatus,
-        paidDate: newStatus === 'paid' ? now : undefined,
         updatedAt: now,
       };
       setOptimisticItem(itemId, optimisticItem);

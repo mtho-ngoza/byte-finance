@@ -42,7 +42,9 @@ export async function POST(
   const paymentId = `pay-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 
   const newTotalPaid = (item.totalPaidAmount ?? 0) + amount;
-  const newStatus = newTotalPaid >= item.amount ? 'paid' : 'partial';
+  // Never auto-complete — always partial until user explicitly marks done.
+  // This allows overspend tracking for variable items.
+  const newStatus = 'partial';
 
   const payment = {
     id: paymentId,
@@ -56,20 +58,16 @@ export async function POST(
     payments: FieldValue.arrayUnion(payment),
     totalPaidAmount: FieldValue.increment(amount),
     status: newStatus,
-    paidDate: newStatus === 'paid' ? now : null,
+    paidDate: null,
     updatedAt: now,
   });
 
-  // Update cycle totalPaid
+  // Update cycle totalPaid (always increment — partial counts toward paid total)
   const cycleRef = db.collection(`users/${userId}/cycles`).doc(item.cycleId);
-  const cycleUpdate: Record<string, unknown> = {
+  await cycleRef.update({
     totalPaid: FieldValue.increment(amount),
     updatedAt: now,
-  };
-  if (newStatus === 'paid' && item.status !== 'paid') {
-    cycleUpdate.paidCount = FieldValue.increment(1);
-  }
-  await cycleRef.update(cycleUpdate);
+  });
 
   // Smart linking: contribute to goal
   if (item.linkedGoalId) {

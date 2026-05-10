@@ -540,11 +540,27 @@ function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete, onAddPay
   const handleToggle = async () => {
     if (isPaid) {
       setLoading(true);
-      try { await onStatusChange(item.id, 'upcoming'); } finally { setLoading(false); }
+      try {
+        // If item has payments, revert to partial (payments still exist), else upcoming
+        const revertTo: CycleItemStatus = (item.payments?.length ?? 0) > 0 ? 'partial' : 'upcoming';
+        await onStatusChange(item.id, revertTo);
+      } finally { setLoading(false); }
       return;
     }
-    // Open payment prompt for all items
-    setPaymentValue((remaining / 100).toFixed(2));
+    if (isPartial) {
+      // Has payments — ask to mark as done (not add more)
+      confirm(
+        `Mark as done? Total paid: R${(totalPaidSoFar / 100).toFixed(2)} of R${(item.amount / 100).toFixed(2)} budgeted.`,
+        async () => {
+          setLoading(true);
+          try { await onStatusChange(item.id, 'paid'); } finally { setLoading(false); }
+        },
+        { title: 'Mark as Done', confirmLabel: 'Mark Done' }
+      );
+      return;
+    }
+    // Open payment prompt for unpaid items
+    setPaymentValue((item.amount / 100).toFixed(2));
     setPaymentNote('');
     setPaymentReceiptId(undefined);
     setShowPaymentPrompt(true);
@@ -705,8 +721,8 @@ function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete, onAddPay
               <h3 className="text-sm font-semibold text-text-primary">Add Payment — {item.label}</h3>
               <p className="text-xs text-text-secondary mt-1">
                 {isPartial
-                  ? `Paid R${(totalPaidSoFar / 100).toFixed(2)} · R${(remaining / 100).toFixed(2)} remaining`
-                  : `Committed: R${(item.amount / 100).toFixed(2)}`}
+                  ? `Paid so far: R${(totalPaidSoFar / 100).toFixed(2)} · Budget: R${(item.amount / 100).toFixed(2)}`
+                  : `Budget: R${(item.amount / 100).toFixed(2)}`}
               </p>
             </div>
             <div>
@@ -821,6 +837,25 @@ function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete, onAddPay
           </button>
         }
       >
+        {isPartial && (
+          <button
+            onClick={() => {
+              setPaymentValue('');
+              setPaymentNote('');
+              setPaymentReceiptId(undefined);
+              setShowPaymentPrompt(true);
+              if (!receiptsLoaded) {
+                fetch('/api/receipts?limit=12')
+                  .then((r) => r.json())
+                  .then((d) => { setReceipts(d.receipts ?? []); setReceiptsLoaded(true); })
+                  .catch(() => setReceiptsLoaded(true));
+              }
+            }}
+            className="w-full px-3 py-1.5 text-left text-sm text-text-primary hover:bg-background transition-colors"
+          >
+            Add payment
+          </button>
+        )}
         <button
           onClick={handleSkip}
           disabled={loading}
