@@ -215,7 +215,7 @@ async function processUser(userId: string): Promise<void> {
         type: insight.type,
         title: insight.title,
         message: insight.message,
-        data: insight.data,
+        data: { ...insight.data, cycleId: currentCycleId },
         isRead: false,
         isDismissed: false,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),

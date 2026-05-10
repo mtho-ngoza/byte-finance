@@ -18,7 +18,7 @@ import type { CycleItem, CycleItemStatus, Goal, Insight } from '@/types';
 export default function DashboardPage() {
   const { cycles, loading: cyclesLoading } = useCycles();
   const { activeGoals, loading: goalsLoading } = useGoals();
-  const { insights, dismiss: dismissInsight, snooze: snoozeInsight } = useInsights();
+  const { insights, dismiss: dismissInsight, snooze: snoozeInsight } = useInsights(currentCycleId ?? undefined);
   const { loading: profileLoading } = useUserProfile();
   const { selectedYear, accountFilter, currentCycleId, setCurrentCycleId } = useAppStore();
   const [creatingCycle, setCreatingCycle] = useState(false);

@@ -173,6 +173,7 @@ async function processUser(
           category: suggestion.category,
           actionType: suggestion.actionType,
           generatedBy: 'smart-advisor',
+          cycleId: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`,
         },
         isRead: false,
         isDismissed: false,

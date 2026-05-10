@@ -7,8 +7,9 @@ import type { Insight } from '@/types';
 /**
  * Hook to fetch and subscribe to user insights
  * Filters out dismissed and expired insights
+ * @param cycleId - optional: if provided, only returns insights tagged to this cycle
  */
-export function useInsights() {
+export function useInsights(cycleId?: string) {
   const userId = useUserId();
   const [insights, setInsights] = useState<Insight[]>([]);
   const [loading, setLoading] = useState(true);
@@ -38,8 +39,13 @@ export function useInsights() {
           .filter((insight) => {
             // Filter out expired insights
             const expiresAt = (insight as { expiresAt?: { toDate: () => Date } }).expiresAt;
-            if (!expiresAt) return true;
-            return expiresAt.toDate() > now;
+            if (expiresAt && expiresAt.toDate() <= now) return false;
+            // Filter by cycleId if provided — show insights for this cycle or global ones (no cycleId)
+            if (cycleId) {
+              const insightCycleId = (insight as { data?: { cycleId?: string } }).data?.cycleId;
+              if (insightCycleId && insightCycleId !== cycleId) return false;
+            }
+            return true;
           }) as Insight[];
 
         setInsights(data);
