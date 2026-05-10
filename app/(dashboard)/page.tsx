@@ -523,6 +523,7 @@ function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete, onAddPay
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
   const [showPaymentPrompt, setShowPaymentPrompt] = useState(false);
+  const [showPayments, setShowPayments] = useState(false);
   const [paymentValue, setPaymentValue] = useState('');
   const [paymentNote, setPaymentNote] = useState('');
   const [paymentReceiptId, setPaymentReceiptId] = useState<string | undefined>(undefined);
@@ -535,7 +536,7 @@ function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete, onAddPay
   const isPartial = item.status === 'partial';
   const isDue = item.status === 'due';
   const totalPaidSoFar = item.totalPaidAmount ?? 0;
-  const remaining = item.amount - totalPaidSoFar;
+  const hasPayments = (item.payments?.length ?? 0) > 0;
 
   const handleToggle = async () => {
     if (isPaid) {
@@ -631,86 +632,173 @@ function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete, onAddPay
   };
 
   return (
-    <div
-      className={`flex items-center gap-3 p-3 rounded-lg border transition-colors ${
-        isDue
-          ? 'border-warning/50 bg-warning/5'
-          : 'border-border bg-surface'
-      }`}
-    >
-      {/* Toggle button */}
-      <button
-        onClick={handleToggle}
-        disabled={loading || item.status === 'skipped'}
-        className={`w-5 h-5 rounded border-2 shrink-0 flex items-center justify-center transition-colors disabled:opacity-50 ${
-          isPaid
-            ? 'bg-primary border-primary'
-            : isPartial
-            ? 'bg-warning/20 border-warning'
-            : 'bg-transparent border-border hover:border-primary'
-        }`}
-        aria-label={isPaid ? 'Mark as unpaid' : 'Add payment'}
-      >
-        {isPaid && (
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="black" strokeWidth="2">
-            <polyline points="1.5,5 4,7.5 8.5,2.5" />
-          </svg>
-        )}
-        {isPartial && (
-          <span className="text-warning text-[8px] font-bold leading-none">+</span>
-        )}
-      </button>
-
-      {/* Label + category */}
-      <div className="flex-1 min-w-0">
-        <p className={`text-sm font-medium truncate ${isPaid ? 'text-text-secondary line-through' : 'text-text-primary'}`}>
-          {item.label}
-        </p>
-        <p className="text-xs text-text-secondary capitalize">
-          {item.category}
-          {item.accountType === 'business' && (
-            <span className="ml-1.5 px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 text-[10px] uppercase">
-              Biz
-            </span>
-          )}
-          {item.linkedGoalId && (
-            <span className="ml-1.5 text-primary">linked</span>
-          )}
-        </p>
-      </div>
-
-      {/* Amount - editable */}
-      {editing ? (
-        <div className="flex items-center gap-1">
-          <span className="text-sm text-text-secondary">R</span>
-          <input
-            type="number"
-            value={editValue}
-            onChange={(e) => setEditValue(e.target.value)}
-            onBlur={handleAmountSave}
-            onKeyDown={handleAmountKeyDown}
-            autoFocus
-            step="0.01"
-            min="0"
-            className="w-20 px-2 py-1 text-sm text-right rounded border border-primary bg-background text-text-primary focus:outline-none"
-          />
-        </div>
-      ) : (
+    <div className={`rounded-lg border transition-colors ${isDue ? 'border-warning/50 bg-warning/5' : 'border-border bg-surface'}`}>
+      {/* Main row */}
+      <div className="flex items-center gap-3 p-3">
+        {/* Toggle button */}
         <button
-          onClick={handleAmountClick}
-          disabled={isSkipped}
-          className={`hover:bg-background px-2 py-1 rounded transition-colors text-right ${isPaid || isSkipped ? 'opacity-50' : ''}`}
-          title="Click to edit committed amount"
+          onClick={handleToggle}
+          disabled={loading || item.status === 'skipped'}
+          className={`w-5 h-5 rounded border-2 shrink-0 flex items-center justify-center transition-colors disabled:opacity-50 ${
+            isPaid
+              ? 'bg-primary border-primary'
+              : isPartial
+              ? 'bg-warning/20 border-warning'
+              : 'bg-transparent border-border hover:border-primary'
+          }`}
+          aria-label={isPaid ? 'Mark as unpaid' : isPartial ? 'Mark as done' : 'Add payment'}
         >
-          {isPartial ? (
-            <div>
-              <AmountDisplay amount={totalPaidSoFar} size="sm" className="text-warning" />
-              <p className="text-[10px] text-text-secondary">of <span className="font-mono">R{(item.amount / 100).toFixed(0)}</span></p>
-            </div>
-          ) : (
-            <AmountDisplay amount={item.amount} size="sm" />
+          {isPaid && (
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="black" strokeWidth="2">
+              <polyline points="1.5,5 4,7.5 8.5,2.5" />
+            </svg>
+          )}
+          {isPartial && (
+            <span className="text-warning text-[8px] font-bold leading-none">+</span>
           )}
         </button>
+
+        {/* Label + category */}
+        <div className="flex-1 min-w-0">
+          <p className={`text-sm font-medium truncate ${isPaid ? 'text-text-secondary line-through' : 'text-text-primary'}`}>
+            {item.label}
+          </p>
+          <p className="text-xs text-text-secondary capitalize">
+            {item.category}
+            {item.accountType === 'business' && (
+              <span className="ml-1.5 px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 text-[10px] uppercase">Biz</span>
+            )}
+            {item.linkedGoalId && <span className="ml-1.5 text-primary">linked</span>}
+          </p>
+        </div>
+
+        {/* Amount - editable */}
+        {editing ? (
+          <div className="flex items-center gap-1">
+            <span className="text-sm text-text-secondary">R</span>
+            <input
+              type="number"
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              onBlur={handleAmountSave}
+              onKeyDown={handleAmountKeyDown}
+              autoFocus
+              step="0.01"
+              min="0"
+              className="w-20 px-2 py-1 text-sm text-right rounded border border-primary bg-background text-text-primary focus:outline-none"
+            />
+          </div>
+        ) : (
+          <button
+            onClick={handleAmountClick}
+            disabled={isSkipped}
+            className={`hover:bg-background px-2 py-1 rounded transition-colors text-right ${isPaid || isSkipped ? 'opacity-50' : ''}`}
+            title="Click to edit budget"
+          >
+            {isPartial ? (
+              <div>
+                <AmountDisplay amount={totalPaidSoFar} size="sm" className="text-warning" />
+                <p className="text-[10px] text-text-secondary">of <span className="font-mono">R{(item.amount / 100).toFixed(0)}</span></p>
+              </div>
+            ) : (
+              <AmountDisplay amount={item.amount} size="sm" />
+            )}
+          </button>
+        )}
+
+        {/* Payments expand toggle */}
+        {hasPayments && (
+          <button
+            onClick={() => setShowPayments(!showPayments)}
+            className="w-6 h-6 flex items-center justify-center text-text-secondary hover:text-text-primary transition-colors"
+            aria-label={showPayments ? 'Hide payments' : 'Show payments'}
+          >
+            <svg
+              className={`w-3.5 h-3.5 transition-transform ${showPayments ? 'rotate-180' : ''}`}
+              fill="none" viewBox="0 0 16 16" stroke="currentColor" strokeWidth="2"
+            >
+              <path strokeLinecap="round" d="M4 6l4 4 4-4" />
+            </svg>
+          </button>
+        )}
+
+        {/* Menu button */}
+        <FloatingMenu
+          trigger={
+            <button
+              className="w-7 h-7 flex items-center justify-center rounded hover:bg-background text-text-secondary hover:text-text-primary transition-colors"
+              aria-label="Item menu"
+            >
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 16 16">
+                <circle cx="8" cy="3" r="1.5" />
+                <circle cx="8" cy="8" r="1.5" />
+                <circle cx="8" cy="13" r="1.5" />
+              </svg>
+            </button>
+          }
+        >
+          {isPartial && (
+            <button
+              onClick={() => {
+                setPaymentValue('');
+                setPaymentNote('');
+                setPaymentReceiptId(undefined);
+                setShowPaymentPrompt(true);
+                if (!receiptsLoaded) {
+                  fetch('/api/receipts?limit=12')
+                    .then((r) => r.json())
+                    .then((d) => { setReceipts(d.receipts ?? []); setReceiptsLoaded(true); })
+                    .catch(() => setReceiptsLoaded(true));
+                }
+              }}
+              className="w-full px-3 py-1.5 text-left text-sm text-text-primary hover:bg-background transition-colors"
+            >
+              Add payment
+            </button>
+          )}
+          <button
+            onClick={handleSkip}
+            disabled={loading}
+            className="w-full px-3 py-1.5 text-left text-sm text-text-primary hover:bg-background transition-colors disabled:opacity-50"
+          >
+            {isSkipped ? 'Unskip' : 'Skip'}
+          </button>
+          <button
+            onClick={handleDelete}
+            className="w-full px-3 py-1.5 text-left text-sm text-error hover:bg-background transition-colors"
+          >
+            Delete
+          </button>
+        </FloatingMenu>
+      </div>
+
+      {/* Collapsible payments list */}
+      {hasPayments && showPayments && (
+        <div className="border-t border-border px-3 pb-2 pt-1 space-y-1">
+          {(item.payments ?? []).map((p, idx) => {
+            const date = p.date && typeof (p.date as { toDate?: () => Date }).toDate === 'function'
+              ? (p.date as { toDate: () => Date }).toDate().toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })
+              : '';
+            return (
+              <div key={p.id} className="flex items-center justify-between text-xs py-0.5">
+                <span className="text-text-secondary">
+                  #{idx + 1} {date}{p.note ? ` · ${p.note}` : ''}
+                  {p.receiptId && <span className="ml-1 text-primary">📷</span>}
+                </span>
+                <span className="font-mono text-text-primary">R{(p.amount / 100).toFixed(2)}</span>
+              </div>
+            );
+          })}
+          <div className="flex items-center justify-between text-xs pt-1 border-t border-border/50">
+            <span className="text-text-secondary">Total paid</span>
+            <span className={`font-mono font-medium ${totalPaidSoFar > item.amount ? 'text-error' : 'text-warning'}`}>
+              R{(totalPaidSoFar / 100).toFixed(2)}
+              {totalPaidSoFar > item.amount && (
+                <span className="ml-1 text-error">+R{((totalPaidSoFar - item.amount) / 100).toFixed(2)} over</span>
+              )}
+            </span>
+          </div>
+        </div>
       )}
 
       {/* Payment prompt */}
@@ -768,7 +856,6 @@ function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete, onAddPay
                 <InlineReceiptCapture
                   onCaptured={(id) => {
                     setPaymentReceiptId(id);
-                    // Add to local receipts list so it shows immediately
                     setReceipts((prev) => [{ id, thumbnailUrl: undefined, imageUrl: undefined }, ...prev]);
                     setReceiptsLoaded(true);
                   }}
@@ -821,55 +908,6 @@ function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete, onAddPay
           </div>
         </div>
       )}
-
-      {/* Menu button */}
-      <FloatingMenu
-        trigger={
-          <button
-            className="w-7 h-7 flex items-center justify-center rounded hover:bg-background text-text-secondary hover:text-text-primary transition-colors"
-            aria-label="Item menu"
-          >
-            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 16 16">
-              <circle cx="8" cy="3" r="1.5" />
-              <circle cx="8" cy="8" r="1.5" />
-              <circle cx="8" cy="13" r="1.5" />
-            </svg>
-          </button>
-        }
-      >
-        {isPartial && (
-          <button
-            onClick={() => {
-              setPaymentValue('');
-              setPaymentNote('');
-              setPaymentReceiptId(undefined);
-              setShowPaymentPrompt(true);
-              if (!receiptsLoaded) {
-                fetch('/api/receipts?limit=12')
-                  .then((r) => r.json())
-                  .then((d) => { setReceipts(d.receipts ?? []); setReceiptsLoaded(true); })
-                  .catch(() => setReceiptsLoaded(true));
-              }
-            }}
-            className="w-full px-3 py-1.5 text-left text-sm text-text-primary hover:bg-background transition-colors"
-          >
-            Add payment
-          </button>
-        )}
-        <button
-          onClick={handleSkip}
-          disabled={loading}
-          className="w-full px-3 py-1.5 text-left text-sm text-text-primary hover:bg-background transition-colors disabled:opacity-50"
-        >
-          {isSkipped ? 'Unskip' : 'Skip'}
-        </button>
-        <button
-          onClick={handleDelete}
-          className="w-full px-3 py-1.5 text-left text-sm text-error hover:bg-background transition-colors"
-        >
-          Delete
-        </button>
-      </FloatingMenu>
     </div>
   );
 }
