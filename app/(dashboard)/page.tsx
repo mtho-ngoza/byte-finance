@@ -18,9 +18,9 @@ import type { CycleItem, CycleItemStatus, Goal, Insight } from '@/types';
 export default function DashboardPage() {
   const { cycles, loading: cyclesLoading } = useCycles();
   const { activeGoals, loading: goalsLoading } = useGoals();
-  const { insights, dismiss: dismissInsight, snooze: snoozeInsight } = useInsights(currentCycleId ?? undefined);
   const { loading: profileLoading } = useUserProfile();
   const { selectedYear, accountFilter, currentCycleId, setCurrentCycleId } = useAppStore();
+  const { insights, dismiss: dismissInsight, snooze: snoozeInsight } = useInsights(currentCycleId ?? undefined);
   const [creatingCycle, setCreatingCycle] = useState(false);
 
   // Auto-create current cycle if it doesn't exist
@@ -133,6 +133,7 @@ export default function DashboardPage() {
     updateStatus,
     updateAmount,
     addPayment,
+    deletePayment,
   } = useCycleItems(currentCycle?.id ?? null);
 
   // Delete item handler
@@ -264,14 +265,19 @@ export default function DashboardPage() {
         <div className="mb-3">
           <div className="flex justify-between text-xs text-text-secondary mb-1">
             <span>Paid: <AmountDisplay amount={totalPaid} size="xs" className="inline" /></span>
-            <span>{progressPercent}%</span>
+            <span>{progressPercent > 100 ? '>100%' : `${progressPercent}%`}</span>
           </div>
           <div className="h-2 bg-background rounded-full overflow-hidden">
             <div
-              className="h-full bg-primary rounded-full transition-all"
-              style={{ width: `${progressPercent}%` }}
+              className={`h-full rounded-full transition-all ${totalPaid > totalCommitted ? 'bg-error' : 'bg-primary'}`}
+              style={{ width: `${Math.min(100, progressPercent)}%` }}
             />
           </div>
+          {totalPaid > totalCommitted && (
+            <p className="text-xs text-error mt-1">
+              +<AmountDisplay amount={totalPaid - totalCommitted} size="xs" className="inline" /> over budget
+            </p>
+          )}
         </div>
 
         {/* Account breakdown */}
@@ -365,7 +371,7 @@ export default function DashboardPage() {
           </h3>
           <div className="space-y-2">
             {dueItems.map((item) => (
-              <CycleItemRow key={item.id} item={item} onStatusChange={updateStatus} onAmountChange={updateAmount} onDelete={deleteItem} onAddPayment={addPayment} />
+              <CycleItemRow key={item.id} item={item} onStatusChange={updateStatus} onAmountChange={updateAmount} onDelete={deleteItem} onAddPayment={addPayment} onDeletePayment={deletePayment} />
             ))}
           </div>
         </section>
@@ -379,7 +385,7 @@ export default function DashboardPage() {
           </h3>
           <div className="space-y-2">
             {upcomingItems.map((item) => (
-              <CycleItemRow key={item.id} item={item} onStatusChange={updateStatus} onAmountChange={updateAmount} onDelete={deleteItem} onAddPayment={addPayment} />
+              <CycleItemRow key={item.id} item={item} onStatusChange={updateStatus} onAmountChange={updateAmount} onDelete={deleteItem} onAddPayment={addPayment} onDeletePayment={deletePayment} />
             ))}
           </div>
         </section>
@@ -397,7 +403,7 @@ export default function DashboardPage() {
           </h3>
           <div className="space-y-2">
             {partialItems.map((item) => (
-              <CycleItemRow key={item.id} item={item} onStatusChange={updateStatus} onAmountChange={updateAmount} onDelete={deleteItem} onAddPayment={addPayment} />
+              <CycleItemRow key={item.id} item={item} onStatusChange={updateStatus} onAmountChange={updateAmount} onDelete={deleteItem} onAddPayment={addPayment} onDeletePayment={deletePayment} />
             ))}
           </div>
         </section>
@@ -415,7 +421,7 @@ export default function DashboardPage() {
           </h3>
           <div className="space-y-2">
             {paidItems.map((item) => (
-              <CycleItemRow key={item.id} item={item} onStatusChange={updateStatus} onAmountChange={updateAmount} onDelete={deleteItem} onAddPayment={addPayment} />
+              <CycleItemRow key={item.id} item={item} onStatusChange={updateStatus} onAmountChange={updateAmount} onDelete={deleteItem} onAddPayment={addPayment} onDeletePayment={deletePayment} />
             ))}
           </div>
         </section>
@@ -429,7 +435,7 @@ export default function DashboardPage() {
           </h3>
           <div className="space-y-2 opacity-60">
             {skippedItems.map((item) => (
-              <CycleItemRow key={item.id} item={item} onStatusChange={updateStatus} onAmountChange={updateAmount} onDelete={deleteItem} onAddPayment={addPayment} />
+              <CycleItemRow key={item.id} item={item} onStatusChange={updateStatus} onAmountChange={updateAmount} onDelete={deleteItem} onAddPayment={addPayment} onDeletePayment={deletePayment} />
             ))}
           </div>
         </section>
@@ -516,9 +522,10 @@ interface CycleItemRowProps {
   onAmountChange: (id: string, amount: number) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   onAddPayment: (id: string, amount: number, note?: string, receiptId?: string) => Promise<void>;
+  onDeletePayment: (id: string, paymentId: string) => Promise<void>;
 }
 
-function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete, onAddPayment }: CycleItemRowProps) {
+function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete, onAddPayment, onDeletePayment }: CycleItemRowProps) {
   const [loading, setLoading] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
@@ -780,12 +787,24 @@ function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete, onAddPay
               ? (p.date as { toDate: () => Date }).toDate().toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })
               : '';
             return (
-              <div key={p.id} className="flex items-center justify-between text-xs py-0.5">
-                <span className="text-text-secondary">
+              <div key={p.id} className="flex items-center justify-between text-xs py-0.5 group">
+                <span className="text-text-secondary flex-1 min-w-0 truncate">
                   #{idx + 1} {date}{p.note ? ` · ${p.note}` : ''}
                   {p.receiptId && <span className="ml-1 text-primary">📷</span>}
                 </span>
-                <span className="font-mono text-text-primary">R{(p.amount / 100).toFixed(2)}</span>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <span className="font-mono text-text-primary">R{(p.amount / 100).toFixed(2)}</span>
+                  <button
+                    onClick={() => onDeletePayment(item.id, p.id)}
+                    className="w-4 h-4 flex items-center justify-center rounded text-text-secondary hover:text-error opacity-0 group-hover:opacity-100 transition-opacity"
+                    aria-label="Delete payment"
+                    title="Delete payment"
+                  >
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 12 12" stroke="currentColor" strokeWidth="2">
+                      <path strokeLinecap="round" d="M2 2l8 8M10 2l-8 8" />
+                    </svg>
+                  </button>
+                </div>
               </div>
             );
           })}

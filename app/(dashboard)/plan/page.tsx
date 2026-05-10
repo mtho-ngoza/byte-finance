@@ -42,8 +42,8 @@ const GOAL_TYPE_ICONS: Record<string, string> = {
 // ---------------------------------------------------------------------------
 
 export default function PlanPage() {
-  const { commitments, loading: commitmentsLoading, commitmentsByCategory, totalMonthly } = useCommitments();
-  const { activeGoals, loading: goalsLoading, commitments: allCommitments } = useGoals();
+  const { commitments, allCommitments, loading: commitmentsLoading, allCommitmentsByCategory, totalMonthly } = useCommitments();
+  const { activeGoals, loading: goalsLoading } = useGoals();
 
   const [showCommitmentForm, setShowCommitmentForm] = useState(false);
   const [showGoalForm, setShowGoalForm] = useState(false);
@@ -93,7 +93,7 @@ export default function PlanPage() {
               await fetch('/api/commitments', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ...data, sortOrder: commitments.length }),
+                body: JSON.stringify({ ...data, sortOrder: allCommitments.length }),
               });
               setShowCommitmentForm(false);
             }}
@@ -126,9 +126,9 @@ export default function PlanPage() {
         ) : (
           <div className="space-y-4">
             {CATEGORIES.map((cat) => {
-              const items = commitmentsByCategory.get(cat);
+              const items = allCommitmentsByCategory.get(cat);
               if (!items || items.length === 0) return null;
-              const subtotal = items.reduce((s, c) => s + c.amount, 0);
+              const subtotal = items.filter((c) => c.isActive).reduce((s, c) => s + c.amount, 0);
               return (
                 <CategoryGroup
                   key={cat}
@@ -142,6 +142,14 @@ export default function PlanPage() {
                       await fetch(`/api/commitments/${id}`, { method: 'DELETE' });
                       toast('Commitment deleted', 'success');
                     }, { title: 'Delete Commitment', confirmLabel: 'Delete', danger: true });
+                  }}
+                  onToggleActive={async (id, isActive) => {
+                    await fetch(`/api/commitments/${id}`, {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ isActive }),
+                    });
+                    toast(isActive ? 'Commitment activated' : 'Commitment deactivated', 'success');
                   }}
                 />
               );
@@ -217,9 +225,10 @@ interface CategoryGroupProps {
   goals: GoalWithComputed[];
   onEdit: (c: Commitment) => void;
   onDelete: (id: string) => void;
+  onToggleActive: (id: string, isActive: boolean) => void;
 }
 
-function CategoryGroup({ category, items, subtotal, goals, onEdit, onDelete }: CategoryGroupProps) {
+function CategoryGroup({ category, items, subtotal, goals, onEdit, onDelete, onToggleActive }: CategoryGroupProps) {
   return (
     <div className="rounded-xl border border-border bg-surface overflow-hidden">
       {/* Category header */}
@@ -237,6 +246,7 @@ function CategoryGroup({ category, items, subtotal, goals, onEdit, onDelete }: C
             goals={goals}
             onEdit={onEdit}
             onDelete={onDelete}
+            onToggleActive={onToggleActive}
           />
         ))}
       </div>
@@ -253,23 +263,29 @@ interface CommitmentRowProps {
   goals: GoalWithComputed[];
   onEdit: (c: Commitment) => void;
   onDelete: (id: string) => void;
+  onToggleActive: (id: string, isActive: boolean) => void;
 }
 
-function CommitmentRow({ commitment, goals, onEdit, onDelete }: CommitmentRowProps) {
+function CommitmentRow({ commitment, goals, onEdit, onDelete, onToggleActive }: CommitmentRowProps) {
   const linkedGoal = goals.find((g) => g.id === commitment.linkedGoalId);
 
   return (
-    <div className="flex items-center gap-3 px-4 py-3">
+    <div className={`flex items-center gap-3 px-4 py-3 ${!commitment.isActive ? 'opacity-50' : ''}`}>
       {/* Tree connector */}
       <span className="text-border text-sm select-none">├─</span>
 
       {/* Label + badges */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm text-text-primary truncate">{commitment.label}</span>
+          <span className={`text-sm truncate ${commitment.isActive ? 'text-text-primary' : 'text-text-secondary line-through'}`}>{commitment.label}</span>
           {commitment.isVariable && (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-warning/10 text-warning font-medium uppercase tracking-wide">
               Variable
+            </span>
+          )}
+          {!commitment.isActive && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-border text-text-secondary font-medium uppercase tracking-wide">
+              Inactive
             </span>
           )}
           {linkedGoal && (
@@ -285,6 +301,21 @@ function CommitmentRow({ commitment, goals, onEdit, onDelete }: CommitmentRowPro
 
       {/* Actions */}
       <div className="flex items-center gap-1 shrink-0">
+        {/* Active/inactive toggle */}
+        <button
+          onClick={() => onToggleActive(commitment.id, !commitment.isActive)}
+          className={`relative w-8 h-4 rounded-full transition-colors shrink-0 ${
+            commitment.isActive ? 'bg-primary' : 'bg-border'
+          }`}
+          aria-label={commitment.isActive ? 'Deactivate commitment' : 'Activate commitment'}
+          title={commitment.isActive ? 'Active — click to deactivate' : 'Inactive — click to activate'}
+        >
+          <span
+            className={`absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white transition-transform ${
+              commitment.isActive ? 'translate-x-4' : 'translate-x-0'
+            }`}
+          />
+        </button>
         <button
           onClick={() => onEdit(commitment)}
           className="w-7 h-7 flex items-center justify-center rounded hover:bg-background text-text-secondary hover:text-text-primary transition-colors"

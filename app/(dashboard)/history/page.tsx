@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   BarChart,
@@ -9,6 +10,7 @@ import {
   YAxis,
   Tooltip,
   ResponsiveContainer,
+  Cell,
 } from 'recharts';
 import { useCycles } from '@/hooks/use-cycles';
 import { AmountDisplay } from '@/components/shared/amount-display';
@@ -71,6 +73,9 @@ function CustomTooltip({
     <div className="bg-surface border border-border rounded-lg px-3 py-2 text-sm shadow-lg">
       <p className="text-text-secondary mb-1">{label}</p>
       <p className="text-text-primary font-medium">{formatRands(payload[0].value)}</p>
+      {payload[0].value > 0 && (
+        <p className="text-xs text-primary mt-0.5">Click to view</p>
+      )}
     </div>
   );
 }
@@ -81,6 +86,7 @@ function CustomTooltip({
 
 export default function HistoryPage() {
   const { cycles, loading } = useCycles();
+  const router = useRouter();
 
   // Derive available years from cycles
   const availableYears = useMemo(() => {
@@ -108,6 +114,7 @@ export default function HistoryPage() {
       return {
         month: name,
         total: cycle ? cycle.totalPaid : 0,
+        cycleId: cycle?.id ?? null,
       };
     });
   }, [yearCycles]);
@@ -171,9 +178,27 @@ export default function HistoryPage() {
                     width={40}
                   />
                   <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
-                  <Bar dataKey="total" fill="#22c55e" radius={[4, 4, 0, 0]} maxBarSize={32} />
+                  <Bar
+                    dataKey="total"
+                    radius={[4, 4, 0, 0]}
+                    maxBarSize={32}
+                    style={{ cursor: 'pointer' }}
+                    onClick={(data) => {
+                      const cycleId = (data as { cycleId?: string | null })?.cycleId;
+                      if (cycleId) router.push(`/cycle/${cycleId}`);
+                    }}
+                  >
+                    {chartData.map((entry, index) => (
+                      <Cell
+                        key={`cell-${index}`}
+                        fill={entry.cycleId ? '#22c55e' : '#3f3f46'}
+                        opacity={entry.total === 0 ? 0.3 : 1}
+                      />
+                    ))}
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
+              <p className="text-xs text-text-secondary text-center mt-2">Click a bar to view cycle details</p>
             </div>
           </section>
 
