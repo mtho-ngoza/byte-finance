@@ -30,6 +30,8 @@ interface UseCycleItemsResult {
   updateAmount: (itemId: string, newAmount: number) => Promise<void>;
   /** Add a partial payment to a variable item */
   addPayment: (itemId: string, paymentAmount: number, note?: string, receiptId?: string) => Promise<void>;
+  /** Delete a specific payment from an item */
+  deletePayment: (itemId: string, paymentId: string) => Promise<void>;
 }
 
 export function useCycleItems(cycleId: string | null): UseCycleItemsResult {
@@ -273,6 +275,47 @@ export function useCycleItems(cycleId: string | null): UseCycleItemsResult {
     [userId, cycleId, items, setOptimisticItem, removeOptimisticItem]
   );
 
+  // Delete a specific payment from an item
+  const deletePayment = useCallback(
+    async (itemId: string, paymentId: string) => {
+      if (!userId || !cycleId) return;
+      const item = items.find((i) => i.id === itemId);
+      if (!item) return;
+
+      const paymentToDelete = (item.payments ?? []).find((p) => p.id === paymentId);
+      if (!paymentToDelete) return;
+
+      const remainingPayments = (item.payments ?? []).filter((p) => p.id !== paymentId);
+      const newTotal = remainingPayments.reduce((sum, p) => sum + p.amount, 0);
+      const newStatus: CycleItemStatus = remainingPayments.length === 0 ? 'upcoming' : 'partial';
+      const now = Timestamp.now();
+
+      // Optimistic update
+      const optimisticItem: CycleItem = {
+        ...item,
+        payments: remainingPayments,
+        totalPaidAmount: newTotal,
+        status: newStatus,
+        updatedAt: now,
+      };
+      setOptimisticItem(itemId, optimisticItem);
+
+      try {
+        const res = await fetch(`/api/cycle-items/${itemId}/delete-payment`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ paymentId }),
+        });
+        if (!res.ok) throw new Error('Delete payment failed');
+        removeOptimisticItem(itemId);
+      } catch (error) {
+        removeOptimisticItem(itemId);
+        throw error;
+      }
+    },
+    [userId, cycleId, items, setOptimisticItem, removeOptimisticItem]
+  );
+
   return {
     items,
     loading,
@@ -283,5 +326,6 @@ export function useCycleItems(cycleId: string | null): UseCycleItemsResult {
     updateStatus,
     updateAmount,
     addPayment,
+    deletePayment,
   };
 }
