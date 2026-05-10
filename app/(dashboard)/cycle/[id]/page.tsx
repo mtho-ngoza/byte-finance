@@ -74,7 +74,7 @@ export default function CycleDetailPage() {
   const userId = useUserId();
   const { cycles, loading: cyclesLoading } = useCycles();
   const { profile } = useUserProfile();
-  const { items, loading: itemsLoading, totalCommitted, totalPaid, updateStatus, updateAmount } =
+  const { items, loading: itemsLoading, totalCommitted, totalPaid, updateStatus, updateAmount, addPayment, deletePayment } =
     useCycleItems(cycleId);
 
   const cycle = cycles.find((c) => c.id === cycleId);
@@ -176,14 +176,19 @@ export default function CycleDetailPage() {
             <span>
               Paid: <AmountDisplay amount={totalPaid} size="xs" className="inline" />
             </span>
-            <span>{progressPercent}%</span>
+            <span>{progressPercent > 100 ? '>100%' : `${progressPercent}%`}</span>
           </div>
           <div className="h-2 bg-background rounded-full overflow-hidden">
             <div
-              className="h-full bg-primary rounded-full transition-all"
-              style={{ width: `${progressPercent}%` }}
+              className={`h-full rounded-full transition-all ${totalPaid > totalCommitted ? 'bg-error' : 'bg-primary'}`}
+              style={{ width: `${Math.min(100, progressPercent)}%` }}
             />
           </div>
+          {totalPaid > totalCommitted && (
+            <p className="text-xs text-error mt-1">
+              +<AmountDisplay amount={totalPaid - totalCommitted} size="xs" className="inline" /> over budget
+            </p>
+          )}
         </div>
       </div>
 
@@ -240,13 +245,26 @@ export default function CycleDetailPage() {
             userId={userId}
             updateStatus={updateStatus}
             updateAmount={updateAmount}
+            addPayment={addPayment}
+            deletePayment={deletePayment}
           />
         );
       })}
 
       {items.length === 0 && (
-        <div className="text-center py-8 text-text-secondary">
-          <p>No items in this cycle.</p>
+        <div className="text-center py-12 text-text-secondary">
+          <p className="text-4xl mb-3">📋</p>
+          <p className="text-sm font-medium text-text-primary mb-1">No items yet</p>
+          <p className="text-xs mb-4">Items are created from your commitments when a cycle starts, or you can add one-off items.</p>
+          <Link
+            href="/plan"
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-background text-sm font-medium hover:bg-primary/90 transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 16 16">
+              <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+            Manage Commitments
+          </Link>
         </div>
       )}
     </div>
@@ -266,6 +284,8 @@ interface CategorySectionProps {
   userId: string | undefined;
   updateStatus: (id: string, status: CycleItemStatus) => Promise<void>;
   updateAmount: (id: string, amount: number) => Promise<void>;
+  addPayment: (itemId: string, paymentAmount: number, note?: string, receiptId?: string) => Promise<void>;
+  deletePayment: (itemId: string, paymentId: string) => Promise<void>;
 }
 
 function CategorySection({
@@ -277,6 +297,8 @@ function CategorySection({
   userId,
   updateStatus,
   updateAmount,
+  addPayment,
+  deletePayment,
 }: CategorySectionProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [localItems, setLocalItems] = useState(items);
@@ -360,6 +382,8 @@ function CategorySection({
                   userId={userId}
                   onStatusChange={updateStatus}
                   onAmountChange={updateAmount}
+                  onAddPayment={addPayment}
+                  onDeletePayment={deletePayment}
                 />
               ))}
             </SortableContext>
@@ -380,9 +404,11 @@ interface SortableItemRowProps {
   userId: string | undefined;
   onStatusChange: (id: string, status: CycleItemStatus) => Promise<void>;
   onAmountChange: (id: string, amount: number) => Promise<void>;
+  onAddPayment: (itemId: string, paymentAmount: number, note?: string, receiptId?: string) => Promise<void>;
+  onDeletePayment: (itemId: string, paymentId: string) => Promise<void>;
 }
 
-function SortableItemRow({ item, cycleId, userId, onStatusChange, onAmountChange }: SortableItemRowProps) {
+function SortableItemRow({ item, cycleId, userId, onStatusChange, onAmountChange, onAddPayment, onDeletePayment }: SortableItemRowProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: item.id,
   });
@@ -398,17 +424,64 @@ function SortableItemRow({ item, cycleId, userId, onStatusChange, onAmountChange
   const [editValue, setEditValue] = useState('');
   const [editingItem, setEditingItem] = useState(false);
   const [attachingReceipt, setAttachingReceipt] = useState(false);
+  const [showPaymentPrompt, setShowPaymentPrompt] = useState(false);
+  const [showPayments, setShowPayments] = useState(false);
+  const [paymentValue, setPaymentValue] = useState('');
+  const [paymentNote, setPaymentNote] = useState('');
+  const [paymentReceiptId, setPaymentReceiptId] = useState<string | undefined>(undefined);
+  const [receipts, setReceipts] = useState<Array<{ id: string; thumbnailUrl?: string; imageUrl?: string; vendor?: string; amountInCents?: number }>>([]);
+  const [receiptsLoaded, setReceiptsLoaded] = useState(false);
   const { toast, confirm } = useToast();
 
   const isPaid = item.status === 'paid';
   const isSkipped = item.status === 'skipped';
+  const isPartial = item.status === 'partial';
   const isDue = item.status === 'due';
+  const totalPaidSoFar = item.totalPaidAmount ?? 0;
+  const hasPayments = (item.payments?.length ?? 0) > 0;
 
   const handleToggle = async () => {
+    if (isPaid) {
+      setLoading(true);
+      try {
+        // If item has payments, revert to partial (payments still exist), else upcoming
+        const revertTo: CycleItemStatus = (item.payments?.length ?? 0) > 0 ? 'partial' : 'upcoming';
+        await onStatusChange(item.id, revertTo);
+      } finally { setLoading(false); }
+      return;
+    }
+    if (isPartial) {
+      // Has payments — ask to mark as done
+      confirm(
+        `Mark as done? Total paid: R${(totalPaidSoFar / 100).toFixed(2)} of R${(item.amount / 100).toFixed(2)} budgeted.`,
+        async () => {
+          setLoading(true);
+          try { await onStatusChange(item.id, 'paid'); } finally { setLoading(false); }
+        },
+        { title: 'Mark as Done', confirmLabel: 'Mark Done' }
+      );
+      return;
+    }
+    // Open payment prompt for unpaid items
+    setPaymentValue((item.amount / 100).toFixed(2));
+    setPaymentNote('');
+    setPaymentReceiptId(undefined);
+    setShowPaymentPrompt(true);
+    if (!receiptsLoaded) {
+      fetch('/api/receipts?limit=12')
+        .then((r) => r.json())
+        .then((d) => { setReceipts(d.receipts ?? []); setReceiptsLoaded(true); })
+        .catch(() => setReceiptsLoaded(true));
+    }
+  };
+
+  const handleConfirmPayment = async () => {
+    setShowPaymentPrompt(false);
     setLoading(true);
     try {
-      const newStatus: CycleItemStatus = isPaid ? 'upcoming' : 'paid';
-      await onStatusChange(item.id, newStatus);
+      const amt = Math.round(parseFloat(paymentValue) * 100);
+      if (isNaN(amt) || amt <= 0) return;
+      await onAddPayment(item.id, amt, paymentNote.trim() || undefined, paymentReceiptId);
     } finally {
       setLoading(false);
     }
@@ -492,14 +565,21 @@ function SortableItemRow({ item, cycleId, userId, onStatusChange, onAmountChange
           onClick={handleToggle}
           disabled={loading || isSkipped}
           className={`w-5 h-5 rounded border-2 shrink-0 flex items-center justify-center transition-colors disabled:opacity-50 ${
-            isPaid ? 'bg-primary border-primary' : 'bg-transparent border-border hover:border-primary'
+            isPaid
+              ? 'bg-primary border-primary'
+              : isPartial
+              ? 'bg-warning/20 border-warning'
+              : 'bg-transparent border-border hover:border-primary'
           }`}
-          aria-label={isPaid ? 'Mark as unpaid' : 'Mark as paid'}
+          aria-label={isPaid ? 'Mark as unpaid' : isPartial ? 'Mark as done' : 'Add payment'}
         >
           {isPaid && (
             <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="black" strokeWidth="2">
               <polyline points="1.5,5 4,7.5 8.5,2.5" />
             </svg>
+          )}
+          {isPartial && (
+            <span className="text-warning text-[8px] font-bold leading-none">+</span>
           )}
         </button>
 
@@ -561,10 +641,33 @@ function SortableItemRow({ item, cycleId, userId, onStatusChange, onAmountChange
           <button
             onClick={handleAmountClick}
             disabled={isSkipped}
-            className={`hover:bg-background px-2 py-1 rounded transition-colors ${isPaid ? 'opacity-50' : ''}`}
+            className={`hover:bg-background px-2 py-1 rounded transition-colors text-right ${isPaid || isSkipped ? 'opacity-50' : ''}`}
             title="Click to edit amount"
           >
-            <AmountDisplay amount={item.amount} size="sm" />
+            {isPartial ? (
+              <div>
+                <AmountDisplay amount={totalPaidSoFar} size="sm" className="text-warning" />
+                <p className="text-[10px] text-text-secondary">of <span className="font-mono">R{(item.amount / 100).toFixed(0)}</span></p>
+              </div>
+            ) : (
+              <AmountDisplay amount={item.amount} size="sm" />
+            )}
+          </button>
+        )}
+
+        {/* Payments expand toggle */}
+        {hasPayments && (
+          <button
+            onClick={() => setShowPayments(!showPayments)}
+            className="w-6 h-6 flex items-center justify-center text-text-secondary hover:text-text-primary transition-colors"
+            aria-label={showPayments ? 'Hide payments' : 'Show payments'}
+          >
+            <svg
+              className={`w-3.5 h-3.5 transition-transform ${showPayments ? 'rotate-180' : ''}`}
+              fill="none" viewBox="0 0 16 16" stroke="currentColor" strokeWidth="2"
+            >
+              <path strokeLinecap="round" d="M4 6l4 4 4-4" />
+            </svg>
           </button>
         )}
 
@@ -589,6 +692,25 @@ function SortableItemRow({ item, cycleId, userId, onStatusChange, onAmountChange
           >
             Edit
           </button>
+          {isPartial && (
+            <button
+              onClick={() => {
+                setPaymentValue('');
+                setPaymentNote('');
+                setPaymentReceiptId(undefined);
+                setShowPaymentPrompt(true);
+                if (!receiptsLoaded) {
+                  fetch('/api/receipts?limit=12')
+                    .then((r) => r.json())
+                    .then((d) => { setReceipts(d.receipts ?? []); setReceiptsLoaded(true); })
+                    .catch(() => setReceiptsLoaded(true));
+                }
+              }}
+              className="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-background transition-colors"
+            >
+              Add payment
+            </button>
+          )}
           <button
             onClick={() => setAttachingReceipt(true)}
             className="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-background transition-colors"
@@ -623,6 +745,155 @@ function SortableItemRow({ item, cycleId, userId, onStatusChange, onAmountChange
           </button>
         </FloatingMenu>
       </div>
+
+      {/* Collapsible payments list */}
+      {hasPayments && showPayments && (
+        <div className="border-t border-border px-3 pb-2 pt-1 space-y-1">
+          {(item.payments ?? []).map((p, idx) => {
+            const date = p.date && typeof (p.date as { toDate?: () => Date }).toDate === 'function'
+              ? (p.date as { toDate: () => Date }).toDate().toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })
+              : '';
+            return (
+              <div key={p.id} className="flex items-center justify-between text-xs py-0.5 group">
+                <span className="text-text-secondary flex-1 min-w-0 truncate">
+                  #{idx + 1} {date}{p.note ? ` · ${p.note}` : ''}
+                  {p.receiptId && <span className="ml-1 text-primary">📷</span>}
+                </span>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <span className="font-mono text-text-primary">R{(p.amount / 100).toFixed(2)}</span>
+                  <button
+                    onClick={() => onDeletePayment(item.id, p.id)}
+                    className="w-4 h-4 flex items-center justify-center rounded text-text-secondary hover:text-error opacity-0 group-hover:opacity-100 transition-opacity"
+                    aria-label="Delete payment"
+                    title="Delete payment"
+                  >
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 12 12" stroke="currentColor" strokeWidth="2">
+                      <path strokeLinecap="round" d="M2 2l8 8M10 2l-8 8" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+          <div className="flex items-center justify-between text-xs pt-1 border-t border-border/50">
+            <span className="text-text-secondary">Total paid</span>
+            <span className={`font-mono font-medium ${totalPaidSoFar > item.amount ? 'text-error' : 'text-warning'}`}>
+              R{(totalPaidSoFar / 100).toFixed(2)}
+              {totalPaidSoFar > item.amount && (
+                <span className="ml-1 text-error">+R{((totalPaidSoFar - item.amount) / 100).toFixed(2)} over</span>
+              )}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Payment prompt */}
+      {showPaymentPrompt && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-surface border border-border rounded-xl w-full max-w-xs p-4 space-y-4">
+            <div>
+              <h3 className="text-sm font-semibold text-text-primary">Add Payment — {item.label}</h3>
+              <p className="text-xs text-text-secondary mt-1">
+                {isPartial
+                  ? `Paid so far: R${(totalPaidSoFar / 100).toFixed(2)} · Budget: R${(item.amount / 100).toFixed(2)}`
+                  : `Budget: R${(item.amount / 100).toFixed(2)}`}
+              </p>
+            </div>
+            <div>
+              <label className="block text-xs text-text-secondary mb-1">Amount paid (R)</label>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-text-secondary font-mono">R</span>
+                <input
+                  type="number"
+                  value={paymentValue}
+                  onChange={(e) => setPaymentValue(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleConfirmPayment(); if (e.key === 'Escape') setShowPaymentPrompt(false); }}
+                  autoFocus
+                  step="0.01"
+                  min="0"
+                  className="flex-1 px-3 py-2 text-sm rounded-lg border border-primary bg-background text-text-primary focus:outline-none font-mono"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs text-text-secondary mb-1">Note (optional)</label>
+              <input
+                type="text"
+                value={paymentNote}
+                onChange={(e) => setPaymentNote(e.target.value)}
+                placeholder="e.g. Engen Sandton"
+                className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background text-text-primary focus:outline-none focus:border-primary"
+              />
+            </div>
+            {/* Receipt picker */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs text-text-secondary">
+                  Receipt (optional)
+                  {paymentReceiptId && (
+                    <button
+                      onClick={() => setPaymentReceiptId(undefined)}
+                      className="ml-2 text-primary hover:text-primary/70"
+                    >
+                      clear
+                    </button>
+                  )}
+                </label>
+                <InlineReceiptCapture
+                  onCaptured={(id) => {
+                    setPaymentReceiptId(id);
+                    setReceipts((prev) => [{ id, thumbnailUrl: undefined, imageUrl: undefined }, ...prev]);
+                    setReceiptsLoaded(true);
+                  }}
+                  onError={(msg) => toast(msg, 'error')}
+                />
+              </div>
+              {receipts.length === 0 && receiptsLoaded ? (
+                <p className="text-xs text-text-secondary">No receipts captured yet.</p>
+              ) : (
+                <div className="grid grid-cols-4 gap-1.5">
+                  {receipts.map((r) => {
+                    const selected = r.id === paymentReceiptId;
+                    return (
+                      <button
+                        key={r.id}
+                        onClick={() => setPaymentReceiptId(selected ? undefined : r.id)}
+                        className={`relative aspect-square rounded-lg overflow-hidden border-2 transition-colors ${
+                          selected ? 'border-primary' : 'border-transparent hover:border-primary/40'
+                        }`}
+                      >
+                        {r.thumbnailUrl || r.imageUrl ? (
+                          <img src={r.thumbnailUrl || r.imageUrl} alt="Receipt" className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full bg-background flex items-center justify-center text-text-secondary text-base">📄</div>
+                        )}
+                        {selected && (
+                          <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
+                            <svg className="w-4 h-4 text-primary" fill="none" viewBox="0 0 16 16">
+                              <circle cx="8" cy="8" r="7" fill="currentColor" fillOpacity="0.2" stroke="currentColor" strokeWidth="1.5" />
+                              <path d="M5 8l2 2 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setShowPaymentPrompt(false)}
+                className="flex-1 py-2 rounded-lg border border-border text-text-secondary text-sm">
+                Cancel
+              </button>
+              <button onClick={handleConfirmPayment}
+                className="flex-1 py-2 rounded-lg bg-primary text-background font-medium text-sm">
+                {paymentReceiptId ? 'Add Payment + Receipt' : 'Add Payment'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Edit Modal */}
       {editingItem && (

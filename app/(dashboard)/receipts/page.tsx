@@ -168,8 +168,15 @@ export default function ReceiptsPage() {
         {visibleReceipts.length === 0 ? (
           <div className="text-center py-12 text-text-secondary">
             <p className="text-4xl mb-3">{search ? '🔍' : '📷'}</p>
-            <p>{search ? `No receipts matching "${search}"` : 'No receipts yet.'}</p>
-            {!search && <p className="text-sm mt-1">Tap + to capture your first receipt.</p>}
+            {search ? (
+              <p className="text-sm">{`No receipts matching "${search}"`}</p>
+            ) : (
+              <>
+                <p className="text-sm font-medium text-text-primary mb-1">No receipts yet</p>
+                <p className="text-xs mb-1">Tap the camera button to capture your first receipt.</p>
+                <p className="text-xs text-text-secondary/70">Receipts are stored securely and can be linked to your cycle items for expense tracking.</p>
+              </>
+            )}
           </div>
         ) : (
           <>

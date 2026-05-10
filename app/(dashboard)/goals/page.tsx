@@ -248,7 +248,24 @@ export default function GoalsPage() {
       {/* Goals List */}
       {filteredGoals.length === 0 ? (
         <div className="text-center py-12 text-text-secondary">
-          <p>{search ? `No goals matching "${search}"` : 'No goals yet. Create one to start tracking your progress.'}</p>
+          {search ? (
+            <p>{`No goals matching "${search}"`}</p>
+          ) : (
+            <>
+              <p className="text-4xl mb-3">🎯</p>
+              <p className="text-sm font-medium text-text-primary mb-1">No goals yet</p>
+              <p className="text-xs mb-4">Set a savings target, track debt payoff, or monitor an investment.</p>
+              <button
+                onClick={() => setShowForm(true)}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-background text-sm font-medium hover:bg-primary/90 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 16 16">
+                  <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                </svg>
+                Create your first goal
+              </button>
+            </>
+          )}
         </div>
       ) : (
         <div className="space-y-3">
