@@ -1,15 +1,18 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useGoals, GoalWithComputed } from '@/hooks/use-goals';
+import { useCommitments } from '@/hooks/use-commitments';
 import { AmountDisplay } from '@/components/shared/amount-display';
+import { useToast } from '@/components/shared/toast';
 
 export default function GoalDetailPage() {
   const params = useParams();
   const goalId = params.id as string;
   const { goals, loading, commitments } = useGoals();
+  const { allCommitments } = useCommitments();
 
   const goal = goals.find((g) => g.id === goalId);
 
@@ -34,7 +37,7 @@ export default function GoalDetailPage() {
     );
   }
 
-  return <GoalDetail goal={goal} />;
+  return <GoalDetail goal={goal} allCommitments={allCommitments} />;
 }
 
 // ---------------------------------------------------------------------------
@@ -43,9 +46,10 @@ export default function GoalDetailPage() {
 
 interface GoalDetailProps {
   goal: GoalWithComputed;
+  allCommitments: import('@/types').Commitment[];
 }
 
-function GoalDetail({ goal }: GoalDetailProps) {
+function GoalDetail({ goal, allCommitments }: GoalDetailProps) {
   const progressPercent = goal.targetAmount > 0
     ? Math.min(100, Math.round((goal.currentAmount / goal.targetAmount) * 100))
     : 0;
@@ -159,20 +163,8 @@ function GoalDetail({ goal }: GoalDetailProps) {
           </div>
         </div>
 
-        {/* Linked Commitments */}
-        {goal.linkedCommitments.length > 0 && (
-          <div className="mt-4 pt-4 border-t border-border">
-            <p className="text-xs text-text-secondary mb-2">Linked Commitments</p>
-            <div className="space-y-2">
-              {goal.linkedCommitments.map((commitment) => (
-                <div key={commitment.id} className="flex items-center justify-between">
-                  <span className="text-sm text-text-primary">{commitment.label}</span>
-                  <AmountDisplay amount={commitment.amount} size="xs" />
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        {/* Linked Commitments — editable */}
+        <LinkedCommitmentsEditor goal={goal} allCommitments={allCommitments} />
       </div>
 
       {/* Timeline Info */}
@@ -259,6 +251,106 @@ function GoalDetail({ goal }: GoalDetailProps) {
         <div className="p-4 rounded-xl border border-border bg-surface">
           <h2 className="text-sm font-medium text-text-primary mb-2">Notes</h2>
           <p className="text-sm text-text-secondary whitespace-pre-wrap">{goal.notes}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// LinkedCommitmentsEditor
+// ---------------------------------------------------------------------------
+
+interface LinkedCommitmentsEditorProps {
+  goal: GoalWithComputed;
+  allCommitments: import('@/types').Commitment[];
+}
+
+function LinkedCommitmentsEditor({ goal, allCommitments }: LinkedCommitmentsEditorProps) {
+  const { toast } = useToast();
+  const [saving, setSaving] = useState<string | null>(null);
+
+  // Commitments currently linked to this goal
+  const linked = allCommitments.filter((c) => c.linkedGoalId === goal.id);
+  // Commitments not linked to any goal (available to link)
+  const available = allCommitments.filter((c) => !c.linkedGoalId && c.isActive);
+
+  const link = async (commitmentId: string) => {
+    setSaving(commitmentId);
+    try {
+      const res = await fetch(`/api/commitments/${commitmentId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ linkedGoalId: goal.id }),
+      });
+      if (!res.ok) throw new Error('Failed');
+      toast('Commitment linked', 'success');
+    } catch {
+      toast('Failed to link commitment', 'error');
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const unlink = async (commitmentId: string) => {
+    setSaving(commitmentId);
+    try {
+      const res = await fetch(`/api/commitments/${commitmentId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ linkedGoalId: null }),
+      });
+      if (!res.ok) throw new Error('Failed');
+      toast('Commitment unlinked', 'success');
+    } catch {
+      toast('Failed to unlink commitment', 'error');
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  return (
+    <div className="mt-4 pt-4 border-t border-border space-y-3">
+      <p className="text-xs font-medium text-text-secondary">Linked Commitments</p>
+
+      {/* Currently linked */}
+      {linked.length > 0 ? (
+        <div className="space-y-2">
+          {linked.map((c) => (
+            <div key={c.id} className="flex items-center justify-between gap-2">
+              <div className="flex-1 min-w-0">
+                <span className="text-sm text-text-primary truncate">{c.label}</span>
+                {!c.isActive && <span className="ml-1.5 text-xs text-text-secondary">(inactive)</span>}
+              </div>
+              <AmountDisplay amount={c.amount} size="xs" className="shrink-0" />
+              <button
+                onClick={() => unlink(c.id)}
+                disabled={saving === c.id}
+                className="text-xs text-warning hover:text-warning/70 transition-colors disabled:opacity-50 shrink-0"
+              >
+                {saving === c.id ? '…' : 'Unlink'}
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-text-secondary">No commitments linked yet.</p>
+      )}
+
+      {/* Link a new commitment */}
+      {available.length > 0 && (
+        <div className="flex items-center gap-2">
+          <select
+            defaultValue=""
+            onChange={(e) => { if (e.target.value) link(e.target.value); e.target.value = ''; }}
+            disabled={saving !== null}
+            className="flex-1 px-3 py-1.5 rounded-lg border border-border bg-background text-text-primary text-xs focus:outline-none focus:border-primary disabled:opacity-50"
+          >
+            <option value="" disabled>+ Link a commitment…</option>
+            {available.map((c) => (
+              <option key={c.id} value={c.id}>{c.label} (R{(c.amount / 100).toFixed(0)}/mo)</option>
+            ))}
+          </select>
         </div>
       )}
     </div>

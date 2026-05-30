@@ -48,7 +48,11 @@ export async function POST(request: NextRequest) {
     await client.mailboxOpen('INBOX');
 
     // Fetch recent messages
-    const messages = client.fetch(`${Math.max(1, (await client.status('INBOX', { messages: true })).messages - maxMessages + 1)}:*`, {
+    const statusResult = await client.status('INBOX', { messages: true });
+    const totalMessages = statusResult.messages ?? 0;
+    const startSeq = Math.max(1, totalMessages - maxMessages + 1);
+
+    const messages = client.fetch(`${startSeq}:*`, {
       envelope: true,
       bodyStructure: true,
       source: true,
@@ -56,6 +60,7 @@ export async function POST(request: NextRequest) {
 
     for await (const msg of messages) {
       try {
+        if (!msg.source) continue;
         const parsed = await simpleParser(msg.source);
         const pdfAttachments = (parsed.attachments ?? []).filter(
           (a) => a.contentType === 'application/pdf' || a.filename?.endsWith('.pdf')
