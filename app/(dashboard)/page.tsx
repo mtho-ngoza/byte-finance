@@ -844,21 +844,21 @@ function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete, onAddPay
                       <span className="font-mono text-text-primary">R{(p.amount / 100).toFixed(2)}</span>
                       <button
                         onClick={() => { setEditingPaymentId(p.id); setEditPaymentValue((p.amount / 100).toFixed(2)); setEditPaymentNote(p.note ?? ''); }}
-                        className="w-4 h-4 flex items-center justify-center rounded text-text-secondary hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="w-5 h-5 flex items-center justify-center rounded text-text-secondary hover:text-primary transition-colors"
                         aria-label="Edit payment"
                         title="Edit payment"
                       >
-                        <svg className="w-3 h-3" fill="none" viewBox="0 0 12 12" stroke="currentColor" strokeWidth="1.5">
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 12 12" stroke="currentColor" strokeWidth="1.5">
                           <path strokeLinecap="round" strokeLinejoin="round" d="M8.5 1.5a1 1 0 011.414 1.414L3.5 9.33 1.5 10l.667-2L8.5 1.5z" />
                         </svg>
                       </button>
                       <button
                         onClick={() => onDeletePayment(item.id, p.id)}
-                        className="w-4 h-4 flex items-center justify-center rounded text-text-secondary hover:text-error opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="w-5 h-5 flex items-center justify-center rounded text-text-secondary hover:text-error transition-colors"
                         aria-label="Delete payment"
                         title="Delete payment"
                       >
-                        <svg className="w-3 h-3" fill="none" viewBox="0 0 12 12" stroke="currentColor" strokeWidth="2">
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 12 12" stroke="currentColor" strokeWidth="2">
                           <path strokeLinecap="round" d="M2 2l8 8M10 2l-8 8" />
                         </svg>
                       </button>
