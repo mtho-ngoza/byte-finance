@@ -49,6 +49,8 @@ interface CycleItem {
   amount: number;
   category: Category;
   status: string;
+  totalPaidAmount?: number;
+  payments?: Array<{ amount: number }>;
 }
 
 export const trendAnalyzer = onSchedule('every 24 hours', async () => {
@@ -240,28 +242,35 @@ async function generateSnapshot(userId: string, cycleId: string): Promise<Monthl
 
   const items = itemsSnap.docs.map((d) => d.data() as CycleItem);
 
-  // Calculate totals
+  // Calculate totals - use totalPaidAmount for actual paid amounts (supports partial payments)
   const totalCommitted = items.reduce((sum, item) => sum + item.amount, 0);
-  const totalPaid = items
-    .filter((item) => item.status === 'paid')
-    .reduce((sum, item) => sum + item.amount, 0);
+  const totalPaid = items.reduce((sum, item) => {
+    // Use totalPaidAmount if available, otherwise fall back to item.amount if paid
+    if (item.totalPaidAmount !== undefined) return sum + item.totalPaidAmount;
+    if (item.status === 'paid') return sum + item.amount;
+    return sum;
+  }, 0);
 
-  // Calculate category breakdown
+  // Calculate category breakdown - use totalPaidAmount for actual paid amounts
   const categoryBreakdown: Record<Category, number> = {} as Record<Category, number>;
   ALL_CATEGORIES.forEach((cat) => { categoryBreakdown[cat] = 0; });
 
-  items
-    .filter((item) => item.status === 'paid')
-    .forEach((item) => {
-      categoryBreakdown[item.category] = (categoryBreakdown[item.category] || 0) + item.amount;
-    });
+  items.forEach((item) => {
+    const paidAmount = item.totalPaidAmount ?? (item.status === 'paid' ? item.amount : 0);
+    if (paidAmount > 0) {
+      categoryBreakdown[item.category] = (categoryBreakdown[item.category] || 0) + paidAmount;
+    }
+  });
 
-  // Get top items
+  // Get top items by actual paid amount
   const topItems = items
-    .filter((item) => item.status === 'paid')
+    .map((item) => ({
+      label: item.label,
+      amount: item.totalPaidAmount ?? (item.status === 'paid' ? item.amount : 0),
+    }))
+    .filter((item) => item.amount > 0)
     .sort((a, b) => b.amount - a.amount)
-    .slice(0, 5)
-    .map((item) => ({ label: item.label, amount: item.amount }));
+    .slice(0, 5);
 
   // Get goals progress
   const goalsSnap = await db
