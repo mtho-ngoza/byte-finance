@@ -32,6 +32,8 @@ interface UseCycleItemsResult {
   addPayment: (itemId: string, paymentAmount: number, note?: string, receiptId?: string) => Promise<void>;
   /** Delete a specific payment from an item */
   deletePayment: (itemId: string, paymentId: string) => Promise<void>;
+  /** Edit a specific payment's amount and/or note */
+  editPayment: (itemId: string, paymentId: string, amount: number, note?: string) => Promise<void>;
 }
 
 export function useCycleItems(cycleId: string | null): UseCycleItemsResult {
@@ -316,6 +318,44 @@ export function useCycleItems(cycleId: string | null): UseCycleItemsResult {
     [userId, cycleId, items, setOptimisticItem, removeOptimisticItem]
   );
 
+  // Edit a specific payment's amount and/or note
+  const editPayment = useCallback(
+    async (itemId: string, paymentId: string, amount: number, note?: string) => {
+      if (!userId || !cycleId) return;
+      const item = items.find((i) => i.id === itemId);
+      if (!item) return;
+
+      const now = Timestamp.now();
+      const updatedPayments = (item.payments ?? []).map((p) =>
+        p.id === paymentId ? { ...p, amount, note: note ?? p.note } : p
+      );
+      const newTotal = updatedPayments.reduce((sum, p) => sum + p.amount, 0);
+
+      // Optimistic update
+      const optimisticItem: CycleItem = {
+        ...item,
+        payments: updatedPayments,
+        totalPaidAmount: newTotal,
+        updatedAt: now,
+      };
+      setOptimisticItem(itemId, optimisticItem);
+
+      try {
+        const res = await fetch(`/api/cycle-items/${itemId}/edit-payment`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ paymentId, amount, note }),
+        });
+        if (!res.ok) throw new Error('Edit payment failed');
+        removeOptimisticItem(itemId);
+      } catch (error) {
+        removeOptimisticItem(itemId);
+        throw error;
+      }
+    },
+    [userId, cycleId, items, setOptimisticItem, removeOptimisticItem]
+  );
+
   return {
     items,
     loading,
@@ -327,5 +367,6 @@ export function useCycleItems(cycleId: string | null): UseCycleItemsResult {
     updateAmount,
     addPayment,
     deletePayment,
+    editPayment,
   };
 }

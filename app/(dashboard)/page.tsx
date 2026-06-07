@@ -134,6 +134,7 @@ export default function DashboardPage() {
     updateAmount,
     addPayment,
     deletePayment,
+    editPayment,
   } = useCycleItems(currentCycle?.id ?? null);
 
   // Delete item handler
@@ -371,7 +372,7 @@ export default function DashboardPage() {
           </h3>
           <div className="space-y-2">
             {dueItems.map((item) => (
-              <CycleItemRow key={item.id} item={item} onStatusChange={updateStatus} onAmountChange={updateAmount} onDelete={deleteItem} onAddPayment={addPayment} onDeletePayment={deletePayment} />
+              <CycleItemRow key={item.id} item={item} onStatusChange={updateStatus} onAmountChange={updateAmount} onDelete={deleteItem} onAddPayment={addPayment} onDeletePayment={deletePayment} onEditPayment={editPayment} />
             ))}
           </div>
         </section>
@@ -385,7 +386,7 @@ export default function DashboardPage() {
           </h3>
           <div className="space-y-2">
             {upcomingItems.map((item) => (
-              <CycleItemRow key={item.id} item={item} onStatusChange={updateStatus} onAmountChange={updateAmount} onDelete={deleteItem} onAddPayment={addPayment} onDeletePayment={deletePayment} />
+              <CycleItemRow key={item.id} item={item} onStatusChange={updateStatus} onAmountChange={updateAmount} onDelete={deleteItem} onAddPayment={addPayment} onDeletePayment={deletePayment} onEditPayment={editPayment} />
             ))}
           </div>
         </section>
@@ -403,7 +404,7 @@ export default function DashboardPage() {
           </h3>
           <div className="space-y-2">
             {partialItems.map((item) => (
-              <CycleItemRow key={item.id} item={item} onStatusChange={updateStatus} onAmountChange={updateAmount} onDelete={deleteItem} onAddPayment={addPayment} onDeletePayment={deletePayment} />
+              <CycleItemRow key={item.id} item={item} onStatusChange={updateStatus} onAmountChange={updateAmount} onDelete={deleteItem} onAddPayment={addPayment} onDeletePayment={deletePayment} onEditPayment={editPayment} />
             ))}
           </div>
         </section>
@@ -421,7 +422,7 @@ export default function DashboardPage() {
           </h3>
           <div className="space-y-2">
             {paidItems.map((item) => (
-              <CycleItemRow key={item.id} item={item} onStatusChange={updateStatus} onAmountChange={updateAmount} onDelete={deleteItem} onAddPayment={addPayment} onDeletePayment={deletePayment} />
+              <CycleItemRow key={item.id} item={item} onStatusChange={updateStatus} onAmountChange={updateAmount} onDelete={deleteItem} onAddPayment={addPayment} onDeletePayment={deletePayment} onEditPayment={editPayment} />
             ))}
           </div>
         </section>
@@ -435,7 +436,7 @@ export default function DashboardPage() {
           </h3>
           <div className="space-y-2 opacity-60">
             {skippedItems.map((item) => (
-              <CycleItemRow key={item.id} item={item} onStatusChange={updateStatus} onAmountChange={updateAmount} onDelete={deleteItem} onAddPayment={addPayment} onDeletePayment={deletePayment} />
+              <CycleItemRow key={item.id} item={item} onStatusChange={updateStatus} onAmountChange={updateAmount} onDelete={deleteItem} onAddPayment={addPayment} onDeletePayment={deletePayment} onEditPayment={editPayment} />
             ))}
           </div>
         </section>
@@ -523,11 +524,15 @@ interface CycleItemRowProps {
   onDelete: (id: string) => Promise<void>;
   onAddPayment: (id: string, amount: number, note?: string, receiptId?: string) => Promise<void>;
   onDeletePayment: (id: string, paymentId: string) => Promise<void>;
+  onEditPayment: (id: string, paymentId: string, amount: number, note?: string) => Promise<void>;
 }
 
-function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete, onAddPayment, onDeletePayment }: CycleItemRowProps) {
+function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete, onAddPayment, onDeletePayment, onEditPayment }: CycleItemRowProps) {
   const [loading, setLoading] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null);
+  const [editPaymentValue, setEditPaymentValue] = useState('');
+  const [editPaymentNote, setEditPaymentNote] = useState('');
   const [editValue, setEditValue] = useState('');
   const [showPaymentPrompt, setShowPaymentPrompt] = useState(false);
   const [showPayments, setShowPayments] = useState(false);
@@ -786,25 +791,80 @@ function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete, onAddPay
             const date = p.date && typeof (p.date as { toDate?: () => Date }).toDate === 'function'
               ? (p.date as { toDate: () => Date }).toDate().toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })
               : '';
+            const isEditingThis = editingPaymentId === p.id;
             return (
-              <div key={p.id} className="flex items-center justify-between text-xs py-0.5 group">
-                <span className="text-text-secondary flex-1 min-w-0 truncate">
-                  #{idx + 1} {date}{p.note ? ` · ${p.note}` : ''}
-                  {p.receiptId && <span className="ml-1 text-primary">📷</span>}
-                </span>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <span className="font-mono text-text-primary">R{(p.amount / 100).toFixed(2)}</span>
-                  <button
-                    onClick={() => onDeletePayment(item.id, p.id)}
-                    className="w-4 h-4 flex items-center justify-center rounded text-text-secondary hover:text-error opacity-0 group-hover:opacity-100 transition-opacity"
-                    aria-label="Delete payment"
-                    title="Delete payment"
-                  >
-                    <svg className="w-3 h-3" fill="none" viewBox="0 0 12 12" stroke="currentColor" strokeWidth="2">
-                      <path strokeLinecap="round" d="M2 2l8 8M10 2l-8 8" />
-                    </svg>
-                  </button>
-                </div>
+              <div key={p.id} className="group">
+                {isEditingThis ? (
+                  <div className="flex items-center gap-2 py-1">
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-text-secondary font-mono">R</span>
+                      <input
+                        type="number"
+                        value={editPaymentValue}
+                        onChange={(e) => setEditPaymentValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Escape') setEditingPaymentId(null);
+                        }}
+                        autoFocus
+                        step="0.01"
+                        min="0.01"
+                        className="w-20 px-1.5 py-0.5 text-xs rounded border border-primary bg-background text-text-primary focus:outline-none font-mono"
+                      />
+                    </div>
+                    <input
+                      type="text"
+                      value={editPaymentNote}
+                      onChange={(e) => setEditPaymentNote(e.target.value)}
+                      placeholder="note"
+                      className="flex-1 px-1.5 py-0.5 text-xs rounded border border-border bg-background text-text-primary focus:outline-none focus:border-primary"
+                    />
+                    <button
+                      onClick={async () => {
+                        const amt = Math.round(parseFloat(editPaymentValue) * 100);
+                        if (!isNaN(amt) && amt > 0) {
+                          await onEditPayment(item.id, p.id, amt, editPaymentNote.trim() || undefined);
+                        }
+                        setEditingPaymentId(null);
+                      }}
+                      className="text-xs text-primary hover:text-primary/70"
+                    >
+                      Save
+                    </button>
+                    <button onClick={() => setEditingPaymentId(null)} className="text-xs text-text-secondary hover:text-text-primary">
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between text-xs py-0.5">
+                    <span className="text-text-secondary flex-1 min-w-0 truncate">
+                      #{idx + 1} {date}{p.note ? ` · ${p.note}` : ''}
+                      {p.receiptId && <span className="ml-1 text-primary">📷</span>}
+                    </span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className="font-mono text-text-primary">R{(p.amount / 100).toFixed(2)}</span>
+                      <button
+                        onClick={() => { setEditingPaymentId(p.id); setEditPaymentValue((p.amount / 100).toFixed(2)); setEditPaymentNote(p.note ?? ''); }}
+                        className="w-4 h-4 flex items-center justify-center rounded text-text-secondary hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity"
+                        aria-label="Edit payment"
+                        title="Edit payment"
+                      >
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 12 12" stroke="currentColor" strokeWidth="1.5">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M8.5 1.5a1 1 0 011.414 1.414L3.5 9.33 1.5 10l.667-2L8.5 1.5z" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => onDeletePayment(item.id, p.id)}
+                        className="w-4 h-4 flex items-center justify-center rounded text-text-secondary hover:text-error opacity-0 group-hover:opacity-100 transition-opacity"
+                        aria-label="Delete payment"
+                        title="Delete payment"
+                      >
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 12 12" stroke="currentColor" strokeWidth="2">
+                          <path strokeLinecap="round" d="M2 2l8 8M10 2l-8 8" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}
