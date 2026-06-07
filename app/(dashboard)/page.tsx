@@ -882,8 +882,8 @@ function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete, onAddPay
 
       {/* Payment prompt */}
       {showPaymentPrompt && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-surface border border-border rounded-xl w-full max-w-xs p-4 space-y-4">
+        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+          <div className="bg-surface border border-border rounded-t-xl sm:rounded-xl w-full sm:max-w-xs p-4 space-y-4 max-h-[90vh] overflow-y-auto">
             <div>
               <h3 className="text-sm font-semibold text-text-primary">Add Payment — {item.label}</h3>
               <p className="text-xs text-text-secondary mt-1">

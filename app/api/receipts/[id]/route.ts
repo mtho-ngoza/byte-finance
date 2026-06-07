@@ -125,13 +125,23 @@ export async function DELETE(
   const data = doc.data()!;
 
   // Delete all 3 Storage files (original, image, thumb)
-  // Extract the base path from the imageUrl
-  // URL format: https://storage.googleapis.com/{bucket}/users/{userId}/receipts/{receiptId}/image.jpg
+  // URL formats:
+  // - https://storage.googleapis.com/{bucket}/users/{userId}/receipts/{receiptId}/image.jpg
+  // - https://firebasestorage.googleapis.com/v0/b/{bucket}/o/users%2F...
   try {
     const bucket = getAdminStorage().bucket();
-    const urlToPath = (url: string) => {
-      const match = url.match(/storage\.googleapis\.com\/[^/]+\/(.+)/);
-      return match ? match[1] : null;
+    const urlToPath = (url: string): string | null => {
+      if (!url || url.startsWith('data:')) return null; // Skip data URLs
+
+      // Format 1: storage.googleapis.com/{bucket}/path
+      const storageMatch = url.match(/storage\.googleapis\.com\/[^/]+\/(.+)/);
+      if (storageMatch) return decodeURIComponent(storageMatch[1]);
+
+      // Format 2: firebasestorage.googleapis.com/v0/b/{bucket}/o/{encoded-path}
+      const firebaseMatch = url.match(/firebasestorage\.googleapis\.com\/v0\/b\/[^/]+\/o\/([^?]+)/);
+      if (firebaseMatch) return decodeURIComponent(firebaseMatch[1]);
+
+      return null;
     };
 
     const filesToDelete = [
@@ -140,14 +150,17 @@ export async function DELETE(
       data.thumbnailUrl,
     ].filter(Boolean);
 
-    await Promise.allSettled(
+    const deleteResults = await Promise.allSettled(
       filesToDelete.map(async (url) => {
         const path = urlToPath(url);
         if (path) {
           await bucket.file(path).delete();
+          return { path, deleted: true };
         }
+        return { url, skipped: true };
       })
     );
+    console.log('Storage cleanup:', deleteResults);
   } catch (err) {
     // Log but don't fail — Firestore doc deletion is more important
     console.error('Storage cleanup error:', err);

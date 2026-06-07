@@ -85,37 +85,37 @@ export default function PlanPage() {
           )}
         </div>
 
-        {/* Inline add form */}
-        {showCommitmentForm && (
-          <CommitmentForm
-            goals={activeGoals}
-            onSave={async (data) => {
-              await fetch('/api/commitments', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ...data, sortOrder: allCommitments.length }),
-              });
-              setShowCommitmentForm(false);
-            }}
-            onCancel={() => setShowCommitmentForm(false)}
-          />
-        )}
-
-        {/* Edit form */}
-        {editingCommitment && (
-          <CommitmentForm
-            initial={editingCommitment}
-            goals={activeGoals}
-            onSave={async (data) => {
-              await fetch(`/api/commitments/${editingCommitment.id}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data),
-              });
-              setEditingCommitment(null);
-            }}
-            onCancel={() => setEditingCommitment(null)}
-          />
+        {/* Add/Edit Modal */}
+        {(showCommitmentForm || editingCommitment) && (
+          <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+            <div className="bg-surface w-full sm:max-w-md sm:rounded-xl rounded-t-xl max-h-[90vh] overflow-y-auto">
+              <CommitmentForm
+                initial={editingCommitment ?? undefined}
+                goals={activeGoals}
+                onSave={async (data) => {
+                  if (editingCommitment) {
+                    await fetch(`/api/commitments/${editingCommitment.id}`, {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(data),
+                    });
+                    setEditingCommitment(null);
+                  } else {
+                    await fetch('/api/commitments', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ ...data, sortOrder: allCommitments.length }),
+                    });
+                    setShowCommitmentForm(false);
+                  }
+                }}
+                onCancel={() => {
+                  setShowCommitmentForm(false);
+                  setEditingCommitment(null);
+                }}
+              />
+            </div>
+          </div>
         )}
 
         {/* Commitments grouped by category */}
@@ -176,17 +176,21 @@ export default function PlanPage() {
         </div>
 
         {showGoalForm && (
-          <GoalForm
-            onSave={async (data) => {
-              await fetch('/api/goals', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data),
-              });
-              setShowGoalForm(false);
-            }}
-            onCancel={() => setShowGoalForm(false)}
-          />
+          <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+            <div className="bg-surface w-full sm:max-w-md sm:rounded-xl rounded-t-xl max-h-[90vh] overflow-y-auto">
+              <GoalForm
+                onSave={async (data) => {
+                  await fetch('/api/goals', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data),
+                  });
+                  setShowGoalForm(false);
+                }}
+                onCancel={() => setShowGoalForm(false)}
+              />
+            </div>
+          </div>
         )}
 
         {activeGoals.length === 0 && !showGoalForm ? (
@@ -387,11 +391,20 @@ function CommitmentForm({ initial, goals, onSave, onCancel }: CommitmentFormProp
   return (
     <form
       onSubmit={handleSubmit}
-      className="mb-4 p-4 rounded-xl border border-primary/40 bg-surface space-y-4"
+      className="p-4 space-y-4"
     >
-      <h3 className="text-sm font-semibold text-text-primary">
-        {initial ? 'Edit Commitment' : 'New Commitment'}
-      </h3>
+      <div className="flex items-center justify-between">
+        <h3 className="text-base font-semibold text-text-primary">
+          {initial ? 'Edit Commitment' : 'New Commitment'}
+        </h3>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-background text-text-secondary"
+        >
+          ✕
+        </button>
+      </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {/* Label */}
@@ -649,9 +662,18 @@ function GoalForm({ onSave, onCancel }: GoalFormProps) {
   return (
     <form
       onSubmit={handleSubmit}
-      className="mb-4 p-4 rounded-xl border border-primary/40 bg-surface space-y-4"
+      className="p-4 space-y-4"
     >
-      <h3 className="text-sm font-semibold text-text-primary">New Goal</h3>
+      <div className="flex items-center justify-between">
+        <h3 className="text-base font-semibold text-text-primary">New Goal</h3>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-background text-text-secondary"
+        >
+          ✕
+        </button>
+      </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {/* Name */}

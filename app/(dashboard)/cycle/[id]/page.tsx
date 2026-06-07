@@ -962,9 +962,12 @@ function EditItemModal({ item, userId, onClose }: EditItemModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-surface border border-border rounded-xl w-full max-w-md p-4 space-y-4">
-        <h3 className="text-base font-semibold text-text-primary">Edit Item</h3>
+    <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+      <div className="bg-surface border border-border rounded-t-xl sm:rounded-xl w-full sm:max-w-md p-4 space-y-4 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between">
+          <h3 className="text-base font-semibold text-text-primary">Edit Item</h3>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-background text-text-secondary">✕</button>
+        </div>
 
         <div>
           <label className="block text-xs text-text-secondary mb-1">Label</label>
