@@ -160,11 +160,19 @@ export default function DashboardPage() {
     .filter((i) => i.accountType === 'business')
     .reduce((sum, i) => sum + i.amount, 0);
   const personalPaid = items
-    .filter((i) => i.accountType === 'personal' && i.status === 'paid')
-    .reduce((sum, i) => sum + i.amount, 0);
+    .filter((i) => i.accountType === 'personal')
+    .reduce((sum, i) => {
+      if (i.totalPaidAmount !== undefined) return sum + i.totalPaidAmount;
+      if (i.status === 'paid') return sum + (i.actualAmount ?? i.amount);
+      return sum;
+    }, 0);
   const businessPaid = items
-    .filter((i) => i.accountType === 'business' && i.status === 'paid')
-    .reduce((sum, i) => sum + i.amount, 0);
+    .filter((i) => i.accountType === 'business')
+    .reduce((sum, i) => {
+      if (i.totalPaidAmount !== undefined) return sum + i.totalPaidAmount;
+      if (i.status === 'paid') return sum + (i.actualAmount ?? i.amount);
+      return sum;
+    }, 0);
 
   const loading = cyclesLoading || itemsLoading || goalsLoading;
 

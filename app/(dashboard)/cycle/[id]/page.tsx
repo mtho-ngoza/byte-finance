@@ -162,10 +162,19 @@ export default function CycleDetailPage() {
             </p>
           </div>
           <div className="text-right">
-            <p className="text-sm text-text-secondary">{isPastCycle ? 'Unpaid' : 'Remaining'}</p>
-            <AmountDisplay amount={remaining} size="lg" />
-            {isPastCycle && unpaidCount > 0 && (
-              <p className="text-xs text-error">{unpaidCount} item{unpaidCount !== 1 ? 's' : ''} not paid</p>
+            {remaining < 0 ? (
+              <>
+                <p className="text-sm text-error">Over Budget</p>
+                <AmountDisplay amount={Math.abs(remaining)} size="lg" className="text-error" />
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-text-secondary">{isPastCycle ? 'Unpaid' : 'Remaining'}</p>
+                <AmountDisplay amount={remaining} size="lg" />
+                {isPastCycle && unpaidCount > 0 && (
+                  <p className="text-xs text-error">{unpaidCount} item{unpaidCount !== 1 ? 's' : ''} not paid</p>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -230,9 +239,12 @@ export default function CycleDetailPage() {
         if (!categoryItems || categoryItems.length === 0) return null;
 
         const categoryTotal = categoryItems.reduce((sum, i) => sum + i.amount, 0);
-        const categoryPaid = categoryItems
-          .filter((i) => i.status === 'paid')
-          .reduce((sum, i) => sum + i.amount, 0);
+        const categoryPaid = categoryItems.reduce((sum, i) => {
+          // Use totalPaidAmount for actual paid (supports partial payments)
+          if (i.totalPaidAmount !== undefined) return sum + i.totalPaidAmount;
+          if (i.status === 'paid') return sum + (i.actualAmount ?? i.amount);
+          return sum;
+        }, 0);
 
         return (
           <CategorySection
