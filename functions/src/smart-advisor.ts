@@ -145,7 +145,8 @@ async function processUser(
   }
 
   // 4. Save suggestions as insights with 7-day expiration
-  const expiresAt = new Date();
+  const now = new Date();
+  const expiresAt = new Date(now);
   expiresAt.setDate(expiresAt.getDate() + 7);
 
   const batch = db.batch();
