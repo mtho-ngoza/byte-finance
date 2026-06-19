@@ -161,6 +161,7 @@ function AppearanceSettings() {
       await setDoc(doc(db, `users/${userId}`), { preferences: { ...profile?.preferences, theme }, updatedAt: Timestamp.now() }, { merge: true });
       document.documentElement.classList.remove('dark', 'light');
       document.documentElement.classList.add(theme);
+      localStorage.setItem('byte-theme', theme);
       toast(`${theme === 'dark' ? 'Dark' : 'Light'} theme applied`, 'success');
     } catch (err) {
       console.error(err);

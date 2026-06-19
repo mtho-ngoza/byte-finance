@@ -2,6 +2,7 @@
 
 import { SessionProvider } from 'next-auth/react';
 import type { Session } from 'next-auth';
+import { ThemeProvider } from '@/components/providers/theme-provider';
 
 // In development, provide a mock session so useSession() works without
 // real Firebase Auth credentials.
@@ -16,7 +17,9 @@ const DEV_SESSION: Session | null =
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <SessionProvider session={DEV_SESSION ?? undefined}>
-      {children}
+      <ThemeProvider>
+        {children}
+      </ThemeProvider>
     </SessionProvider>
   );
 }
