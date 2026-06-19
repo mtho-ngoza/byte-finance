@@ -17,39 +17,63 @@ import type { Receipt, PendingReceipt } from '@/types';
 
 interface MonthGroup {
   key: string; // "2026-06"
-  label: string; // "June 2026"
+  month: number;
+  label: string; // "June"
   receipts: Receipt[];
   totalAmount: number;
   needsAttentionCount: number;
 }
 
+interface YearGroup {
+  year: number;
+  months: MonthGroup[];
+  totalAmount: number;
+  receiptCount: number;
+  needsAttentionCount: number;
+}
+
 // ---------------------------------------------------------------------------
-// Helper: Group receipts by month
+// Helper: Group receipts by year and month
 // ---------------------------------------------------------------------------
 
-function groupByMonth(receipts: Receipt[]): MonthGroup[] {
-  const groups = new Map<string, Receipt[]>();
+function groupByYearAndMonth(receipts: Receipt[]): YearGroup[] {
+  const yearMap = new Map<number, Map<string, Receipt[]>>();
 
   for (const receipt of receipts) {
     const date = receipt.capturedAt
       ? new Date(typeof receipt.capturedAt === 'string' ? receipt.capturedAt : receipt.capturedAt.toDate())
       : new Date();
-    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key)!.push(receipt);
+    const year = date.getFullYear();
+    const monthKey = `${year}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+
+    if (!yearMap.has(year)) yearMap.set(year, new Map());
+    const monthMap = yearMap.get(year)!;
+    if (!monthMap.has(monthKey)) monthMap.set(monthKey, []);
+    monthMap.get(monthKey)!.push(receipt);
   }
 
-  // Sort by date descending (newest first)
-  const sortedKeys = Array.from(groups.keys()).sort((a, b) => b.localeCompare(a));
+  // Sort years descending
+  const sortedYears = Array.from(yearMap.keys()).sort((a, b) => b - a);
 
-  return sortedKeys.map((key) => {
-    const [year, month] = key.split('-').map(Number);
-    const monthReceipts = groups.get(key)!;
-    const label = new Date(year, month - 1).toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' });
-    const totalAmount = monthReceipts.reduce((sum, r) => sum + (r.amountInCents || 0), 0);
-    const needsAttentionCount = monthReceipts.filter((r) => !r.amountInCents || !r.vendor).length;
+  return sortedYears.map((year) => {
+    const monthMap = yearMap.get(year)!;
+    const sortedMonthKeys = Array.from(monthMap.keys()).sort((a, b) => b.localeCompare(a));
 
-    return { key, label, receipts: monthReceipts, totalAmount, needsAttentionCount };
+    const months: MonthGroup[] = sortedMonthKeys.map((key) => {
+      const [, monthNum] = key.split('-').map(Number);
+      const monthReceipts = monthMap.get(key)!;
+      const label = new Date(year, monthNum - 1).toLocaleDateString('en-ZA', { month: 'long' });
+      const totalAmount = monthReceipts.reduce((sum, r) => sum + (r.amountInCents || 0), 0);
+      const needsAttentionCount = monthReceipts.filter((r) => !r.amountInCents || !r.vendor).length;
+
+      return { key, month: monthNum, label, receipts: monthReceipts, totalAmount, needsAttentionCount };
+    });
+
+    const totalAmount = months.reduce((sum, m) => sum + m.totalAmount, 0);
+    const receiptCount = months.reduce((sum, m) => sum + m.receipts.length, 0);
+    const needsAttentionCount = months.reduce((sum, m) => sum + m.needsAttentionCount, 0);
+
+    return { year, months, totalAmount, receiptCount, needsAttentionCount };
   });
 }
 
@@ -64,6 +88,7 @@ export default function ReceiptsPage() {
   const [pendingQueue, setPendingQueue] = useState<PendingReceipt[]>([]);
   const [search, setSearch] = useState('');
   const [filterAttention, setFilterAttention] = useState(false);
+  const [expandedYears, setExpandedYears] = useState<Set<number>>(new Set());
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
 
   // Process any queued uploads on page open
@@ -84,18 +109,25 @@ export default function ReceiptsPage() {
     return () => { cancelled = true; };
   }, [getQueue, processQueue]);
 
-  // Group receipts by month
-  const monthGroups = useMemo(() => groupByMonth(receipts), [receipts]);
+  // Group receipts by year and month
+  const yearGroups = useMemo(() => groupByYearAndMonth(receipts), [receipts]);
 
-  // Auto-expand current month and previous month on load
+  // Auto-expand current year and current/previous month on load
   useEffect(() => {
-    if (monthGroups.length > 0 && expandedMonths.size === 0) {
-      const initial = new Set<string>();
-      if (monthGroups[0]) initial.add(monthGroups[0].key);
-      if (monthGroups[1]) initial.add(monthGroups[1].key);
-      setExpandedMonths(initial);
+    if (yearGroups.length > 0 && expandedYears.size === 0) {
+      const currentYear = new Date().getFullYear();
+      setExpandedYears(new Set([currentYear]));
+
+      // Expand current and previous month
+      const currentYearGroup = yearGroups.find((y) => y.year === currentYear);
+      if (currentYearGroup && currentYearGroup.months.length > 0) {
+        const initial = new Set<string>();
+        if (currentYearGroup.months[0]) initial.add(currentYearGroup.months[0].key);
+        if (currentYearGroup.months[1]) initial.add(currentYearGroup.months[1].key);
+        setExpandedMonths(initial);
+      }
     }
-  }, [monthGroups]);
+  }, [yearGroups]);
 
   // Filter receipts
   const q = search.toLowerCase();
@@ -111,6 +143,15 @@ export default function ReceiptsPage() {
       );
     });
   }, [baseList, q, filterAttention]);
+
+  const toggleYear = (year: number) => {
+    setExpandedYears((prev) => {
+      const next = new Set(prev);
+      if (next.has(year)) next.delete(year);
+      else next.add(year);
+      return next;
+    });
+  };
 
   const toggleMonth = (key: string) => {
     setExpandedMonths((prev) => {
@@ -220,21 +261,23 @@ export default function ReceiptsPage() {
           )}
         </section>
       ) : (
-        /* Grouped by month */
-        <div className="space-y-2">
-          {monthGroups.length === 0 ? (
+        /* Grouped by year and month */
+        <div className="space-y-3">
+          {yearGroups.length === 0 ? (
             <div className="text-center py-12 text-text-secondary">
               <p className="text-4xl mb-3">📷</p>
               <p className="text-sm font-medium text-text-primary mb-1">No receipts yet</p>
               <p className="text-xs">Tap the camera button to capture your first receipt.</p>
             </div>
           ) : (
-            monthGroups.map((group) => (
-              <MonthSection
-                key={group.key}
-                group={group}
-                isExpanded={expandedMonths.has(group.key)}
-                onToggle={() => toggleMonth(group.key)}
+            yearGroups.map((yearGroup) => (
+              <YearSection
+                key={yearGroup.year}
+                group={yearGroup}
+                isExpanded={expandedYears.has(yearGroup.year)}
+                expandedMonths={expandedMonths}
+                onToggleYear={() => toggleYear(yearGroup.year)}
+                onToggleMonth={toggleMonth}
               />
             ))
           )}
@@ -263,32 +306,38 @@ export default function ReceiptsPage() {
 }
 
 // ---------------------------------------------------------------------------
-// MonthSection Component
+// YearSection Component
 // ---------------------------------------------------------------------------
 
-interface MonthSectionProps {
-  group: MonthGroup;
+interface YearSectionProps {
+  group: YearGroup;
   isExpanded: boolean;
-  onToggle: () => void;
+  expandedMonths: Set<string>;
+  onToggleYear: () => void;
+  onToggleMonth: (key: string) => void;
 }
 
-function MonthSection({ group, isExpanded, onToggle }: MonthSectionProps) {
+function YearSection({ group, isExpanded, expandedMonths, onToggleYear, onToggleMonth }: YearSectionProps) {
+  const isCurrentYear = group.year === new Date().getFullYear();
+
   return (
     <div className="rounded-xl border border-border bg-surface overflow-hidden">
-      {/* Month header */}
+      {/* Year header */}
       <button
-        onClick={onToggle}
+        onClick={onToggleYear}
         className="w-full px-4 py-3 flex items-center justify-between hover:bg-background/50 transition-colors"
       >
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-            <span className="text-primary font-semibold text-sm">
-              {group.receipts.length}
+          <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${isCurrentYear ? 'bg-primary/15' : 'bg-background'}`}>
+            <span className={`font-bold text-lg ${isCurrentYear ? 'text-primary' : 'text-text-secondary'}`}>
+              {group.year.toString().slice(-2)}
             </span>
           </div>
           <div className="text-left">
-            <p className="text-sm font-medium text-text-primary">{group.label}</p>
+            <p className="text-base font-semibold text-text-primary">{group.year}</p>
             <div className="flex items-center gap-2 text-xs text-text-secondary">
+              <span>{group.receiptCount} receipts</span>
+              <span>·</span>
               <AmountDisplay amount={group.totalAmount} size="xs" />
               {group.needsAttentionCount > 0 && (
                 <span className="text-warning">
@@ -309,10 +358,72 @@ function MonthSection({ group, isExpanded, onToggle }: MonthSectionProps) {
         </svg>
       </button>
 
+      {/* Expanded months */}
+      {isExpanded && (
+        <div className="px-3 pb-3 space-y-2">
+          {group.months.map((month) => (
+            <MonthSection
+              key={month.key}
+              group={month}
+              isExpanded={expandedMonths.has(month.key)}
+              onToggle={() => onToggleMonth(month.key)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// MonthSection Component
+// ---------------------------------------------------------------------------
+
+interface MonthSectionProps {
+  group: MonthGroup;
+  isExpanded: boolean;
+  onToggle: () => void;
+}
+
+function MonthSection({ group, isExpanded, onToggle }: MonthSectionProps) {
+  return (
+    <div className="rounded-lg border border-border/50 bg-background overflow-hidden">
+      {/* Month header */}
+      <button
+        onClick={onToggle}
+        className="w-full px-3 py-2.5 flex items-center justify-between hover:bg-surface/50 transition-colors"
+      >
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+            <span className="text-primary font-semibold text-xs">
+              {group.receipts.length}
+            </span>
+          </div>
+          <div className="text-left">
+            <p className="text-sm font-medium text-text-primary">{group.label}</p>
+            <div className="flex items-center gap-1.5 text-[11px] text-text-secondary">
+              <AmountDisplay amount={group.totalAmount} size="xs" />
+              {group.needsAttentionCount > 0 && (
+                <span className="text-warning">· {group.needsAttentionCount} need attention</span>
+              )}
+            </div>
+          </div>
+        </div>
+        <svg
+          className={`w-4 h-4 text-text-secondary transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth="2"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
       {/* Expanded content */}
       {isExpanded && (
-        <div className="px-3 pb-3 pt-1">
-          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+        <div className="px-2 pb-2 pt-1">
+          <div className="grid grid-cols-4 sm:grid-cols-5 gap-1.5">
             {group.receipts.map((receipt) => (
               <ReceiptCard key={receipt.id} receipt={receipt} compact />
             ))}
