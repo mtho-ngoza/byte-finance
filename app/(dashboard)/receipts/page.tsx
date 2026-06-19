@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { useReceipts } from '@/hooks/use-receipts';
 import { useGeolocation } from '@/hooks/use-geolocation';
@@ -10,6 +10,48 @@ import { AmountDisplay } from '@/components/shared/amount-display';
 import { CurrencyInput } from '@/components/shared/currency-input';
 import { useToast } from '@/components/shared/toast';
 import type { Receipt, PendingReceipt } from '@/types';
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+interface MonthGroup {
+  key: string; // "2026-06"
+  label: string; // "June 2026"
+  receipts: Receipt[];
+  totalAmount: number;
+  needsAttentionCount: number;
+}
+
+// ---------------------------------------------------------------------------
+// Helper: Group receipts by month
+// ---------------------------------------------------------------------------
+
+function groupByMonth(receipts: Receipt[]): MonthGroup[] {
+  const groups = new Map<string, Receipt[]>();
+
+  for (const receipt of receipts) {
+    const date = receipt.capturedAt
+      ? new Date(typeof receipt.capturedAt === 'string' ? receipt.capturedAt : receipt.capturedAt.toDate())
+      : new Date();
+    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(receipt);
+  }
+
+  // Sort by date descending (newest first)
+  const sortedKeys = Array.from(groups.keys()).sort((a, b) => b.localeCompare(a));
+
+  return sortedKeys.map((key) => {
+    const [year, month] = key.split('-').map(Number);
+    const monthReceipts = groups.get(key)!;
+    const label = new Date(year, month - 1).toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' });
+    const totalAmount = monthReceipts.reduce((sum, r) => sum + (r.amountInCents || 0), 0);
+    const needsAttentionCount = monthReceipts.filter((r) => !r.amountInCents || !r.vendor).length;
+
+    return { key, label, receipts: monthReceipts, totalAmount, needsAttentionCount };
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Main Receipts Page
@@ -22,78 +64,95 @@ export default function ReceiptsPage() {
   const [pendingQueue, setPendingQueue] = useState<PendingReceipt[]>([]);
   const [search, setSearch] = useState('');
   const [filterAttention, setFilterAttention] = useState(false);
-  const [visibleCount, setVisibleCount] = useState(12);
+  const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
 
-  // Process any queued uploads on page open and refresh the pending count
+  // Process any queued uploads on page open
   useEffect(() => {
     let cancelled = false;
-
     async function init() {
       try {
-        // Refresh pending count first
         const queue = await getQueue();
         if (!cancelled) setPendingQueue(queue);
-
-        // Then attempt to process (will update queue on success)
         await processQueue();
-
-        // Refresh again after processing
         const updated = await getQueue();
         if (!cancelled) setPendingQueue(updated);
       } catch {
-        // IndexedDB may be unavailable in some environments — degrade gracefully
+        // IndexedDB may be unavailable
       }
     }
-
     init();
     return () => { cancelled = true; };
   }, [getQueue, processQueue]);
+
+  // Group receipts by month
+  const monthGroups = useMemo(() => groupByMonth(receipts), [receipts]);
+
+  // Auto-expand current month and previous month on load
+  useEffect(() => {
+    if (monthGroups.length > 0 && expandedMonths.size === 0) {
+      const initial = new Set<string>();
+      if (monthGroups[0]) initial.add(monthGroups[0].key);
+      if (monthGroups[1]) initial.add(monthGroups[1].key);
+      setExpandedMonths(initial);
+    }
+  }, [monthGroups]);
+
+  // Filter receipts
+  const q = search.toLowerCase();
+  const baseList = filterAttention ? needsAttention : receipts;
+  const filteredReceipts = useMemo(() => {
+    if (!q && !filterAttention) return null; // Use grouped view
+    return baseList.filter((r) => {
+      if (!q) return true;
+      return (
+        r.vendor?.toLowerCase().includes(q) ||
+        r.note?.toLowerCase().includes(q) ||
+        (r.amountInCents !== undefined && `r${(r.amountInCents / 100).toFixed(0)}`.includes(q))
+      );
+    });
+  }, [baseList, q, filterAttention]);
+
+  const toggleMonth = (key: string) => {
+    setExpandedMonths((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const unlinked = complete.filter((r) => !r.cycleItemId);
 
   if (loading) {
     return (
       <div className="animate-pulse space-y-4">
         <div className="h-8 w-32 bg-surface rounded" />
-        <div className="grid grid-cols-2 gap-3">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-40 bg-surface rounded-xl" />
+        <div className="space-y-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-16 bg-surface rounded-xl" />
           ))}
         </div>
       </div>
     );
   }
 
-  const unlinked = complete.filter((r) => !r.cycleItemId);
-
-  // Search + filter
-  const q = search.toLowerCase();
-  // When attention filter is active, show needsAttention list; otherwise show complete list
-  const baseList = filterAttention ? needsAttention : complete;
-  const filteredComplete = baseList.filter((r) => {
-    if (!q) return true;
-    return (
-      r.vendor?.toLowerCase().includes(q) ||
-      r.note?.toLowerCase().includes(q) ||
-      (r.amountInCents !== undefined && `r${(r.amountInCents / 100).toFixed(0)}`.includes(q))
-    );
-  });
-  const filteredAttention = needsAttention.filter((r) => {
-    if (!q) return true;
-    return r.vendor?.toLowerCase().includes(q) || r.note?.toLowerCase().includes(q);
-  });
-
-  const visibleReceipts = filteredComplete.slice(0, visibleCount);
-  const hasMore = filteredComplete.length > visibleCount;
+  const isSearching = q || filterAttention;
 
   return (
-    <div className="space-y-6 pb-20">
+    <div className="space-y-4 pb-20">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold text-text-primary">Receipts</h1>
           <p className="text-sm text-text-secondary">
             {receipts.length} receipt{receipts.length !== 1 ? 's' : ''}
-            {unlinked.length > 0 && (
+            {needsAttention.length > 0 && (
               <span className="ml-2 px-1.5 py-0.5 rounded-full bg-warning/10 text-warning text-[10px] font-medium">
+                {needsAttention.length} need attention
+              </span>
+            )}
+            {unlinked.length > 0 && (
+              <span className="ml-1 px-1.5 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-medium">
                 {unlinked.length} unlinked
               </span>
             )}
@@ -104,15 +163,9 @@ export default function ReceiptsPage() {
         {pendingQueue.length > 0 && (
           <div className="flex flex-col items-end gap-1">
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface border border-border text-sm">
-              <span className="inline-block animate-spin text-primary" aria-hidden="true">⟳</span>
+              <span className="inline-block animate-spin text-primary">⟳</span>
               <span className="text-text-secondary">{pendingQueue.length} pending</span>
             </div>
-            {pendingQueue.filter((p) => p.uploadAttempts > 2).length > 0 && (
-              <div className="flex items-center gap-1 text-xs text-warning">
-                <span>⚠️</span>
-                <span>{pendingQueue.filter((p) => p.uploadAttempts > 2).length} failed</span>
-              </div>
-            )}
           </div>
         )}
       </div>
@@ -126,8 +179,8 @@ export default function ReceiptsPage() {
           <input
             type="text"
             value={search}
-            onChange={(e) => { setSearch(e.target.value); setVisibleCount(12); }}
-            placeholder="Search vendor, note..."
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search vendor, note, amount..."
             className="w-full pl-9 pr-3 py-2 rounded-lg border border-border bg-surface text-sm text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-primary"
           />
           {search && (
@@ -142,61 +195,51 @@ export default function ReceiptsPage() {
             filterAttention ? 'border-warning bg-warning/10 text-warning' : 'border-border text-text-secondary hover:border-primary'
           }`}
         >
-          ⚠️ Needs attention
+          ⚠️ {needsAttention.length}
         </button>
       </div>
 
-      {/* Needs Attention Section (only when not filtering) */}
-      {!filterAttention && filteredAttention.length > 0 && (
+      {/* Content */}
+      {isSearching ? (
+        /* Flat search results */
         <section>
-          <h2 className="text-sm font-medium text-warning flex items-center gap-1.5 mb-3">
-            <span>⚠️</span>
-            Needs Attention ({filteredAttention.length})
+          <h2 className="text-sm font-medium text-text-secondary mb-3">
+            {filterAttention ? `Needs Attention (${filteredReceipts?.length || 0})` : `Search Results (${filteredReceipts?.length || 0})`}
           </h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {filteredAttention.map((receipt) => (
-              <ReceiptCard key={receipt.id} receipt={receipt} />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* All Receipts */}
-      <section>
-        <h2 className="text-sm font-medium text-text-primary mb-3">
-          {filterAttention ? `Needs Attention (${filteredComplete.length})` : `All Receipts${search ? ` — ${filteredComplete.length} results` : ''}`}
-        </h2>
-        {visibleReceipts.length === 0 ? (
-          <div className="text-center py-12 text-text-secondary">
-            <p className="text-4xl mb-3">{search ? '🔍' : '📷'}</p>
-            {search ? (
-              <p className="text-sm">{`No receipts matching "${search}"`}</p>
-            ) : (
-              <>
-                <p className="text-sm font-medium text-text-primary mb-1">No receipts yet</p>
-                <p className="text-xs mb-1">Tap the camera button to capture your first receipt.</p>
-                <p className="text-xs text-text-secondary/70">Receipts are stored securely and can be linked to your cycle items for expense tracking.</p>
-              </>
-            )}
-          </div>
-        ) : (
-          <>
+          {filteredReceipts && filteredReceipts.length > 0 ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {visibleReceipts.map((receipt) => (
+              {filteredReceipts.map((receipt) => (
                 <ReceiptCard key={receipt.id} receipt={receipt} />
               ))}
             </div>
-            {hasMore && (
-              <button
-                onClick={() => setVisibleCount((c) => c + 12)}
-                className="mt-4 w-full py-2.5 rounded-lg border border-border text-sm text-text-secondary hover:border-primary hover:text-text-primary transition-colors"
-              >
-                Show more ({filteredComplete.length - visibleCount} remaining)
-              </button>
-            )}
-          </>
-        )}
-      </section>
+          ) : (
+            <div className="text-center py-12 text-text-secondary">
+              <p className="text-4xl mb-3">🔍</p>
+              <p className="text-sm">No receipts found</p>
+            </div>
+          )}
+        </section>
+      ) : (
+        /* Grouped by month */
+        <div className="space-y-2">
+          {monthGroups.length === 0 ? (
+            <div className="text-center py-12 text-text-secondary">
+              <p className="text-4xl mb-3">📷</p>
+              <p className="text-sm font-medium text-text-primary mb-1">No receipts yet</p>
+              <p className="text-xs">Tap the camera button to capture your first receipt.</p>
+            </div>
+          ) : (
+            monthGroups.map((group) => (
+              <MonthSection
+                key={group.key}
+                group={group}
+                isExpanded={expandedMonths.has(group.key)}
+                onToggle={() => toggleMonth(group.key)}
+              />
+            ))
+          )}
+        </div>
+      )}
 
       {/* Tax Export */}
       <TaxExportSection receiptsCount={receipts.length} />
@@ -214,8 +257,67 @@ export default function ReceiptsPage() {
       </button>
 
       {/* Capture Modal */}
-      {showCapture && (
-        <ReceiptCapture onClose={() => setShowCapture(false)} />
+      {showCapture && <ReceiptCapture onClose={() => setShowCapture(false)} />}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// MonthSection Component
+// ---------------------------------------------------------------------------
+
+interface MonthSectionProps {
+  group: MonthGroup;
+  isExpanded: boolean;
+  onToggle: () => void;
+}
+
+function MonthSection({ group, isExpanded, onToggle }: MonthSectionProps) {
+  return (
+    <div className="rounded-xl border border-border bg-surface overflow-hidden">
+      {/* Month header */}
+      <button
+        onClick={onToggle}
+        className="w-full px-4 py-3 flex items-center justify-between hover:bg-background/50 transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+            <span className="text-primary font-semibold text-sm">
+              {group.receipts.length}
+            </span>
+          </div>
+          <div className="text-left">
+            <p className="text-sm font-medium text-text-primary">{group.label}</p>
+            <div className="flex items-center gap-2 text-xs text-text-secondary">
+              <AmountDisplay amount={group.totalAmount} size="xs" />
+              {group.needsAttentionCount > 0 && (
+                <span className="text-warning">
+                  · {group.needsAttentionCount} need attention
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+        <svg
+          className={`w-5 h-5 text-text-secondary transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth="2"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {/* Expanded content */}
+      {isExpanded && (
+        <div className="px-3 pb-3 pt-1">
+          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+            {group.receipts.map((receipt) => (
+              <ReceiptCard key={receipt.id} receipt={receipt} compact />
+            ))}
+          </div>
+        </div>
       )}
     </div>
   );
@@ -227,12 +329,47 @@ export default function ReceiptsPage() {
 
 interface ReceiptCardProps {
   receipt: Receipt;
+  compact?: boolean;
 }
 
-function ReceiptCard({ receipt }: ReceiptCardProps) {
+function ReceiptCard({ receipt, compact }: ReceiptCardProps) {
   const capturedAt = receipt.capturedAt
     ? new Date(typeof receipt.capturedAt === 'string' ? receipt.capturedAt : receipt.capturedAt.toDate()).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })
     : '';
+
+  const needsAttention = !receipt.amountInCents || !receipt.vendor;
+
+  if (compact) {
+    return (
+      <Link
+        href={`/receipts/${receipt.id}`}
+        className="relative aspect-square bg-background rounded-lg overflow-hidden hover:ring-2 hover:ring-primary transition-all"
+      >
+        {receipt.thumbnailUrl || receipt.imageUrl ? (
+          <img
+            src={receipt.thumbnailUrl || receipt.imageUrl}
+            alt="Receipt"
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-text-secondary">
+            <span className="text-xl">📄</span>
+          </div>
+        )}
+        {needsAttention && (
+          <div className="absolute top-1 right-1 w-5 h-5 bg-warning rounded-full flex items-center justify-center text-[10px] font-bold">
+            !
+          </div>
+        )}
+        {/* Quick info overlay */}
+        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-1.5">
+          <p className="text-[10px] text-white font-medium truncate">
+            {receipt.amountInCents ? `R${(receipt.amountInCents / 100).toFixed(0)}` : '—'}
+          </p>
+        </div>
+      </Link>
+    );
+  }
 
   return (
     <Link
@@ -252,7 +389,7 @@ function ReceiptCard({ receipt }: ReceiptCardProps) {
             <span className="text-2xl">📄</span>
           </div>
         )}
-        {(!receipt.amountInCents || !receipt.vendor) && (
+        {needsAttention && (
           <div className="absolute top-2 right-2 w-6 h-6 bg-warning rounded-full flex items-center justify-center text-xs">
             ?
           </div>
@@ -275,14 +412,6 @@ function ReceiptCard({ receipt }: ReceiptCardProps) {
       </div>
     </Link>
   );
-}
-
-// ---------------------------------------------------------------------------
-// ReceiptCapture Component
-// ---------------------------------------------------------------------------
-
-interface ReceiptCaptureProps {
-  onClose: () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -366,7 +495,7 @@ function TaxExportSection({ receiptsCount }: { receiptsCount: number }) {
               ZIP + Images
             </button>
           </div>
-          <p className="text-[10px] text-text-secondary">ZIP includes all receipt images + CSV. May take a moment for large collections.</p>
+          <p className="text-[10px] text-text-secondary">ZIP includes all receipt images + CSV.</p>
         </div>
       )}
     </div>
@@ -377,14 +506,10 @@ function TaxExportSection({ receiptsCount }: { receiptsCount: number }) {
 // ReceiptCapture
 // ---------------------------------------------------------------------------
 
-interface ReceiptCaptureProps {
-  onClose: () => void;
-}
-
-function ReceiptCapture({ onClose }: ReceiptCaptureProps) {
+function ReceiptCapture({ onClose }: { onClose: () => void }) {
   const { location, getSuggestedVendors } = useGeolocation();
   const { upload, status: uploadStatus, isUploading: saving } = useReceiptUpload();
-  const { toast, confirm } = useToast();
+  const { toast } = useToast();
 
   const [step, setStep] = useState<'camera' | 'form'>('camera');
   const [imageData, setImageData] = useState<string | null>(null);
@@ -400,23 +525,19 @@ function ReceiptCapture({ onClose }: ReceiptCaptureProps) {
 
   const suggestedVendors = getSuggestedVendors([]);
 
-  // Start camera
   const startCamera = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
       });
       streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
+      if (videoRef.current) videoRef.current.srcObject = stream;
     } catch (err) {
       console.error('Camera error:', err);
       toast('Could not access camera. Please grant permission.', 'error');
     }
-  }, []);
+  }, [toast]);
 
-  // Stop camera
   const stopCamera = useCallback(() => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
@@ -424,373 +545,94 @@ function ReceiptCapture({ onClose }: ReceiptCaptureProps) {
     }
   }, []);
 
-  // Capture photo from camera
   const capturePhoto = useCallback(() => {
     if (!videoRef.current || !canvasRef.current) return;
-
     const video = videoRef.current;
     const canvas = canvasRef.current;
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
-
     const ctx = canvas.getContext('2d');
     if (ctx) {
       ctx.drawImage(video, 0, 0);
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-      setImageData(dataUrl);
-      canvas.toBlob(
-        (blob) => { if (blob) setImageBlob(blob); },
-        'image/jpeg',
-        0.8
-      );
+      setImageData(canvas.toDataURL('image/jpeg', 0.8));
+      canvas.toBlob((blob) => { if (blob) setImageBlob(blob); }, 'image/jpeg', 0.8);
       setStep('form');
       stopCamera();
     }
   }, [stopCamera]);
 
-  // Handle file picked from gallery
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     const reader = new FileReader();
-    reader.onload = (ev) => {
-      setImageData(ev.target?.result as string);
-    };
+    reader.onload = (ev) => setImageData(ev.target?.result as string);
     reader.readAsDataURL(file);
     setImageBlob(file);
     stopCamera();
     setStep('form');
   }, [stopCamera]);
 
-  // Save receipt via the upload hook
   const handleSave = async () => {
     if (!imageBlob) return;
-
     const result = await upload({
       imageBlob,
       amount,
       vendor,
       note,
-      location: location
-        ? { lat: location.lat, lng: location.lng, accuracy: location.accuracy }
-        : undefined,
+      location: location ? { lat: location.lat, lng: location.lng, accuracy: location.accuracy } : undefined,
     });
-
-    if (!result.success && result.error) {
-      toast(result.error, 'error');
-    }
-
+    if (!result.success && result.error) toast(result.error, 'error');
     onClose();
   };
 
-  // Start camera on mount
-  useState(() => {
-    startCamera();
-  });
+  useEffect(() => { startCamera(); return stopCamera; }, [startCamera, stopCamera]);
 
-  const handleClose = () => {
-    stopCamera();
-    onClose();
-  };
+  const handleClose = () => { stopCamera(); onClose(); };
 
   return (
     <div className="fixed inset-0 bg-black z-50 flex flex-col">
-      {/* Hidden file input for gallery uploads */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={handleFileChange}
-      />
+      <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
 
       {step === 'camera' ? (
         <>
-          {/* Camera view */}
-          <video
-            ref={videoRef}
-            autoPlay
-            playsInline
-            className="flex-1 object-cover"
-            onLoadedMetadata={() => videoRef.current?.play()}
-          />
+          <video ref={videoRef} autoPlay playsInline className="flex-1 object-cover" onLoadedMetadata={() => videoRef.current?.play()} />
           <canvas ref={canvasRef} className="hidden" />
-
-          {/* Camera controls */}
           <div className="absolute bottom-0 left-0 right-0 p-6 flex items-center justify-center gap-6">
-            <button
-              onClick={handleClose}
-              className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center text-white"
-              aria-label="Close"
-            >
-              ✕
-            </button>
-            {/* Shutter */}
-            <button
-              onClick={capturePhoto}
-              className="w-16 h-16 rounded-full bg-white border-4 border-white/50"
-              aria-label="Take photo"
-            />
-            {/* Gallery picker */}
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center text-white"
-              aria-label="Upload from gallery"
-            >
-              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-                <rect x="3" y="3" width="18" height="18" rx="2" />
-                <circle cx="8.5" cy="8.5" r="1.5" />
-                <path d="M21 15l-5-5L5 21" />
-              </svg>
+            <button onClick={handleClose} className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center text-white" aria-label="Close">✕</button>
+            <button onClick={capturePhoto} className="w-16 h-16 rounded-full bg-white border-4 border-white/50" aria-label="Take photo" />
+            <button onClick={() => fileInputRef.current?.click()} className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center text-white" aria-label="Upload from gallery">
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" /></svg>
             </button>
           </div>
         </>
       ) : (
-        <>
-          {/* Form overlay on captured image */}
-          <div className="flex-1 relative">
-            {imageData && (
-              <img
-                src={imageData}
-                alt="Captured receipt"
-                className="w-full h-full object-contain"
-              />
-            )}
-
-            {/* Form overlay */}
-            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 to-black/50 p-4 space-y-4">
-              {/* Amount */}
-              <div>
-                <label className="block text-xs text-white/70 mb-1">Amount</label>
-                <CurrencyInput
-                  value={amount}
-                  onChange={setAmount}
-                />
-              </div>
-
-              {/* Vendor chips */}
-              <div>
-                <label className="block text-xs text-white/70 mb-1">Vendor</label>
-                <div className="flex flex-wrap gap-2 mb-2">
-                  {suggestedVendors.slice(0, 6).map((v) => (
-                    <button
-                      key={v}
-                      onClick={() => setVendor(v)}
-                      className={`px-3 py-1.5 rounded-full text-sm transition-colors ${
-                        vendor === v
-                          ? 'bg-primary text-black'
-                          : 'bg-white/20 text-white hover:bg-white/30'
-                      }`}
-                    >
-                      {v}
-                    </button>
-                  ))}
-                </div>
-                <input
-                  type="text"
-                  value={vendor}
-                  onChange={(e) => setVendor(e.target.value)}
-                  placeholder="Or type vendor name..."
-                  className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder:text-white/50 focus:outline-none focus:border-primary text-sm"
-                />
-              </div>
-
-              {/* Note */}
-              <div>
-                <label className="block text-xs text-white/70 mb-1">Note (optional)</label>
-                <input
-                  type="text"
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  placeholder="Quick context..."
-                  className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder:text-white/50 focus:outline-none focus:border-primary text-sm"
-                />
-              </div>
-
-              {/* Buttons */}
-              <div className="flex gap-3">
-                <button
-                  onClick={() => {
-                    setStep('camera');
-                    setImageData(null);
-                    setImageBlob(null);
-                    startCamera();
-                  }}
-                  className="flex-1 py-3 rounded-lg border border-white/30 text-white font-medium"
-                >
-                  Retake
-                </button>
-                <button
-                  onClick={handleSave}
-                  disabled={saving}
-                  className="flex-1 py-3 rounded-lg bg-primary text-black font-medium disabled:opacity-50"
-                >
-                  {saving ? (uploadStatus || 'Saving…') : 'Save'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// ReceiptDetail Component
-// ---------------------------------------------------------------------------
-
-interface ReceiptDetailProps {
-  receipt: Receipt;
-  onClose: () => void;
-  onDelete: () => Promise<void>;
-}
-
-function ReceiptDetail({ receipt, onClose, onDelete }: ReceiptDetailProps) {
-  const { updateReceipt } = useReceipts();
-  const [editing, setEditing] = useState(false);
-  const [amount, setAmount] = useState(receipt.amountInCents ?? 0);
-  const [vendor, setVendor] = useState(receipt.vendor ?? '');
-  const [note, setNote] = useState(receipt.note ?? '');
-  const [saving, setSaving] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const { toast, confirm } = useToast();
-
-  const capturedAt = receipt.capturedAt
-    ? new Date(typeof receipt.capturedAt === 'string' ? receipt.capturedAt : receipt.capturedAt.toDate()).toLocaleString('en-ZA')
-    : '';
-
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      await updateReceipt(receipt.id, {
-        amountInCents: amount > 0 ? amount : undefined,
-        vendor: vendor.trim() || undefined,
-        note: note.trim() || undefined,
-      });
-      setEditing(false);
-    } catch (err) {
-      console.error('Update error:', err);
-      toast('Failed to update receipt.', 'error');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleDelete = () => {
-    confirm('This will permanently delete the receipt.', async () => {
-      setDeleting(true);
-      try {
-        await onDelete();
-      } catch (err) {
-        console.error('Delete error:', err);
-        toast('Failed to delete receipt.', 'error');
-        setDeleting(false);
-      }
-    }, { title: 'Delete Receipt', confirmLabel: 'Delete', danger: true });
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/90 z-50 flex flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between p-4">
-        <button
-          onClick={onClose}
-          className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-white"
-        >
-          ←
-        </button>
-        <button
-          onClick={() => setEditing(!editing)}
-          className="px-4 py-2 rounded-lg bg-white/10 text-white text-sm"
-        >
-          {editing ? 'Cancel' : 'Edit'}
-        </button>
-      </div>
-
-      {/* Image */}
-      <div className="flex-1 overflow-auto">
-        {(receipt.originalImageUrl || receipt.imageUrl) && (
-          <img
-            src={receipt.originalImageUrl || receipt.imageUrl}
-            alt="Receipt"
-            className="w-full object-contain"
-          />
-        )}
-      </div>
-
-      {/* Details */}
-      <div className="p-4 bg-surface border-t border-border space-y-4">
-        {editing ? (
-          <>
+        <div className="flex-1 relative">
+          {imageData && <img src={imageData} alt="Captured receipt" className="w-full h-full object-contain" />}
+          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 to-black/50 p-4 space-y-4">
             <div>
-              <label className="block text-xs text-text-secondary mb-1">Amount</label>
+              <label className="block text-xs text-white/70 mb-1">Amount</label>
               <CurrencyInput value={amount} onChange={setAmount} />
             </div>
             <div>
-              <label className="block text-xs text-text-secondary mb-1">Vendor</label>
-              <input
-                type="text"
-                value={vendor}
-                onChange={(e) => setVendor(e.target.value)}
-                className="w-full px-3 py-2 bg-background border border-border rounded-lg text-text-primary focus:outline-none focus:border-primary text-sm"
-              />
+              <label className="block text-xs text-white/70 mb-1">Vendor</label>
+              <div className="flex flex-wrap gap-2 mb-2">
+                {suggestedVendors.slice(0, 6).map((v) => (
+                  <button key={v} onClick={() => setVendor(v)} className={`px-3 py-1.5 rounded-full text-sm transition-colors ${vendor === v ? 'bg-primary text-black' : 'bg-white/20 text-white hover:bg-white/30'}`}>{v}</button>
+                ))}
+              </div>
+              <input type="text" value={vendor} onChange={(e) => setVendor(e.target.value)} placeholder="Or type vendor name..." className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder:text-white/50 focus:outline-none focus:border-primary text-sm" />
             </div>
             <div>
-              <label className="block text-xs text-text-secondary mb-1">Note</label>
-              <input
-                type="text"
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                className="w-full px-3 py-2 bg-background border border-border rounded-lg text-text-primary focus:outline-none focus:border-primary text-sm"
-              />
+              <label className="block text-xs text-white/70 mb-1">Note (optional)</label>
+              <input type="text" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Quick context..." className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder:text-white/50 focus:outline-none focus:border-primary text-sm" />
             </div>
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="w-full py-2 bg-primary text-black font-medium rounded-lg disabled:opacity-50"
-            >
-              {saving ? 'Saving...' : 'Save Changes'}
-            </button>
-          </>
-        ) : (
-          <>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-text-secondary">Amount</p>
-                {receipt.amountInCents ? (
-                  <AmountDisplay amount={receipt.amountInCents} size="lg" />
-                ) : (
-                  <p className="text-warning">Not set</p>
-                )}
-              </div>
-              <div className="text-right">
-                <p className="text-xs text-text-secondary">Vendor</p>
-                <p className="text-text-primary">{receipt.vendor || 'Not set'}</p>
-              </div>
+            <div className="flex gap-3">
+              <button onClick={() => { setStep('camera'); setImageData(null); setImageBlob(null); startCamera(); }} className="flex-1 py-3 rounded-lg border border-white/30 text-white font-medium">Retake</button>
+              <button onClick={handleSave} disabled={saving} className="flex-1 py-3 rounded-lg bg-primary text-black font-medium disabled:opacity-50">{saving ? (uploadStatus || 'Saving...') : 'Save'}</button>
             </div>
-            {receipt.note && (
-              <div>
-                <p className="text-xs text-text-secondary">Note</p>
-                <p className="text-sm text-text-primary">{receipt.note}</p>
-              </div>
-            )}
-            <div>
-              <p className="text-xs text-text-secondary">Captured</p>
-              <p className="text-sm text-text-primary">{capturedAt}</p>
-            </div>
-          </>
-        )}
-
-        <button
-          onClick={handleDelete}
-          disabled={deleting}
-          className="w-full py-2 border border-error text-error rounded-lg text-sm disabled:opacity-50"
-        >
-          {deleting ? 'Deleting...' : 'Delete Receipt'}
-        </button>
-      </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
