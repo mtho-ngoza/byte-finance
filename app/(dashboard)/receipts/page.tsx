@@ -66,8 +66,9 @@ export default function ReceiptsPage() {
 
   // Search + filter
   const q = search.toLowerCase();
-  const filteredComplete = complete.filter((r) => {
-    if (filterAttention && !r.needsAttention) return false;
+  // When attention filter is active, show needsAttention list; otherwise show complete list
+  const baseList = filterAttention ? needsAttention : complete;
+  const filteredComplete = baseList.filter((r) => {
     if (!q) return true;
     return (
       r.vendor?.toLowerCase().includes(q) ||
@@ -251,7 +252,7 @@ function ReceiptCard({ receipt }: ReceiptCardProps) {
             <span className="text-2xl">📄</span>
           </div>
         )}
-        {receipt.needsAttention && (
+        {(!receipt.amountInCents || !receipt.vendor) && (
           <div className="absolute top-2 right-2 w-6 h-6 bg-warning rounded-full flex items-center justify-center text-xs">
             ?
           </div>

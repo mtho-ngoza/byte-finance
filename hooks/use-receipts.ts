@@ -46,8 +46,9 @@ export function useReceipts() {
   }, [userId]);
 
   // Receipts that need attention (missing amount or vendor)
-  const needsAttention = receipts.filter((r) => r.needsAttention);
-  const complete = receipts.filter((r) => !r.needsAttention);
+  // Compute based on actual values, not the stored flag (which may be stale)
+  const needsAttention = receipts.filter((r) => !r.amountInCents || !r.vendor);
+  const complete = receipts.filter((r) => r.amountInCents && r.vendor);
 
   /**
    * Create a new receipt

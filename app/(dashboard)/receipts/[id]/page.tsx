@@ -265,7 +265,7 @@ export default function ReceiptDetailPage({ params }: ReceiptDetailPageProps) {
       )}
 
       {/* Needs attention banner */}
-      {receipt.needsAttention && !editing && (
+      {(!receipt.amountInCents || !receipt.vendor) && !editing && (
         <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-warning/10 border border-warning/30">
           <span>⚠️</span>
           <p className="text-sm text-warning">Missing amount or vendor — tap Edit to complete.</p>
@@ -352,7 +352,7 @@ export default function ReceiptDetailPage({ params }: ReceiptDetailPageProps) {
       </div>
 
       {/* Sage Business Cloud push panel */}
-      {!editing && connectionStatus?.connected && !receipt.needsAttention && (
+      {!editing && connectionStatus?.connected && receipt.amountInCents && receipt.vendor && (
         <div className="rounded-xl border border-border bg-surface p-4 space-y-3">
           <div className="flex items-center gap-2">
             {/* Sage logo placeholder */}
