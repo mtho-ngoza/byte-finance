@@ -265,8 +265,17 @@ export default function DashboardPage() {
             </button>
           </div>
           <div className="text-right">
-            <p className="text-sm text-text-secondary">{isPastCycle ? 'Unpaid' : 'Remaining'}</p>
-            <AmountDisplay amount={remaining} size="lg" />
+            {remaining < 0 ? (
+              <>
+                <p className="text-sm text-error">Over Budget</p>
+                <AmountDisplay amount={Math.abs(remaining)} size="lg" className="text-error" />
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-text-secondary">{isPastCycle ? 'Unpaid' : 'Remaining'}</p>
+                <AmountDisplay amount={remaining} size="lg" />
+              </>
+            )}
           </div>
         </div>
 
