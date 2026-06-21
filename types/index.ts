@@ -322,6 +322,41 @@ export interface KnownVendor {
 }
 
 /**
+ * WishlistItem - Annual financial goal/resolution
+ * Can be linked to a Goal or Commitment for auto-tracking
+ */
+export interface WishlistItem {
+  id: string;
+  title: string;                      // "Pay off car", "Save R100k for house"
+  description?: string;               // Why this matters
+
+  // Timeframe
+  type: 'short-term' | 'long-term';   // Short = this year, Long = multi-year
+  targetYear: number;                 // Primary year (e.g., 2026)
+  targetYearEnd?: number;             // For long-term spanning multiple years (e.g., 2028)
+
+  // Linking to existing items for auto-progress
+  linkedGoalId?: string;
+  linkedCommitmentId?: string;
+
+  // Progress tracking
+  progress: number;                   // 0-100, auto-calculated from link or manual
+  targetAmount?: number;              // Optional target in cents for display
+  currentAmount?: number;             // Current progress in cents
+
+  // Status
+  status: 'active' | 'completed' | 'abandoned' | 'carried-forward';
+  completedAt?: Timestamp;
+  carriedFromYear?: number;           // If carried forward from previous year
+
+  // Organization
+  priority: number;                   // Sort order within year (1 = highest)
+
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+/**
  * Helper type for creating new documents (without id and timestamps)
  */
 export type CreateCommitment = Omit<Commitment, 'id' | 'createdAt' | 'updatedAt'>;
@@ -329,3 +364,4 @@ export type CreateGoal = Omit<Goal, 'id' | 'createdAt' | 'updatedAt' | 'complete
 export type CreateCycle = Omit<Cycle, 'id' | 'createdAt' | 'updatedAt'>;
 export type CreateCycleItem = Omit<CycleItem, 'id' | 'createdAt' | 'updatedAt'>;
 export type CreateReceipt = Omit<Receipt, 'id' | 'createdAt' | 'updatedAt'>;
+export type CreateWishlistItem = Omit<WishlistItem, 'id' | 'createdAt' | 'updatedAt' | 'completedAt' | 'progress' | 'currentAmount'>;
