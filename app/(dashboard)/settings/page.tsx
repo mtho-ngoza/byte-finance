@@ -412,6 +412,13 @@ export default function SettingsPage() {
             </div>
             <svg className="w-5 h-5 text-text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
           </Link>
+          <Link href="/review" className="flex items-center justify-between p-4 bg-surface border border-border rounded-lg hover:bg-background transition-colors">
+            <div>
+              <p className="text-sm font-medium text-text-primary">Year Review</p>
+              <p className="text-xs text-text-secondary">Annual financial summary</p>
+            </div>
+            <svg className="w-5 h-5 text-text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+          </Link>
         </div>
       </section>
 
