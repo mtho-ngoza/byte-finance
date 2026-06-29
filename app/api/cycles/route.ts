@@ -96,6 +96,7 @@ export async function POST(request: NextRequest) {
         accountType: string;
         linkedGoalId?: string;
         dueDay?: number;
+        isVariable?: boolean;
       };
 
       const itemRef = db.collection(`users/${userId}/cycleItems`).doc();
@@ -108,6 +109,7 @@ export async function POST(request: NextRequest) {
         accountType: c.accountType,
         status: 'upcoming',
         linkedGoalId: c.linkedGoalId ?? null,
+        isVariable: c.isVariable ?? false,
         dueDate: c.dueDay
           ? Timestamp.fromDate(
               new Date(new Date(startDate).getFullYear(), new Date(startDate).getMonth(), c.dueDay)

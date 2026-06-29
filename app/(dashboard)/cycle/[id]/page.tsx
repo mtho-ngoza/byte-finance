@@ -441,7 +441,7 @@ function SortableItemRow({ item, cycleId, userId, onStatusChange, onAmountChange
   const [paymentValue, setPaymentValue] = useState('');
   const [paymentNote, setPaymentNote] = useState('');
   const [paymentReceiptId, setPaymentReceiptId] = useState<string | undefined>(undefined);
-  const [receipts, setReceipts] = useState<Array<{ id: string; thumbnailUrl?: string; imageUrl?: string; vendor?: string; amountInCents?: number }>>([]);
+  const [receipts, setReceipts] = useState<Array<{ id: string; thumbnailUrl?: string; imageUrl?: string; vendor?: string; amountInCents?: number; cycleItemId?: string }>>([]);
   const [receiptsLoaded, setReceiptsLoaded] = useState(false);
   const { toast, confirm } = useToast();
 
@@ -860,11 +860,11 @@ function SortableItemRow({ item, cycleId, userId, onStatusChange, onAmountChange
                   onError={(msg) => toast(msg, 'error')}
                 />
               </div>
-              {receipts.length === 0 && receiptsLoaded ? (
-                <p className="text-xs text-text-secondary">No receipts captured yet.</p>
+              {receipts.filter((r) => !r.cycleItemId).length === 0 && receiptsLoaded ? (
+                <p className="text-xs text-text-secondary">No unlinked receipts available.</p>
               ) : (
                 <div className="grid grid-cols-4 gap-1.5">
-                  {receipts.map((r) => {
+                  {receipts.filter((r) => !r.cycleItemId).map((r) => {
                     const selected = r.id === paymentReceiptId;
                     return (
                       <button

@@ -122,6 +122,7 @@ export async function createCycle(
       accountType: commitment.accountType,
       status: 'upcoming',
       linkedGoalId: commitment.linkedGoalId,
+      isVariable: commitment.isVariable,
       sortOrder: i,
       createdAt: now,
       updatedAt: now,

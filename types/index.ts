@@ -200,6 +200,9 @@ export interface CycleItem {
   // Smart linking
   linkedGoalId?: string;
 
+  // Variability (inherited from commitment)
+  isVariable?: boolean;             // True for expenses that vary (grocery, petrol)
+
   // Receipt attachment
   receiptId?: string;               // Linked receipt for this item
 

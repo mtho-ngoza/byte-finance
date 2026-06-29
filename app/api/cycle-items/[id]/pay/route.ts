@@ -42,9 +42,11 @@ export async function POST(
   const paymentId = `pay-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 
   const newTotalPaid = (item.totalPaidAmount ?? 0) + amount;
-  // Never auto-complete — always partial until user explicitly marks done.
-  // This allows overspend tracking for variable items.
-  const newStatus = 'partial';
+  // Auto-complete for non-variable items when paid in full.
+  // Variable items stay partial to allow overspend tracking.
+  const isVariable = item.isVariable ?? false;
+  const paidInFull = newTotalPaid >= item.amount;
+  const newStatus = (!isVariable && paidInFull) ? 'paid' : 'partial';
 
   const payment = {
     id: paymentId,
@@ -54,18 +56,23 @@ export async function POST(
     ...(receiptId ? { receiptId } : {}),
   };
 
+  const wasNotPaid = item.status !== 'paid';
+  const nowPaid = newStatus === 'paid';
+
   await ref.update({
     payments: FieldValue.arrayUnion(payment),
     totalPaidAmount: FieldValue.increment(amount),
     status: newStatus,
-    paidDate: null,
+    paidDate: nowPaid ? new Date() : null,
     updatedAt: now,
   });
 
   // Update cycle totalPaid (always increment — partial counts toward paid total)
+  // Also increment paidCount if this payment completed the item
   const cycleRef = db.collection(`users/${userId}/cycles`).doc(item.cycleId);
   await cycleRef.update({
     totalPaid: FieldValue.increment(amount),
+    ...(wasNotPaid && nowPaid ? { paidCount: FieldValue.increment(1) } : {}),
     updatedAt: now,
   });
 

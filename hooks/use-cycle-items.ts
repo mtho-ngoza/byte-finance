@@ -247,9 +247,11 @@ export function useCycleItems(cycleId: string | null): UseCycleItemsResult {
         receiptId: receiptId ?? undefined,
       };
       const newTotal = (item.totalPaidAmount ?? 0) + paymentAmount;
-      // Never auto-complete — always stay partial until user explicitly marks done.
-      // This allows overspend tracking for variable items.
-      const newStatus: CycleItemStatus = 'partial';
+      // Auto-complete for non-variable items when paid in full.
+      // Variable items stay partial to allow overspend tracking.
+      const isVariable = item.isVariable ?? false;
+      const paidInFull = newTotal >= item.amount;
+      const newStatus: CycleItemStatus = (!isVariable && paidInFull) ? 'paid' : 'partial';
 
       // Optimistic update
       const optimisticItem: CycleItem = {
