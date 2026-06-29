@@ -860,37 +860,13 @@ function SortableItemRow({ item, cycleId, userId, onStatusChange, onAmountChange
                   onError={(msg) => toast(msg, 'error')}
                 />
               </div>
-              {receipts.filter((r) => !r.cycleItemId).length === 0 && receiptsLoaded ? (
-                <p className="text-xs text-text-secondary">No unlinked receipts available.</p>
-              ) : (
-                <div className="grid grid-cols-4 gap-1.5">
-                  {receipts.filter((r) => !r.cycleItemId).map((r) => {
-                    const selected = r.id === paymentReceiptId;
-                    return (
-                      <button
-                        key={r.id}
-                        onClick={() => setPaymentReceiptId(selected ? undefined : r.id)}
-                        className={`relative aspect-square rounded-lg overflow-hidden border-2 transition-colors ${
-                          selected ? 'border-primary' : 'border-transparent hover:border-primary/40'
-                        }`}
-                      >
-                        {r.thumbnailUrl || r.imageUrl ? (
-                          <img src={r.thumbnailUrl || r.imageUrl} alt="Receipt" className="w-full h-full object-cover" />
-                        ) : (
-                          <div className="w-full h-full bg-background flex items-center justify-center text-text-secondary text-base">📄</div>
-                        )}
-                        {selected && (
-                          <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
-                            <svg className="w-4 h-4 text-primary" fill="none" viewBox="0 0 16 16">
-                              <circle cx="8" cy="8" r="7" fill="currentColor" fillOpacity="0.2" stroke="currentColor" strokeWidth="1.5" />
-                              <path d="M5 8l2 2 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
-                          </div>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
+              {receiptsLoaded && (
+                <GroupedReceiptPicker
+                  receipts={receipts}
+                  selectedId={paymentReceiptId}
+                  onSelect={(id) => setPaymentReceiptId(paymentReceiptId === id ? undefined : id)}
+                  filterLinked={true}
+                />
               )}
             </div>
             <div className="flex gap-2">
@@ -1055,7 +1031,147 @@ function EditItemModal({ item, userId, onClose }: EditItemModalProps) {
 // ReceiptPickerModal
 // ---------------------------------------------------------------------------
 
-type ReceiptItem = { id: string; thumbnailUrl?: string; imageUrl?: string; vendor?: string; amountInCents?: number; cycleItemId?: string };
+type ReceiptItem = { id: string; thumbnailUrl?: string; imageUrl?: string; vendor?: string; amountInCents?: number; cycleItemId?: string; capturedAt?: string };
+
+// Group receipts by month for picker display
+interface ReceiptMonthGroup {
+  key: string; // "2026-06"
+  label: string; // "June 2026"
+  receipts: ReceiptItem[];
+}
+
+function groupReceiptsByMonth(receipts: ReceiptItem[]): ReceiptMonthGroup[] {
+  const monthMap = new Map<string, ReceiptItem[]>();
+
+  for (const receipt of receipts) {
+    const date = receipt.capturedAt ? new Date(receipt.capturedAt) : new Date();
+    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    if (!monthMap.has(key)) monthMap.set(key, []);
+    monthMap.get(key)!.push(receipt);
+  }
+
+  // Sort months descending
+  const sortedKeys = Array.from(monthMap.keys()).sort((a, b) => b.localeCompare(a));
+
+  return sortedKeys.map((key) => {
+    const [year, monthNum] = key.split('-').map(Number);
+    const label = new Date(year, monthNum - 1).toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' });
+    return { key, label, receipts: monthMap.get(key)! };
+  });
+}
+
+// Grouped receipt picker component
+interface GroupedReceiptPickerProps {
+  receipts: ReceiptItem[];
+  selectedId?: string;
+  onSelect: (id: string) => void;
+  disabled?: boolean;
+  filterLinked?: boolean; // Filter out already-linked receipts
+  currentReceiptId?: string; // Always show this one even if linked
+}
+
+function GroupedReceiptPicker({ receipts, selectedId, onSelect, disabled, filterLinked = true, currentReceiptId }: GroupedReceiptPickerProps) {
+  const [expandedMonths, setExpandedMonths] = useState<Set<string>>(() => {
+    // Auto-expand current month
+    const now = new Date();
+    const currentKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    return new Set([currentKey]);
+  });
+
+  const filteredReceipts = filterLinked
+    ? receipts.filter((r) => !r.cycleItemId || r.id === currentReceiptId)
+    : receipts;
+
+  const groups = groupReceiptsByMonth(filteredReceipts);
+
+  const toggleMonth = (key: string) => {
+    setExpandedMonths((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  if (filteredReceipts.length === 0) {
+    return (
+      <div className="text-center py-6 text-text-secondary text-sm">
+        <p className="text-2xl mb-2">📷</p>
+        <p>No unlinked receipts available.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {groups.map((group) => {
+        const isExpanded = expandedMonths.has(group.key);
+        return (
+          <div key={group.key} className="rounded-lg border border-border/50 bg-background overflow-hidden">
+            {/* Month header */}
+            <button
+              onClick={() => toggleMonth(group.key)}
+              className="w-full px-3 py-2 flex items-center justify-between hover:bg-surface/50 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded bg-primary/10 flex items-center justify-center">
+                  <span className="text-primary font-semibold text-[10px]">{group.receipts.length}</span>
+                </div>
+                <span className="text-sm font-medium text-text-primary">{group.label}</span>
+              </div>
+              <svg
+                className={`w-4 h-4 text-text-secondary transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            {/* Receipts grid */}
+            {isExpanded && (
+              <div className="px-2 pb-2 pt-1">
+                <div className="grid grid-cols-4 gap-1.5">
+                  {group.receipts.map((r) => {
+                    const isSelected = r.id === selectedId;
+                    return (
+                      <button
+                        key={r.id}
+                        onClick={() => onSelect(r.id)}
+                        disabled={disabled}
+                        className={`relative aspect-square rounded-lg overflow-hidden border-2 transition-colors ${
+                          isSelected ? 'border-primary' : 'border-transparent hover:border-primary/40'
+                        }`}
+                      >
+                        {r.thumbnailUrl || r.imageUrl ? (
+                          <img src={r.thumbnailUrl || r.imageUrl} alt="Receipt" className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full bg-surface flex items-center justify-center text-text-secondary text-base">📄</div>
+                        )}
+                        {r.amountInCents && (
+                          <div className="absolute bottom-0 left-0 right-0 bg-black/60 px-1 py-0.5 text-[9px] text-white font-mono">
+                            R{(r.amountInCents / 100).toFixed(0)}
+                          </div>
+                        )}
+                        {isSelected && (
+                          <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
+                            <svg className="w-4 h-4 text-primary" fill="none" viewBox="0 0 16 16">
+                              <circle cx="8" cy="8" r="7" fill="currentColor" fillOpacity="0.2" stroke="currentColor" strokeWidth="1.5" />
+                              <path d="M5 8l2 2 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 type PaymentEntry = { id: string; amount: number; date: unknown; note?: string; receiptId?: string };
 
 interface ReceiptPickerModalProps {
@@ -1216,56 +1332,15 @@ function ReceiptPickerModal({ item, cycleId, userId, onClose, onAttached }: Rece
                 <div className="grid grid-cols-3 gap-2 animate-pulse">
                   {[1,2,3,4,5,6].map((i) => <div key={i} className="aspect-square bg-background rounded-lg" />)}
                 </div>
-              ) : receipts.filter((r) => !r.cycleItemId || r.id === currentReceiptId).length === 0 ? (
-                <div className="text-center py-8 text-text-secondary text-sm">
-                  <p className="text-2xl mb-2">📷</p>
-                  <p>No receipts yet. Capture one first.</p>
-                </div>
               ) : (
-                <div className="grid grid-cols-3 gap-2">
-                  {receipts
-                    .filter((r) => !r.cycleItemId || r.id === currentReceiptId)
-                    .map((r) => {
-                    const isSelected = r.id === currentReceiptId;
-                    return (
-                      <button
-                        key={r.id}
-                        onClick={() => handleAttachToPayment(r.id)}
-                        disabled={attaching}
-                        className={`relative aspect-square rounded-lg overflow-hidden border-2 transition-colors ${
-                          isSelected ? 'border-primary' : 'border-transparent hover:border-primary/50'
-                        }`}
-                      >
-                        {r.thumbnailUrl || r.imageUrl ? (
-                          <img src={r.thumbnailUrl || r.imageUrl} alt="Receipt" className="w-full h-full object-cover" />
-                        ) : (
-                          <div className="w-full h-full bg-background flex items-center justify-center text-text-secondary text-xl">📄</div>
-                        )}
-                        {r.amountInCents && (
-                          <div className="absolute bottom-0 left-0 right-0 bg-black/60 px-1.5 py-0.5 text-[10px] text-white font-mono">
-                            R{(r.amountInCents / 100).toFixed(0)}
-                          </div>
-                        )}
-                        {isSelected && (
-                          <div className="absolute inset-0 bg-primary/10 flex flex-col items-center justify-center gap-1">
-                            <div className="w-5 h-5 bg-primary rounded-full flex items-center justify-center">
-                              <svg className="w-3 h-3 text-black" fill="none" viewBox="0 0 12 12" stroke="currentColor" strokeWidth="2">
-                                <polyline points="1.5,6 4.5,9 10.5,3" />
-                              </svg>
-                            </div>
-                            <span className="text-[9px] text-primary font-medium">tap to remove</span>
-                          </div>
-                        )}
-                      </button>
-                    );
-                  })}
-                  {receipts.filter((r) => !r.cycleItemId || r.id === currentReceiptId).length === 0 && (
-                    <div className="col-span-3 text-center py-8 text-text-secondary text-sm">
-                      <p className="text-2xl mb-2">📷</p>
-                      <p>All receipts are already linked to other payments.</p>
-                    </div>
-                  )}
-                </div>
+                <GroupedReceiptPicker
+                  receipts={receipts}
+                  selectedId={currentReceiptId}
+                  onSelect={handleAttachToPayment}
+                  disabled={attaching}
+                  filterLinked={true}
+                  currentReceiptId={currentReceiptId}
+                />
               )}
             </>
           )}
