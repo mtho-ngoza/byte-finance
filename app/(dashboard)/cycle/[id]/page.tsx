@@ -1078,8 +1078,10 @@ function GroupedReceiptPicker({ receipts, selectedId, onSelect, disabled, filter
     return new Set([currentKey]);
   });
 
+  // Filter out receipts that are linked to other cycle items
+  // A receipt is "linked" if cycleItemId is a non-empty string
   const filteredReceipts = filterLinked
-    ? receipts.filter((r) => !r.cycleItemId || r.id === currentReceiptId)
+    ? receipts.filter((r) => !r.cycleItemId || r.cycleItemId === '' || r.id === currentReceiptId)
     : receipts;
 
   const groups = groupReceiptsByMonth(filteredReceipts);
@@ -1095,15 +1097,15 @@ function GroupedReceiptPicker({ receipts, selectedId, onSelect, disabled, filter
 
   if (filteredReceipts.length === 0) {
     return (
-      <div className="text-center py-6 text-text-secondary text-sm">
-        <p className="text-2xl mb-2">📷</p>
-        <p>No unlinked receipts available.</p>
+      <div className="text-center py-4 text-text-secondary text-sm">
+        <p className="text-xl mb-1">📷</p>
+        <p className="text-xs">No unlinked receipts available.</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2 max-h-48 overflow-y-auto">
       {groups.map((group) => {
         const isExpanded = expandedMonths.has(group.key);
         return (

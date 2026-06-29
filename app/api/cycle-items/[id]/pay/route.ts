@@ -67,6 +67,16 @@ export async function POST(
     updatedAt: now,
   });
 
+  // Link the receipt to this cycle item if provided
+  if (receiptId) {
+    const receiptRef = db.collection(`users/${userId}/receipts`).doc(receiptId);
+    await receiptRef.update({
+      cycleItemId: id,
+      cycleId: item.cycleId,
+      updatedAt: now,
+    });
+  }
+
   // Update cycle totalPaid (always increment — partial counts toward paid total)
   // Also increment paidCount if this payment completed the item
   const cycleRef = db.collection(`users/${userId}/cycles`).doc(item.cycleId);
