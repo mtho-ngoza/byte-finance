@@ -479,12 +479,11 @@ function SortableItemRow({ item, cycleId, userId, onStatusChange, onAmountChange
     setPaymentNote('');
     setPaymentReceiptId(undefined);
     setShowPaymentPrompt(true);
-    if (!receiptsLoaded) {
-      fetch('/api/receipts?limit=12')
-        .then((r) => r.json())
-        .then((d) => { setReceipts(d.receipts ?? []); setReceiptsLoaded(true); })
-        .catch(() => setReceiptsLoaded(true));
-    }
+    // Always fetch fresh receipts to ensure we have latest linking data
+    fetch('/api/receipts')
+      .then((r) => r.json())
+      .then((d) => { setReceipts(d.receipts ?? []); setReceiptsLoaded(true); })
+      .catch(() => setReceiptsLoaded(true));
   };
 
   const handleConfirmPayment = async () => {
@@ -711,12 +710,11 @@ function SortableItemRow({ item, cycleId, userId, onStatusChange, onAmountChange
                 setPaymentNote('');
                 setPaymentReceiptId(undefined);
                 setShowPaymentPrompt(true);
-                if (!receiptsLoaded) {
-                  fetch('/api/receipts?limit=12')
-                    .then((r) => r.json())
-                    .then((d) => { setReceipts(d.receipts ?? []); setReceiptsLoaded(true); })
-                    .catch(() => setReceiptsLoaded(true));
-                }
+                // Always fetch fresh receipts to ensure we have latest linking data
+                fetch('/api/receipts')
+                  .then((r) => r.json())
+                  .then((d) => { setReceipts(d.receipts ?? []); setReceiptsLoaded(true); })
+                  .catch(() => setReceiptsLoaded(true));
               }}
               className="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-background transition-colors"
             >
