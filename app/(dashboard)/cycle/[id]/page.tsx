@@ -1081,7 +1081,13 @@ function GroupedReceiptPicker({ receipts, selectedId, onSelect, disabled, filter
   // Filter out receipts that are linked to other cycle items
   // A receipt is "linked" if cycleItemId is a non-empty string
   const filteredReceipts = filterLinked
-    ? receipts.filter((r) => !r.cycleItemId || r.cycleItemId === '' || r.id === currentReceiptId)
+    ? receipts.filter((r) => {
+        // Always show the currently selected receipt
+        if (currentReceiptId && r.id === currentReceiptId) return true;
+        // Filter out if linked (cycleItemId is a non-empty truthy value)
+        const isLinked = r.cycleItemId && typeof r.cycleItemId === 'string' && r.cycleItemId.length > 0;
+        return !isLinked;
+      })
     : receipts;
 
   const groups = groupReceiptsByMonth(filteredReceipts);
@@ -1248,6 +1254,15 @@ function ReceiptPickerModal({ item, cycleId, userId, onClose, onAttached }: Rece
           ),
         });
       }
+
+      // Update local state to reflect the change immediately
+      setReceipts((prev) =>
+        prev.map((r) =>
+          r.id === receiptId
+            ? { ...r, cycleItemId: isDetach ? undefined : item.id }
+            : r
+        )
+      );
 
       onAttached(isDetach);
     } catch (err) {

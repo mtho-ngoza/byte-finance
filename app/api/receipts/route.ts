@@ -34,6 +34,9 @@ export async function GET(request: NextRequest) {
     return {
       id: doc.id,
       ...data,
+      // Explicitly include linking fields (ensure they're always present)
+      cycleItemId: data.cycleItemId ?? null,
+      cycleId: data.cycleId ?? null,
       capturedAt: data.capturedAt?.toDate?.()?.toISOString() ?? null,
       createdAt: data.createdAt?.toDate?.()?.toISOString() ?? null,
       updatedAt: data.updatedAt?.toDate?.()?.toISOString() ?? null,
