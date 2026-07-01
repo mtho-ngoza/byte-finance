@@ -628,6 +628,7 @@ function ReceiptCapture({ onClose }: { onClose: () => void }) {
   const [amount, setAmount] = useState(0);
   const [vendor, setVendor] = useState('');
   const [note, setNote] = useState('');
+  const [capturedDate, setCapturedDate] = useState(new Date().toISOString().split('T')[0]);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -690,6 +691,7 @@ function ReceiptCapture({ onClose }: { onClose: () => void }) {
       amount,
       vendor,
       note,
+      capturedAt: capturedDate ? new Date(capturedDate).toISOString() : undefined,
       location: location ? { lat: location.lat, lng: location.lng, accuracy: location.accuracy } : undefined,
     });
     if (!result.success && result.error) toast(result.error, 'error');
@@ -733,9 +735,15 @@ function ReceiptCapture({ onClose }: { onClose: () => void }) {
               </div>
               <input type="text" value={vendor} onChange={(e) => setVendor(e.target.value)} placeholder="Or type vendor name..." className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder:text-white/50 focus:outline-none focus:border-primary text-sm" />
             </div>
-            <div>
-              <label className="block text-xs text-white/70 mb-1">Note (optional)</label>
-              <input type="text" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Quick context..." className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder:text-white/50 focus:outline-none focus:border-primary text-sm" />
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <label className="block text-xs text-white/70 mb-1">Note (optional)</label>
+                <input type="text" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Quick context..." className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder:text-white/50 focus:outline-none focus:border-primary text-sm" />
+              </div>
+              <div className="w-28 shrink-0">
+                <label className="block text-xs text-white/70 mb-1">Date</label>
+                <input type="date" value={capturedDate} onChange={(e) => setCapturedDate(e.target.value)} className="w-full px-2 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:border-primary text-sm" />
+              </div>
             </div>
             <div className="flex gap-3">
               <button onClick={() => { setStep('camera'); setImageData(null); setImageBlob(null); startCamera(); }} className="flex-1 py-3 rounded-lg border border-white/30 text-white font-medium">Retake</button>

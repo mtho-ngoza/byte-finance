@@ -23,7 +23,8 @@ export async function POST(
 
   const { id } = await params;
   const body = await request.json();
-  const { amount, note, receiptId } = body;
+  const { amount, note, receiptId, date } = body;
+  const paymentDate = date ? new Date(date) : new Date();
 
   if (!amount || typeof amount !== 'number' || amount <= 0) {
     return NextResponse.json({ error: 'amount must be a positive number' }, { status: 400 });
@@ -51,7 +52,7 @@ export async function POST(
   const payment = {
     id: paymentId,
     amount,
-    date: new Date(),
+    date: paymentDate,
     note: note ?? null,
     ...(receiptId ? { receiptId } : {}),
   };
@@ -93,7 +94,7 @@ export async function POST(
       currentAmount: FieldValue.increment(amount),
       contributions: FieldValue.arrayUnion({
         id: `${id}-${paymentId}`,
-        date: new Date(),
+        date: paymentDate,
         amount,
         cycleId: item.cycleId,
         cycleItemId: id,

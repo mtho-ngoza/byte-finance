@@ -29,7 +29,7 @@ interface UseCycleItemsResult {
   updateStatus: (itemId: string, status: CycleItemStatus, actualAmount?: number) => Promise<void>;
   updateAmount: (itemId: string, newAmount: number) => Promise<void>;
   /** Add a partial payment to a variable item */
-  addPayment: (itemId: string, paymentAmount: number, note?: string, receiptId?: string) => Promise<void>;
+  addPayment: (itemId: string, paymentAmount: number, note?: string, receiptId?: string, date?: string) => Promise<void>;
   /** Delete a specific payment from an item */
   deletePayment: (itemId: string, paymentId: string) => Promise<void>;
   /** Edit a specific payment's amount and/or note */
@@ -232,17 +232,18 @@ export function useCycleItems(cycleId: string | null): UseCycleItemsResult {
 
   // Add a partial payment to a variable item
   const addPayment = useCallback(
-    async (itemId: string, paymentAmount: number, note?: string, receiptId?: string) => {
+    async (itemId: string, paymentAmount: number, note?: string, receiptId?: string, date?: string) => {
       if (!userId || !cycleId) return;
       const item = items.find((i) => i.id === itemId);
       if (!item) return;
 
       const now = Timestamp.now();
+      const paymentDate = date ? Timestamp.fromDate(new Date(date)) : now;
       const paymentId = `pay-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
       const newPayment = {
         id: paymentId,
         amount: paymentAmount,
-        date: now,
+        date: paymentDate,
         note: note ?? undefined,
         receiptId: receiptId ?? undefined,
       };
@@ -267,7 +268,7 @@ export function useCycleItems(cycleId: string | null): UseCycleItemsResult {
         const res = await fetch(`/api/cycle-items/${itemId}/pay`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ amount: paymentAmount, note, receiptId }),
+          body: JSON.stringify({ amount: paymentAmount, note, receiptId, date }),
         });
         if (!res.ok) throw new Error('Payment failed');
         removeOptimisticItem(itemId);

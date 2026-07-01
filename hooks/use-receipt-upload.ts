@@ -14,6 +14,7 @@ export interface ReceiptUploadParams {
   amount: number;
   vendor: string;
   note: string;
+  capturedAt?: string; // ISO date string, defaults to now
   location?: {
     lat: number;
     lng: number;
@@ -97,7 +98,7 @@ export function useReceiptUpload() {
 
   const upload = useCallback(
     async (params: ReceiptUploadParams): Promise<ReceiptUploadResult> => {
-      const { imageBlob, amount, vendor, note, location } = params;
+      const { imageBlob, amount, vendor, note, capturedAt, location } = params;
 
       setIsUploading(true);
 
@@ -198,7 +199,7 @@ export function useReceiptUpload() {
           vendor: vendor.trim() || undefined,
           note: note.trim() || undefined,
           location,
-          capturedAt: new Date().toISOString(),
+          capturedAt: capturedAt || new Date().toISOString(),
         });
 
         // Step 7: Upload succeeded — remove from queue

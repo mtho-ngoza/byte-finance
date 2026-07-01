@@ -416,7 +416,7 @@ interface SortableItemRowProps {
   userId: string | undefined;
   onStatusChange: (id: string, status: CycleItemStatus) => Promise<void>;
   onAmountChange: (id: string, amount: number) => Promise<void>;
-  onAddPayment: (itemId: string, paymentAmount: number, note?: string, receiptId?: string) => Promise<void>;
+  onAddPayment: (itemId: string, paymentAmount: number, note?: string, receiptId?: string, date?: string) => Promise<void>;
   onDeletePayment: (itemId: string, paymentId: string) => Promise<void>;
 }
 
@@ -440,6 +440,7 @@ function SortableItemRow({ item, cycleId, userId, onStatusChange, onAmountChange
   const [showPayments, setShowPayments] = useState(false);
   const [paymentValue, setPaymentValue] = useState('');
   const [paymentNote, setPaymentNote] = useState('');
+  const [paymentDate, setPaymentDate] = useState('');
   const [paymentReceiptId, setPaymentReceiptId] = useState<string | undefined>(undefined);
   const [receipts, setReceipts] = useState<Array<{ id: string; thumbnailUrl?: string; imageUrl?: string; vendor?: string; amountInCents?: number; cycleItemId?: string }>>([]);
   const [receiptsLoaded, setReceiptsLoaded] = useState(false);
@@ -477,6 +478,7 @@ function SortableItemRow({ item, cycleId, userId, onStatusChange, onAmountChange
     // Open payment prompt for unpaid items
     setPaymentValue((item.amount / 100).toFixed(2));
     setPaymentNote('');
+    setPaymentDate(new Date().toISOString().split('T')[0]);
     setPaymentReceiptId(undefined);
     setShowPaymentPrompt(true);
     // Always fetch fresh receipts to ensure we have latest linking data
@@ -492,7 +494,7 @@ function SortableItemRow({ item, cycleId, userId, onStatusChange, onAmountChange
     try {
       const amt = Math.round(parseFloat(paymentValue) * 100);
       if (isNaN(amt) || amt <= 0) return;
-      await onAddPayment(item.id, amt, paymentNote.trim() || undefined, paymentReceiptId);
+      await onAddPayment(item.id, amt, paymentNote.trim() || undefined, paymentReceiptId, paymentDate || undefined);
     } finally {
       setLoading(false);
     }
@@ -708,6 +710,7 @@ function SortableItemRow({ item, cycleId, userId, onStatusChange, onAmountChange
               onClick={() => {
                 setPaymentValue('');
                 setPaymentNote('');
+                setPaymentDate(new Date().toISOString().split('T')[0]);
                 setPaymentReceiptId(undefined);
                 setShowPaymentPrompt(true);
                 // Always fetch fresh receipts to ensure we have latest linking data
@@ -825,15 +828,26 @@ function SortableItemRow({ item, cycleId, userId, onStatusChange, onAmountChange
                 />
               </div>
             </div>
-            <div>
-              <label className="block text-xs text-text-secondary mb-1">Note (optional)</label>
-              <input
-                type="text"
-                value={paymentNote}
-                onChange={(e) => setPaymentNote(e.target.value)}
-                placeholder="e.g. Engen Sandton"
-                className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background text-text-primary focus:outline-none focus:border-primary"
-              />
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <label className="block text-xs text-text-secondary mb-1">Note (optional)</label>
+                <input
+                  type="text"
+                  value={paymentNote}
+                  onChange={(e) => setPaymentNote(e.target.value)}
+                  placeholder="e.g. Engen Sandton"
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background text-text-primary focus:outline-none focus:border-primary"
+                />
+              </div>
+              <div className="w-28 shrink-0">
+                <label className="block text-xs text-text-secondary mb-1">Date</label>
+                <input
+                  type="date"
+                  value={paymentDate}
+                  onChange={(e) => setPaymentDate(e.target.value)}
+                  className="w-full px-2 py-2 text-sm rounded-lg border border-border bg-background text-text-primary focus:outline-none focus:border-primary"
+                />
+              </div>
             </div>
             {/* Receipt picker */}
             <div>
