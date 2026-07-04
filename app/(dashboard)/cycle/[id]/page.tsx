@@ -844,13 +844,14 @@ function SortableItemRow({ item, cycleId, userId, onStatusChange, onAmountChange
                     className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background text-text-primary focus:outline-none focus:border-primary"
                   />
                 </div>
-                <div className="w-[120px] shrink-0">
+                <div className="w-[130px] shrink-0">
                   <label className="block text-xs text-text-secondary mb-1">Date</label>
                   <input
                     type="date"
                     value={paymentDate}
                     onChange={(e) => setPaymentDate(e.target.value)}
-                    className="w-full px-2 py-2 text-sm rounded-lg border border-border bg-background text-text-primary focus:outline-none focus:border-primary"
+                    className="w-full px-2 py-2 text-sm rounded-lg border border-border bg-background text-text-primary focus:outline-none focus:border-primary appearance-none [color-scheme:dark]"
+                    style={{ colorScheme: 'dark' }}
                   />
                 </div>
               </div>

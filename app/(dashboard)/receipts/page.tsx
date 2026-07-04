@@ -740,9 +740,9 @@ function ReceiptCapture({ onClose }: { onClose: () => void }) {
                 <label className="block text-xs text-white/70 mb-1">Note (optional)</label>
                 <input type="text" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Quick context..." className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder:text-white/50 focus:outline-none focus:border-primary text-sm" />
               </div>
-              <div className="w-28 shrink-0">
+              <div className="w-[130px] shrink-0">
                 <label className="block text-xs text-white/70 mb-1">Date</label>
-                <input type="date" value={capturedDate} onChange={(e) => setCapturedDate(e.target.value)} className="w-full px-2 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:border-primary text-sm" />
+                <input type="date" value={capturedDate} onChange={(e) => setCapturedDate(e.target.value)} className="w-full px-2 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:border-primary text-sm [color-scheme:dark]" style={{ colorScheme: 'dark' }} />
               </div>
             </div>
             <div className="flex gap-3">
