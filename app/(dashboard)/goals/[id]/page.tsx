@@ -6,6 +6,7 @@ import { useParams } from 'next/navigation';
 import { useGoals, GoalWithComputed } from '@/hooks/use-goals';
 import { useCommitments } from '@/hooks/use-commitments';
 import { AmountDisplay } from '@/components/shared/amount-display';
+import { CurrencyInput } from '@/components/shared/currency-input';
 import { useToast } from '@/components/shared/toast';
 
 export default function GoalDetailPage() {
@@ -50,11 +51,46 @@ interface GoalDetailProps {
 }
 
 function GoalDetail({ goal, allCommitments }: GoalDetailProps) {
+  const { toast } = useToast();
+  const [showAddContribution, setShowAddContribution] = useState(false);
+  const [contributionAmount, setContributionAmount] = useState(0);
+  const [contributionDate, setContributionDate] = useState(new Date().toISOString().split('T')[0]);
+  const [contributionNote, setContributionNote] = useState('');
+  const [saving, setSaving] = useState(false);
+
   const progressPercent = goal.targetAmount > 0
     ? Math.min(100, Math.round((goal.currentAmount / goal.targetAmount) * 100))
     : 0;
 
   const remaining = Math.max(0, goal.targetAmount - goal.currentAmount);
+
+  const handleAddContribution = async () => {
+    if (contributionAmount <= 0) {
+      toast('Please enter a valid amount', 'error');
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/goals/${goal.id}/contribute`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: contributionAmount,
+          date: contributionDate,
+          note: contributionNote.trim() || undefined,
+        }),
+      });
+      if (!res.ok) throw new Error('Failed to add contribution');
+      toast('Contribution added', 'success');
+      setShowAddContribution(false);
+      setContributionAmount(0);
+      setContributionNote('');
+    } catch {
+      toast('Failed to add contribution', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   // Sort contributions by date descending
   const sortedContributions = useMemo(() => {
@@ -203,15 +239,75 @@ function GoalDetail({ goal, allCommitments }: GoalDetailProps) {
 
       {/* Contribution History */}
       <div className="p-4 rounded-xl border border-border bg-surface">
-        <h2 className="text-sm font-medium text-text-primary mb-3">
-          Contribution History ({sortedContributions.length})
-        </h2>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-medium text-text-primary">
+            Contribution History ({sortedContributions.length})
+          </h2>
+          {!showAddContribution && (
+            <button
+              onClick={() => setShowAddContribution(true)}
+              className="flex items-center gap-1 text-xs text-primary hover:text-primary/80"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 16 16">
+                <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+              Add
+            </button>
+          )}
+        </div>
 
-        {sortedContributions.length === 0 ? (
+        {/* Add Contribution Form */}
+        {showAddContribution && (
+          <div className="mb-4 p-3 rounded-lg bg-background border border-border space-y-3">
+            <p className="text-xs text-text-secondary">Record a past contribution</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-text-secondary mb-1">Amount</label>
+                <CurrencyInput value={contributionAmount} onChange={setContributionAmount} />
+              </div>
+              <div>
+                <label className="block text-xs text-text-secondary mb-1">Date</label>
+                <input
+                  type="date"
+                  value={contributionDate}
+                  onChange={(e) => setContributionDate(e.target.value)}
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-surface text-text-primary focus:outline-none focus:border-primary [color-scheme:dark]"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs text-text-secondary mb-1">Note (optional)</label>
+              <input
+                type="text"
+                value={contributionNote}
+                onChange={(e) => setContributionNote(e.target.value)}
+                placeholder="e.g. Bank transfer"
+                className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-surface text-text-primary focus:outline-none focus:border-primary"
+              />
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowAddContribution(false)}
+                className="flex-1 py-2 rounded-lg border border-border text-text-secondary text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAddContribution}
+                disabled={saving || contributionAmount <= 0}
+                className="flex-1 py-2 rounded-lg bg-primary text-background font-medium text-sm disabled:opacity-50"
+              >
+                {saving ? 'Adding...' : 'Add Contribution'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {sortedContributions.length === 0 && !showAddContribution ? (
           <p className="text-sm text-text-secondary text-center py-4">
-            No contributions yet. Link a commitment and mark it as paid to see contributions here.
+            No contributions yet. Link a commitment and mark it as paid, or add a manual contribution.
           </p>
-        ) : (
+        ) : sortedContributions.length === 0 ? null : (
           <div className="space-y-4">
             {contributionsByMonth.map(({ label, total, contributions }) => (
               <div key={label}>
