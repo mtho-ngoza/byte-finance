@@ -50,6 +50,17 @@ interface GoalDetailProps {
   allCommitments: import('@/types').Commitment[];
 }
 
+interface UnlinkedPayment {
+  paymentId: string;
+  cycleItemId: string;
+  cycleId: string;
+  cycleName: string;
+  itemLabel: string;
+  amount: number;
+  date: string;
+  note?: string;
+}
+
 function GoalDetail({ goal, allCommitments }: GoalDetailProps) {
   const { toast } = useToast();
   const [showAddContribution, setShowAddContribution] = useState(false);
@@ -57,6 +68,66 @@ function GoalDetail({ goal, allCommitments }: GoalDetailProps) {
   const [contributionDate, setContributionDate] = useState(new Date().toISOString().split('T')[0]);
   const [contributionNote, setContributionNote] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // Link past payments state
+  const [showLinkPayments, setShowLinkPayments] = useState(false);
+  const [unlinkedPayments, setUnlinkedPayments] = useState<UnlinkedPayment[]>([]);
+  const [loadingPayments, setLoadingPayments] = useState(false);
+  const [selectedPayments, setSelectedPayments] = useState<Set<string>>(new Set());
+  const [linking, setLinking] = useState(false);
+
+  const fetchUnlinkedPayments = async () => {
+    setLoadingPayments(true);
+    try {
+      const res = await fetch(`/api/goals/${goal.id}/unlinked-payments`);
+      if (!res.ok) throw new Error('Failed to fetch');
+      const data = await res.json();
+      setUnlinkedPayments(data.payments ?? []);
+    } catch {
+      toast('Failed to load payments', 'error');
+    } finally {
+      setLoadingPayments(false);
+    }
+  };
+
+  const togglePaymentSelection = (paymentKey: string) => {
+    setSelectedPayments((prev) => {
+      const next = new Set(prev);
+      if (next.has(paymentKey)) {
+        next.delete(paymentKey);
+      } else {
+        next.add(paymentKey);
+      }
+      return next;
+    });
+  };
+
+  const handleLinkPayments = async () => {
+    if (selectedPayments.size === 0) return;
+
+    const paymentsToLink = unlinkedPayments.filter((p) =>
+      selectedPayments.has(`${p.cycleItemId}-${p.paymentId}`)
+    );
+
+    setLinking(true);
+    try {
+      const res = await fetch(`/api/goals/${goal.id}/link-payments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ payments: paymentsToLink }),
+      });
+      if (!res.ok) throw new Error('Failed to link');
+      const data = await res.json();
+      toast(`Linked ${data.linked} payments (R${(data.totalAdded / 100).toFixed(2)})`, 'success');
+      setShowLinkPayments(false);
+      setSelectedPayments(new Set());
+      setUnlinkedPayments([]);
+    } catch {
+      toast('Failed to link payments', 'error');
+    } finally {
+      setLinking(false);
+    }
+  };
 
   const progressPercent = goal.targetAmount > 0
     ? Math.min(100, Math.round((goal.currentAmount / goal.targetAmount) * 100))
@@ -243,18 +314,116 @@ function GoalDetail({ goal, allCommitments }: GoalDetailProps) {
           <h2 className="text-sm font-medium text-text-primary">
             Contribution History ({sortedContributions.length})
           </h2>
-          {!showAddContribution && (
-            <button
-              onClick={() => setShowAddContribution(true)}
-              className="flex items-center gap-1 text-xs text-primary hover:text-primary/80"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 16 16">
-                <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-              </svg>
-              Add
-            </button>
+          {!showAddContribution && !showLinkPayments && (
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => {
+                  setShowLinkPayments(true);
+                  fetchUnlinkedPayments();
+                }}
+                className="flex items-center gap-1 text-xs text-text-secondary hover:text-primary"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                </svg>
+                Link past
+              </button>
+              <button
+                onClick={() => setShowAddContribution(true)}
+                className="flex items-center gap-1 text-xs text-primary hover:text-primary/80"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 16 16">
+                  <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                </svg>
+                Add manual
+              </button>
+            </div>
           )}
         </div>
+
+        {/* Link Past Payments UI */}
+        {showLinkPayments && (
+          <div className="mb-4 p-3 rounded-lg bg-background border border-border">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs text-text-secondary">Select payments to link to this goal</p>
+              <button
+                onClick={() => { setShowLinkPayments(false); setSelectedPayments(new Set()); }}
+                className="text-xs text-text-secondary hover:text-text-primary"
+              >
+                Cancel
+              </button>
+            </div>
+
+            {loadingPayments ? (
+              <div className="flex items-center justify-center py-6">
+                <svg className="w-5 h-5 animate-spin text-text-secondary" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+              </div>
+            ) : unlinkedPayments.length === 0 ? (
+              <p className="text-sm text-text-secondary text-center py-4">
+                No unlinked payments found in recent cycles.
+              </p>
+            ) : (
+              <>
+                <div className="max-h-64 overflow-y-auto space-y-1 mb-3">
+                  {unlinkedPayments.map((payment) => {
+                    const key = `${payment.cycleItemId}-${payment.paymentId}`;
+                    const isSelected = selectedPayments.has(key);
+                    const date = new Date(payment.date);
+
+                    return (
+                      <label
+                        key={key}
+                        className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-colors ${
+                          isSelected ? 'bg-primary/10 border border-primary/30' : 'hover:bg-surface border border-transparent'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => togglePaymentSelection(key)}
+                          className="w-4 h-4 rounded border-border text-primary focus:ring-primary"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-text-primary truncate">{payment.itemLabel}</p>
+                          <p className="text-xs text-text-secondary">
+                            {date.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' })}
+                            {' · '}{payment.cycleName}
+                            {payment.note && ` · ${payment.note}`}
+                          </p>
+                        </div>
+                        <span className="text-sm font-mono text-text-primary shrink-0">
+                          R{(payment.amount / 100).toFixed(2)}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+
+                {selectedPayments.size > 0 && (
+                  <div className="flex items-center justify-between pt-2 border-t border-border">
+                    <span className="text-xs text-text-secondary">
+                      {selectedPayments.size} selected · R
+                      {(unlinkedPayments
+                        .filter((p) => selectedPayments.has(`${p.cycleItemId}-${p.paymentId}`))
+                        .reduce((sum, p) => sum + p.amount, 0) / 100
+                      ).toFixed(2)}
+                    </span>
+                    <button
+                      onClick={handleLinkPayments}
+                      disabled={linking}
+                      className="px-3 py-1.5 rounded-lg bg-primary text-background text-sm font-medium disabled:opacity-50"
+                    >
+                      {linking ? 'Linking...' : 'Link Selected'}
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
 
         {/* Add Contribution Form */}
         {showAddContribution && (
