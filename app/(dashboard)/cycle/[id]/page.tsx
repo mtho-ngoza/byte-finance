@@ -74,7 +74,7 @@ export default function CycleDetailPage() {
   const userId = useUserId();
   const { cycles, loading: cyclesLoading } = useCycles();
   const { profile } = useUserProfile();
-  const { items, loading: itemsLoading, totalCommitted, totalPaid, updateStatus, updateAmount, addPayment, deletePayment } =
+  const { items, loading: itemsLoading, totalCommitted, totalPaid, updateStatus, updateAmount, addPayment, deletePayment, editPayment } =
     useCycleItems(cycleId);
 
   const cycle = cycles.find((c) => c.id === cycleId);
@@ -259,6 +259,7 @@ export default function CycleDetailPage() {
             updateAmount={updateAmount}
             addPayment={addPayment}
             deletePayment={deletePayment}
+            editPayment={editPayment}
           />
         );
       })}
@@ -296,8 +297,9 @@ interface CategorySectionProps {
   userId: string | undefined;
   updateStatus: (id: string, status: CycleItemStatus) => Promise<void>;
   updateAmount: (id: string, amount: number) => Promise<void>;
-  addPayment: (itemId: string, paymentAmount: number, note?: string, receiptId?: string) => Promise<void>;
+  addPayment: (itemId: string, paymentAmount: number, note?: string, receiptId?: string, date?: string) => Promise<void>;
   deletePayment: (itemId: string, paymentId: string) => Promise<void>;
+  editPayment: (itemId: string, paymentId: string, amount: number, note?: string, date?: string) => Promise<void>;
 }
 
 function CategorySection({
@@ -311,6 +313,7 @@ function CategorySection({
   updateAmount,
   addPayment,
   deletePayment,
+  editPayment,
 }: CategorySectionProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [localItems, setLocalItems] = useState(items);
@@ -396,6 +399,7 @@ function CategorySection({
                   onAmountChange={updateAmount}
                   onAddPayment={addPayment}
                   onDeletePayment={deletePayment}
+                  onEditPayment={editPayment}
                 />
               ))}
             </SortableContext>
@@ -418,9 +422,10 @@ interface SortableItemRowProps {
   onAmountChange: (id: string, amount: number) => Promise<void>;
   onAddPayment: (itemId: string, paymentAmount: number, note?: string, receiptId?: string, date?: string) => Promise<void>;
   onDeletePayment: (itemId: string, paymentId: string) => Promise<void>;
+  onEditPayment: (itemId: string, paymentId: string, amount: number, note?: string, date?: string) => Promise<void>;
 }
 
-function SortableItemRow({ item, cycleId, userId, onStatusChange, onAmountChange, onAddPayment, onDeletePayment }: SortableItemRowProps) {
+function SortableItemRow({ item, cycleId, userId, onStatusChange, onAmountChange, onAddPayment, onDeletePayment, onEditPayment }: SortableItemRowProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: item.id,
   });
@@ -437,6 +442,8 @@ function SortableItemRow({ item, cycleId, userId, onStatusChange, onAmountChange
   const [editingItem, setEditingItem] = useState(false);
   const [attachingReceipt, setAttachingReceipt] = useState(false);
   const [showPaymentPrompt, setShowPaymentPrompt] = useState(false);
+  const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null);
+  const [editingPaymentDate, setEditingPaymentDate] = useState('');
   const [showPayments, setShowPayments] = useState(false);
   const [paymentValue, setPaymentValue] = useState('');
   const [paymentNote, setPaymentNote] = useState('');
@@ -761,28 +768,75 @@ function SortableItemRow({ item, cycleId, userId, onStatusChange, onAmountChange
       {hasPayments && showPayments && (
         <div className="border-t border-border px-3 pb-2 pt-1 space-y-1">
           {(item.payments ?? []).map((p, idx) => {
-            const date = p.date && typeof (p.date as { toDate?: () => Date }).toDate === 'function'
-              ? (p.date as { toDate: () => Date }).toDate().toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })
-              : '';
+            const dateObj = p.date && typeof (p.date as { toDate?: () => Date }).toDate === 'function'
+              ? (p.date as { toDate: () => Date }).toDate()
+              : null;
+            const dateStr = dateObj ? dateObj.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' }) : '';
+            const isEditing = editingPaymentId === p.id;
+
             return (
               <div key={p.id} className="flex items-center justify-between text-xs py-0.5 group">
-                <span className="text-text-secondary flex-1 min-w-0 truncate">
-                  #{idx + 1} {date}{p.note ? ` · ${p.note}` : ''}
-                  {p.receiptId && <span className="ml-1 text-primary">📷</span>}
-                </span>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <span className="font-mono text-text-primary">R{(p.amount / 100).toFixed(2)}</span>
-                  <button
-                    onClick={() => onDeletePayment(item.id, p.id)}
-                    className="w-4 h-4 flex items-center justify-center rounded text-text-secondary hover:text-error opacity-0 group-hover:opacity-100 transition-opacity"
-                    aria-label="Delete payment"
-                    title="Delete payment"
-                  >
-                    <svg className="w-3 h-3" fill="none" viewBox="0 0 12 12" stroke="currentColor" strokeWidth="2">
-                      <path strokeLinecap="round" d="M2 2l8 8M10 2l-8 8" />
-                    </svg>
-                  </button>
-                </div>
+                {isEditing ? (
+                  <div className="flex items-center gap-2 flex-1">
+                    <input
+                      type="date"
+                      value={editingPaymentDate}
+                      onChange={(e) => setEditingPaymentDate(e.target.value)}
+                      className="px-2 py-1 text-xs rounded border border-primary bg-background text-text-primary focus:outline-none [color-scheme:dark]"
+                      autoFocus
+                    />
+                    <button
+                      onClick={async () => {
+                        if (editingPaymentDate) {
+                          await onEditPayment(item.id, p.id, p.amount, p.note, editingPaymentDate);
+                        }
+                        setEditingPaymentId(null);
+                      }}
+                      className="px-2 py-1 rounded bg-primary text-background text-xs font-medium"
+                    >
+                      Save
+                    </button>
+                    <button
+                      onClick={() => setEditingPaymentId(null)}
+                      className="px-2 py-1 rounded border border-border text-text-secondary text-xs"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <span className="text-text-secondary flex-1 min-w-0 truncate">
+                      #{idx + 1} {dateStr}{p.note ? ` · ${p.note}` : ''}
+                      {p.receiptId && <span className="ml-1 text-primary">📷</span>}
+                    </span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className="font-mono text-text-primary">R{(p.amount / 100).toFixed(2)}</span>
+                      <button
+                        onClick={() => {
+                          setEditingPaymentId(p.id);
+                          setEditingPaymentDate(dateObj ? dateObj.toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
+                        }}
+                        className="w-4 h-4 flex items-center justify-center rounded text-text-secondary hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity"
+                        aria-label="Edit payment date"
+                        title="Edit date"
+                      >
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => onDeletePayment(item.id, p.id)}
+                        className="w-4 h-4 flex items-center justify-center rounded text-text-secondary hover:text-error opacity-0 group-hover:opacity-100 transition-opacity"
+                        aria-label="Delete payment"
+                        title="Delete payment"
+                      >
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 12 12" stroke="currentColor" strokeWidth="2">
+                          <path strokeLinecap="round" d="M2 2l8 8M10 2l-8 8" />
+                        </svg>
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             );
           })}

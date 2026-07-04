@@ -5,9 +5,9 @@ import { FieldValue } from 'firebase-admin/firestore';
 
 /**
  * POST /api/cycle-items/[id]/edit-payment
- * Body: { paymentId: string, amount: number, note?: string }
+ * Body: { paymentId: string, amount: number, note?: string, date?: string }
  *
- * Updates a specific payment's amount and/or note.
+ * Updates a specific payment's amount, note, and/or date.
  * Recalculates totalPaidAmount and updates cycle totalPaid accordingly.
  */
 export async function POST(
@@ -20,7 +20,7 @@ export async function POST(
 
   const { id } = await params;
   const body = await request.json();
-  const { paymentId, amount, note } = body;
+  const { paymentId, amount, note, date } = body;
 
   if (!paymentId || typeof paymentId !== 'string') {
     return NextResponse.json({ error: 'paymentId is required' }, { status: 400 });
@@ -38,7 +38,7 @@ export async function POST(
   }
 
   const item = snap.data()!;
-  const payments: Array<{ id: string; amount: number; note?: string; [key: string]: unknown }> = item.payments ?? [];
+  const payments: Array<{ id: string; amount: number; note?: string; date?: Date; [key: string]: unknown }> = item.payments ?? [];
 
   const paymentToEdit = payments.find((p) => p.id === paymentId);
   if (!paymentToEdit) {
@@ -52,6 +52,7 @@ export async function POST(
     if (p.id !== paymentId) return p;
     const updated = { ...p, amount };
     if (note !== undefined) updated.note = note || null;
+    if (date !== undefined) updated.date = new Date(date);
     return updated;
   });
 

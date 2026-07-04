@@ -32,8 +32,8 @@ interface UseCycleItemsResult {
   addPayment: (itemId: string, paymentAmount: number, note?: string, receiptId?: string, date?: string) => Promise<void>;
   /** Delete a specific payment from an item */
   deletePayment: (itemId: string, paymentId: string) => Promise<void>;
-  /** Edit a specific payment's amount and/or note */
-  editPayment: (itemId: string, paymentId: string, amount: number, note?: string) => Promise<void>;
+  /** Edit a specific payment's amount, note, and/or date */
+  editPayment: (itemId: string, paymentId: string, amount: number, note?: string, date?: string) => Promise<void>;
 }
 
 export function useCycleItems(cycleId: string | null): UseCycleItemsResult {
@@ -321,17 +321,20 @@ export function useCycleItems(cycleId: string | null): UseCycleItemsResult {
     [userId, cycleId, items, setOptimisticItem, removeOptimisticItem]
   );
 
-  // Edit a specific payment's amount and/or note
+  // Edit a specific payment's amount, note, and/or date
   const editPayment = useCallback(
-    async (itemId: string, paymentId: string, amount: number, note?: string) => {
+    async (itemId: string, paymentId: string, amount: number, note?: string, date?: string) => {
       if (!userId || !cycleId) return;
       const item = items.find((i) => i.id === itemId);
       if (!item) return;
 
       const now = Timestamp.now();
-      const updatedPayments = (item.payments ?? []).map((p) =>
-        p.id === paymentId ? { ...p, amount, note: note ?? p.note } : p
-      );
+      const updatedPayments = (item.payments ?? []).map((p) => {
+        if (p.id !== paymentId) return p;
+        const updated = { ...p, amount, note: note ?? p.note };
+        if (date) updated.date = Timestamp.fromDate(new Date(date));
+        return updated;
+      });
       const newTotal = updatedPayments.reduce((sum, p) => sum + p.amount, 0);
 
       // Optimistic update
@@ -347,7 +350,7 @@ export function useCycleItems(cycleId: string | null): UseCycleItemsResult {
         const res = await fetch(`/api/cycle-items/${itemId}/edit-payment`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ paymentId, amount, note }),
+          body: JSON.stringify({ paymentId, amount, note, date }),
         });
         if (!res.ok) throw new Error('Edit payment failed');
         removeOptimisticItem(itemId);
