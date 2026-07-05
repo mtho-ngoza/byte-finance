@@ -25,7 +25,8 @@
       "Bash(dir:*)",
       "Bash(git check-ignore:*)",
       "Bash(wc:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(npm test:*)"
     ]
   }
 }
