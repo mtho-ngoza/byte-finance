@@ -542,7 +542,7 @@ interface CycleItemRowProps {
   onDelete: (id: string) => Promise<void>;
   onAddPayment: (id: string, amount: number, note?: string, receiptId?: string, date?: string) => Promise<void>;
   onDeletePayment: (id: string, paymentId: string) => Promise<void>;
-  onEditPayment: (id: string, paymentId: string, amount: number, note?: string) => Promise<void>;
+  onEditPayment: (id: string, paymentId: string, amount: number, note?: string, date?: string) => Promise<void>;
 }
 
 function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete, onAddPayment, onDeletePayment, onEditPayment }: CycleItemRowProps) {
@@ -551,6 +551,7 @@ function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete, onAddPay
   const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null);
   const [editPaymentValue, setEditPaymentValue] = useState('');
   const [editPaymentNote, setEditPaymentNote] = useState('');
+  const [editPaymentDate, setEditPaymentDate] = useState('');
   const [editValue, setEditValue] = useState('');
   const [showPaymentPrompt, setShowPaymentPrompt] = useState(false);
   const [showPayments, setShowPayments] = useState(false);
@@ -793,7 +794,13 @@ function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete, onAddPay
             return (
               <div key={p.id} className="group">
                 {isEditingThis ? (
-                  <div className="flex items-center gap-2 py-1">
+                  <div className="flex flex-wrap items-center gap-2 py-1">
+                    <input
+                      type="date"
+                      value={editPaymentDate}
+                      onChange={(e) => setEditPaymentDate(e.target.value)}
+                      className="px-1.5 py-0.5 text-xs rounded border border-border bg-background text-text-primary focus:outline-none focus:border-primary [color-scheme:dark]"
+                    />
                     <div className="flex items-center gap-1">
                       <span className="text-xs text-text-secondary font-mono">R</span>
                       <input
@@ -814,13 +821,13 @@ function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete, onAddPay
                       value={editPaymentNote}
                       onChange={(e) => setEditPaymentNote(e.target.value)}
                       placeholder="note"
-                      className="flex-1 px-1.5 py-0.5 text-xs rounded border border-border bg-background text-text-primary focus:outline-none focus:border-primary"
+                      className="flex-1 min-w-[80px] px-1.5 py-0.5 text-xs rounded border border-border bg-background text-text-primary focus:outline-none focus:border-primary"
                     />
                     <button
                       onClick={async () => {
                         const amt = Math.round(parseFloat(editPaymentValue) * 100);
                         if (!isNaN(amt) && amt > 0) {
-                          await onEditPayment(item.id, p.id, amt, editPaymentNote.trim() || undefined);
+                          await onEditPayment(item.id, p.id, amt, editPaymentNote.trim() || undefined, editPaymentDate || undefined);
                         }
                         setEditingPaymentId(null);
                       }}
@@ -841,7 +848,15 @@ function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete, onAddPay
                     <div className="flex items-center gap-1.5 shrink-0">
                       <span className="font-mono text-text-primary">R{(p.amount / 100).toFixed(2)}</span>
                       <button
-                        onClick={() => { setEditingPaymentId(p.id); setEditPaymentValue((p.amount / 100).toFixed(2)); setEditPaymentNote(p.note ?? ''); }}
+                        onClick={() => {
+                          const pDate = p.date && typeof (p.date as { toDate?: () => Date }).toDate === 'function'
+                            ? (p.date as { toDate: () => Date }).toDate().toISOString().split('T')[0]
+                            : new Date().toISOString().split('T')[0];
+                          setEditingPaymentId(p.id);
+                          setEditPaymentValue((p.amount / 100).toFixed(2));
+                          setEditPaymentNote(p.note ?? '');
+                          setEditPaymentDate(pDate);
+                        }}
                         className="w-5 h-5 flex items-center justify-center rounded text-text-secondary hover:text-primary transition-colors"
                         aria-label="Edit payment"
                         title="Edit payment"
