@@ -27,6 +27,8 @@ export interface ModalProps {
   closeOnOverlayClick?: boolean;
   /** Whether pressing Escape closes modal */
   closeOnEscape?: boolean;
+  /** Remove default padding from content area */
+  noPadding?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -44,6 +46,7 @@ export function Modal({
   showCloseButton = true,
   closeOnOverlayClick = true,
   closeOnEscape = true,
+  noPadding = false,
 }: ModalProps) {
   // Handle escape key
   const handleEscape = useCallback(
@@ -100,7 +103,7 @@ export function Modal({
         )}
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-4">{children}</div>
+        <div className={`flex-1 overflow-y-auto ${noPadding ? '' : 'p-4'}`}>{children}</div>
 
         {/* Footer */}
         {footer && (

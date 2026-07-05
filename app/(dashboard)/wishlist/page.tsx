@@ -6,6 +6,7 @@ import { useGoals } from '@/hooks/use-goals';
 import { AmountDisplay } from '@/components/shared/amount-display';
 import { CurrencyInput } from '@/components/shared/currency-input';
 import { useToast } from '@/components/shared/toast';
+import { Modal } from '@/components/shared/modal';
 import type { WishlistItem, Goal } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -539,145 +540,138 @@ function AddEditModal({ item, goals, targetYear, onClose, onSave, onDelete }: Ad
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
-      <div className="bg-surface w-full sm:max-w-md sm:rounded-xl rounded-t-xl max-h-[90vh] overflow-y-auto">
-        <form onSubmit={handleSubmit} className="p-4 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-text-primary">
-              {item ? 'Edit Priority' : 'Add Priority'}
-            </h2>
-            <button type="button" onClick={onClose} className="p-2 rounded-lg hover:bg-background">
-              <svg className="w-5 h-5 text-text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-
-          {/* Title */}
-          <div>
-            <label className="block text-xs text-text-secondary mb-1">What do you want to achieve?</label>
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g., Pay off car loan"
-              className="w-full px-3 py-2 bg-background border border-border rounded-lg text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-primary text-sm"
-              required
-            />
-          </div>
-
-          {/* Description */}
-          <div>
-            <label className="block text-xs text-text-secondary mb-1">Why does this matter? (optional)</label>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Motivation or context..."
-              rows={2}
-              className="w-full px-3 py-2 bg-background border border-border rounded-lg text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-primary text-sm resize-none"
-            />
-          </div>
-
-          {/* Type */}
-          <div>
-            <label className="block text-xs text-text-secondary mb-2">Timeframe</label>
-            <div className="grid grid-cols-2 gap-2">
-              {(['short-term', 'long-term'] as const).map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => setType(t)}
-                  className={`py-2.5 px-3 rounded-lg border text-sm transition-colors ${
-                    type === t
-                      ? 'border-primary bg-primary/10 text-primary'
-                      : 'border-border text-text-secondary hover:border-primary/50'
-                  }`}
-                >
-                  {t === 'short-term' ? '📅 This Year' : '🎯 Multi-Year'}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Year selection for long-term */}
-          {type === 'long-term' && (
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs text-text-secondary mb-1">Start Year</label>
-                <select
-                  value={year}
-                  onChange={(e) => setYear(Number(e.target.value))}
-                  className="w-full px-3 py-2 bg-background border border-border rounded-lg text-text-primary text-sm focus:outline-none focus:border-primary"
-                >
-                  {[targetYear - 1, targetYear, targetYear + 1, targetYear + 2].map((y) => (
-                    <option key={y} value={y}>{y}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs text-text-secondary mb-1">Target Year</label>
-                <select
-                  value={yearEnd || year + 1}
-                  onChange={(e) => setYearEnd(Number(e.target.value))}
-                  className="w-full px-3 py-2 bg-background border border-border rounded-lg text-text-primary text-sm focus:outline-none focus:border-primary"
-                >
-                  {[year + 1, year + 2, year + 3, year + 4, year + 5].map((y) => (
-                    <option key={y} value={y}>{y}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          )}
-
-          {/* Link to Goal */}
-          <div>
-            <label className="block text-xs text-text-secondary mb-1">Link to existing goal (optional)</label>
-            <select
-              value={linkedGoalId}
-              onChange={(e) => setLinkedGoalId(e.target.value)}
-              className="w-full px-3 py-2 bg-background border border-border rounded-lg text-text-primary text-sm focus:outline-none focus:border-primary"
-            >
-              <option value="">No link - track manually</option>
-              {activeGoals.map((goal) => (
-                <option key={goal.id} value={goal.id}>
-                  {goal.name} ({Math.round((goal.currentAmount / goal.targetAmount) * 100)}%)
-                </option>
-              ))}
-            </select>
-            <p className="text-[10px] text-text-secondary mt-1">
-              Linking auto-syncs progress when your goal updates
-            </p>
-          </div>
-
-          {/* Target Amount (if not linked) */}
-          {!linkedGoalId && (
-            <div>
-              <label className="block text-xs text-text-secondary mb-1">Target amount (optional)</label>
-              <CurrencyInput value={amount} onChange={setAmount} />
-            </div>
-          )}
-
-          {/* Actions */}
-          <div className="flex gap-3 pt-2">
-            {item && onDelete && (
-              <button
-                type="button"
-                onClick={onDelete}
-                className="px-4 py-2.5 border border-danger/40 text-danger rounded-lg text-sm hover:bg-danger/5 transition-colors"
-              >
-                Delete
-              </button>
-            )}
+    <Modal
+      open={true}
+      onClose={onClose}
+      title={item ? 'Edit Priority' : 'Add Priority'}
+      showCloseButton={false}
+      footer={
+        <div className="flex gap-3">
+          {item && onDelete && (
             <button
-              type="submit"
-              disabled={saving || !title.trim()}
-              className="flex-1 py-2.5 bg-primary text-background font-medium rounded-lg text-sm disabled:opacity-50 hover:bg-primary/90 transition-colors"
+              type="button"
+              onClick={onDelete}
+              className="px-4 py-2.5 border border-danger/40 text-danger rounded-lg text-sm hover:bg-danger/5 transition-colors"
             >
-              {saving ? 'Saving...' : item ? 'Save Changes' : 'Add Priority'}
+              Delete
             </button>
+          )}
+          <button
+            type="submit"
+            form="wishlist-form"
+            disabled={saving || !title.trim()}
+            className="flex-1 py-2.5 bg-primary text-background font-medium rounded-lg text-sm disabled:opacity-50 hover:bg-primary/90 transition-colors"
+          >
+            {saving ? 'Saving...' : item ? 'Save Changes' : 'Add Priority'}
+          </button>
+        </div>
+      }
+    >
+      <form id="wishlist-form" onSubmit={handleSubmit} className="space-y-4">
+        {/* Title */}
+        <div>
+          <label className="block text-xs text-text-secondary mb-1">What do you want to achieve?</label>
+          <input
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="e.g., Pay off car loan"
+            className="w-full px-3 py-2 bg-background border border-border rounded-lg text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-primary text-sm"
+            required
+          />
+        </div>
+
+        {/* Description */}
+        <div>
+          <label className="block text-xs text-text-secondary mb-1">Why does this matter? (optional)</label>
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Motivation or context..."
+            rows={2}
+            className="w-full px-3 py-2 bg-background border border-border rounded-lg text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-primary text-sm resize-none"
+          />
+        </div>
+
+        {/* Type */}
+        <div>
+          <label className="block text-xs text-text-secondary mb-2">Timeframe</label>
+          <div className="grid grid-cols-2 gap-2">
+            {(['short-term', 'long-term'] as const).map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setType(t)}
+                className={`py-2.5 px-3 rounded-lg border text-sm transition-colors ${
+                  type === t
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-border text-text-secondary hover:border-primary/50'
+                }`}
+              >
+                {t === 'short-term' ? '📅 This Year' : '🎯 Multi-Year'}
+              </button>
+            ))}
           </div>
-        </form>
-      </div>
-    </div>
+        </div>
+
+        {/* Year selection for long-term */}
+        {type === 'long-term' && (
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-text-secondary mb-1">Start Year</label>
+              <select
+                value={year}
+                onChange={(e) => setYear(Number(e.target.value))}
+                className="w-full px-3 py-2 bg-background border border-border rounded-lg text-text-primary text-sm focus:outline-none focus:border-primary"
+              >
+                {[targetYear - 1, targetYear, targetYear + 1, targetYear + 2].map((y) => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-text-secondary mb-1">Target Year</label>
+              <select
+                value={yearEnd || year + 1}
+                onChange={(e) => setYearEnd(Number(e.target.value))}
+                className="w-full px-3 py-2 bg-background border border-border rounded-lg text-text-primary text-sm focus:outline-none focus:border-primary"
+              >
+                {[year + 1, year + 2, year + 3, year + 4, year + 5].map((y) => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
+
+        {/* Link to Goal */}
+        <div>
+          <label className="block text-xs text-text-secondary mb-1">Link to existing goal (optional)</label>
+          <select
+            value={linkedGoalId}
+            onChange={(e) => setLinkedGoalId(e.target.value)}
+            className="w-full px-3 py-2 bg-background border border-border rounded-lg text-text-primary text-sm focus:outline-none focus:border-primary"
+          >
+            <option value="">No link - track manually</option>
+            {activeGoals.map((goal) => (
+              <option key={goal.id} value={goal.id}>
+                {goal.name} ({Math.round((goal.currentAmount / goal.targetAmount) * 100)}%)
+              </option>
+            ))}
+          </select>
+          <p className="text-[10px] text-text-secondary mt-1">
+            Linking auto-syncs progress when your goal updates
+          </p>
+        </div>
+
+        {/* Target Amount (if not linked) */}
+        {!linkedGoalId && (
+          <div>
+            <label className="block text-xs text-text-secondary mb-1">Target amount (optional)</label>
+            <CurrencyInput value={amount} onChange={setAmount} />
+          </div>
+        )}
+      </form>
+    </Modal>
   );
 }

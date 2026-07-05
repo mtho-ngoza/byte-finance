@@ -7,6 +7,7 @@ import { useGoals, GoalWithComputed } from '@/hooks/use-goals';
 import { AmountDisplay } from '@/components/shared/amount-display';
 import { CurrencyInput } from '@/components/shared/currency-input';
 import { useToast } from '@/components/shared/toast';
+import { Modal } from '@/components/shared/modal';
 import type { Category, Commitment } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -86,37 +87,41 @@ export default function PlanPage() {
         </div>
 
         {/* Add/Edit Modal */}
-        {(showCommitmentForm || editingCommitment) && (
-          <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
-            <div className="bg-surface w-full sm:max-w-md sm:rounded-xl rounded-t-xl max-h-[90vh] overflow-y-auto">
-              <CommitmentForm
-                initial={editingCommitment ?? undefined}
-                goals={activeGoals}
-                onSave={async (data) => {
-                  if (editingCommitment) {
-                    await fetch(`/api/commitments/${editingCommitment.id}`, {
-                      method: 'PATCH',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify(data),
-                    });
-                    setEditingCommitment(null);
-                  } else {
-                    await fetch('/api/commitments', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ ...data, sortOrder: allCommitments.length }),
-                    });
-                    setShowCommitmentForm(false);
-                  }
-                }}
-                onCancel={() => {
-                  setShowCommitmentForm(false);
-                  setEditingCommitment(null);
-                }}
-              />
-            </div>
-          </div>
-        )}
+        <Modal
+          open={showCommitmentForm || !!editingCommitment}
+          onClose={() => {
+            setShowCommitmentForm(false);
+            setEditingCommitment(null);
+          }}
+          showCloseButton={false}
+          noPadding
+        >
+          <CommitmentForm
+            initial={editingCommitment ?? undefined}
+            goals={activeGoals}
+            onSave={async (data) => {
+              if (editingCommitment) {
+                await fetch(`/api/commitments/${editingCommitment.id}`, {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(data),
+                });
+                setEditingCommitment(null);
+              } else {
+                await fetch('/api/commitments', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ ...data, sortOrder: allCommitments.length }),
+                });
+                setShowCommitmentForm(false);
+              }
+            }}
+            onCancel={() => {
+              setShowCommitmentForm(false);
+              setEditingCommitment(null);
+            }}
+          />
+        </Modal>
 
         {/* Commitments grouped by category */}
         {commitments.length === 0 && !showCommitmentForm ? (
@@ -175,23 +180,24 @@ export default function PlanPage() {
           )}
         </div>
 
-        {showGoalForm && (
-          <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
-            <div className="bg-surface w-full sm:max-w-md sm:rounded-xl rounded-t-xl max-h-[90vh] overflow-y-auto">
-              <GoalForm
-                onSave={async (data) => {
-                  await fetch('/api/goals', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data),
-                  });
-                  setShowGoalForm(false);
-                }}
-                onCancel={() => setShowGoalForm(false)}
-              />
-            </div>
-          </div>
-        )}
+        <Modal
+          open={showGoalForm}
+          onClose={() => setShowGoalForm(false)}
+          showCloseButton={false}
+          noPadding
+        >
+          <GoalForm
+            onSave={async (data) => {
+              await fetch('/api/goals', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data),
+              });
+              setShowGoalForm(false);
+            }}
+            onCancel={() => setShowGoalForm(false)}
+          />
+        </Modal>
 
         {activeGoals.length === 0 && !showGoalForm ? (
           <div className="text-center py-10 text-text-secondary text-sm">

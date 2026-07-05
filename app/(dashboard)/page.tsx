@@ -13,6 +13,7 @@ import { AmountDisplay } from '@/components/shared/amount-display';
 import { useToast } from '@/components/shared/toast';
 import { FloatingMenu } from '@/components/shared/floating-menu';
 import { PaymentPrompt } from '@/components/shared/payment-prompt';
+import { Modal, ModalActions } from '@/components/shared/modal';
 import type { CycleItem, CycleItemStatus, Goal, Insight } from '@/types';
 
 export default function DashboardPage() {
@@ -923,97 +924,91 @@ function AddItemButton({ cycleId }: AddItemButtonProps) {
     }
   };
 
-  if (showForm) {
-    return (
-      <div className="fixed inset-0 bg-black/50 flex items-end justify-center z-50 p-4">
-        <div className="bg-surface border border-border rounded-xl w-full max-w-md p-4 space-y-4">
-          <h3 className="text-base font-semibold text-text-primary">Add One-off Item</h3>
-          <form onSubmit={handleSubmit} className="space-y-3">
-            <div>
-              <label className="block text-xs text-text-secondary mb-1">Label</label>
-              <input
-                name="label"
-                required
-                placeholder="e.g., Doctor visit"
-                className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-text-secondary mb-1">Amount (R)</label>
-              <input
-                name="amount"
-                type="number"
-                required
-                min="0"
-                step="0.01"
-                placeholder="0.00"
-                className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary text-sm"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs text-text-secondary mb-1">Category</label>
-                <select
-                  name="category"
-                  required
-                  className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary text-sm"
-                >
-                  <option value="housing">Housing</option>
-                  <option value="transport">Transport</option>
-                  <option value="family">Family</option>
-                  <option value="utilities">Utilities</option>
-                  <option value="health">Health</option>
-                  <option value="education">Education</option>
-                  <option value="savings">Savings</option>
-                  <option value="lifestyle">Lifestyle</option>
-                  <option value="business">Business</option>
-                  <option value="other">Other</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs text-text-secondary mb-1">Account</label>
-                <select
-                  name="accountType"
-                  required
-                  className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary text-sm"
-                >
-                  <option value="personal">Personal</option>
-                  <option value="business">Business</option>
-                </select>
-              </div>
-            </div>
-            <div className="flex gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setShowForm(false)}
-                className="flex-1 py-2 rounded-lg border border-border text-text-secondary text-sm hover:bg-background transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={saving}
-                className="flex-1 py-2 rounded-lg bg-primary text-background font-medium text-sm disabled:opacity-50"
-              >
-                {saving ? 'Adding...' : 'Add Item'}
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <button
-      onClick={() => setShowForm(true)}
-      className="fixed bottom-20 right-4 w-14 h-14 rounded-full bg-primary text-background shadow-lg flex items-center justify-center hover:bg-primary/90 transition-colors z-40"
-      aria-label="Add one-off item"
-    >
-      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-      </svg>
-    </button>
+    <>
+      <Modal
+        open={showForm}
+        onClose={() => setShowForm(false)}
+        title="Add One-off Item"
+        footer={
+          <ModalActions
+            onCancel={() => setShowForm(false)}
+            onConfirm={() => {
+              const form = document.getElementById('add-item-form') as HTMLFormElement;
+              form?.requestSubmit();
+            }}
+            confirmLabel={saving ? 'Adding...' : 'Add Item'}
+            confirmDisabled={saving}
+          />
+        }
+      >
+        <form id="add-item-form" onSubmit={handleSubmit} className="space-y-3">
+          <div>
+            <label className="block text-xs text-text-secondary mb-1">Label</label>
+            <input
+              name="label"
+              required
+              placeholder="e.g., Doctor visit"
+              className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-text-secondary mb-1">Amount (R)</label>
+            <input
+              name="amount"
+              type="number"
+              required
+              min="0"
+              step="0.01"
+              placeholder="0.00"
+              className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary text-sm"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-text-secondary mb-1">Category</label>
+              <select
+                name="category"
+                required
+                className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary text-sm"
+              >
+                <option value="housing">Housing</option>
+                <option value="transport">Transport</option>
+                <option value="family">Family</option>
+                <option value="utilities">Utilities</option>
+                <option value="health">Health</option>
+                <option value="education">Education</option>
+                <option value="savings">Savings</option>
+                <option value="lifestyle">Lifestyle</option>
+                <option value="business">Business</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-text-secondary mb-1">Account</label>
+              <select
+                name="accountType"
+                required
+                className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary text-sm"
+              >
+                <option value="personal">Personal</option>
+                <option value="business">Business</option>
+              </select>
+            </div>
+          </div>
+        </form>
+      </Modal>
+
+      <button
+        onClick={() => setShowForm(true)}
+        className="fixed bottom-20 right-4 w-14 h-14 rounded-full bg-primary text-background shadow-lg flex items-center justify-center hover:bg-primary/90 transition-colors z-40"
+        aria-label="Add one-off item"
+      >
+        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+        </svg>
+      </button>
+    </>
   );
 }
 

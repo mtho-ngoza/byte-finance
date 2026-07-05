@@ -33,6 +33,7 @@ import { PaymentPrompt } from '@/components/shared/payment-prompt';
 import { InlineReceiptCapture } from '@/components/shared/inline-receipt-capture';
 import { GroupedReceiptPicker, ReceiptItem } from '@/components/shared/grouped-receipt-picker';
 import { DateInput } from '@/components/shared/date-input';
+import { Modal, ModalActions } from '@/components/shared/modal';
 import type { CycleItem, CycleItemStatus, Category, Cycle } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -907,13 +908,20 @@ function EditItemModal({ item, userId, onClose }: EditItemModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
-      <div className="bg-surface border border-border rounded-t-xl sm:rounded-xl w-full sm:max-w-md p-4 space-y-4 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between">
-          <h3 className="text-base font-semibold text-text-primary">Edit Item</h3>
-          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-background text-text-secondary">✕</button>
-        </div>
-
+    <Modal
+      open={true}
+      onClose={onClose}
+      title="Edit Item"
+      footer={
+        <ModalActions
+          onCancel={onClose}
+          onConfirm={handleSave}
+          confirmLabel={saving ? 'Saving...' : 'Save'}
+          confirmDisabled={saving || !label.trim()}
+        />
+      }
+    >
+      <div className="space-y-4">
         <div>
           <label className="block text-xs text-text-secondary mb-1">Label</label>
           <input
@@ -962,25 +970,8 @@ function EditItemModal({ item, userId, onClose }: EditItemModalProps) {
             </select>
           </div>
         </div>
-
-        <div className="flex gap-2 pt-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex-1 py-2 rounded-lg border border-border text-text-secondary text-sm hover:bg-background transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={saving || !label.trim()}
-            className="flex-1 py-2 rounded-lg bg-primary text-background font-medium text-sm disabled:opacity-50"
-          >
-            {saving ? 'Saving...' : 'Save'}
-          </button>
-        </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -1085,93 +1076,84 @@ function ReceiptPickerModal({ item, cycleId, userId, onClose, onAttached }: Rece
     : item.payments?.find((p: PaymentEntry) => p.id === selectedPaymentId)?.receiptId;
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-50 p-4">
-      <div className="bg-surface border border-border rounded-2xl w-full sm:max-w-md max-h-[80vh] flex flex-col">
-        <div className="flex items-center justify-between p-4 border-b border-border">
-          <h3 className="text-sm font-semibold text-text-primary">
-            {selectedPaymentId ? 'Pick a Receipt' : 'Which Payment?'}
-          </h3>
-          <button onClick={onClose} className="text-text-secondary hover:text-text-primary">
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {/* Step 1: pick payment (only for items with payments) */}
-          {hasPayments && !selectedPaymentId && (
-            <div className="space-y-2">
-              <p className="text-xs text-text-secondary">Select the payment to attach a receipt to:</p>
-              {(item.payments ?? []).map((p: PaymentEntry, idx: number) => {
-                const date = p.date && typeof (p.date as { toDate?: () => Date }).toDate === 'function'
-                  ? (p.date as { toDate: () => Date }).toDate().toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })
-                  : '';
-                return (
-                  <button
-                    key={p.id}
-                    onClick={() => setSelectedPaymentId(p.id)}
-                    className="w-full flex items-center justify-between p-3 rounded-lg border border-border hover:border-primary bg-background transition-colors text-left"
-                  >
-                    <div>
-                      <p className="text-sm font-medium text-text-primary">
-                        Payment {idx + 1} — R{(p.amount / 100).toFixed(2)}
-                      </p>
-                      <p className="text-xs text-text-secondary">
-                        {date}{p.note ? ` · ${p.note}` : ''}
-                      </p>
-                    </div>
-                    {p.receiptId ? (
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary">📷 linked</span>
-                    ) : (
-                      <span className="text-xs text-text-secondary">no receipt</span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Step 2: pick receipt */}
-          {selectedPaymentId && (
-            <>
-              {hasPayments && (
+    <Modal
+      open={true}
+      onClose={onClose}
+      title={selectedPaymentId ? 'Pick a Receipt' : 'Which Payment?'}
+    >
+      <div className="space-y-4">
+        {/* Step 1: pick payment (only for items with payments) */}
+        {hasPayments && !selectedPaymentId && (
+          <div className="space-y-2">
+            <p className="text-xs text-text-secondary">Select the payment to attach a receipt to:</p>
+            {(item.payments ?? []).map((p: PaymentEntry, idx: number) => {
+              const date = p.date && typeof (p.date as { toDate?: () => Date }).toDate === 'function'
+                ? (p.date as { toDate: () => Date }).toDate().toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })
+                : '';
+              return (
                 <button
-                  onClick={() => setSelectedPaymentId(null)}
-                  className="flex items-center gap-1 text-xs text-text-secondary hover:text-text-primary"
+                  key={p.id}
+                  onClick={() => setSelectedPaymentId(p.id)}
+                  className="w-full flex items-center justify-between p-3 rounded-lg border border-border hover:border-primary bg-background transition-colors text-left"
                 >
-                  <svg className="w-3 h-3" fill="none" viewBox="0 0 16 16" stroke="currentColor" strokeWidth="2">
-                    <path strokeLinecap="round" d="M10 4L6 8l4 4" />
-                  </svg>
-                  Back to payments
+                  <div>
+                    <p className="text-sm font-medium text-text-primary">
+                      Payment {idx + 1} — R{(p.amount / 100).toFixed(2)}
+                    </p>
+                    <p className="text-xs text-text-secondary">
+                      {date}{p.note ? ` · ${p.note}` : ''}
+                    </p>
+                  </div>
+                  {p.receiptId ? (
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary">📷 linked</span>
+                  ) : (
+                    <span className="text-xs text-text-secondary">no receipt</span>
+                  )}
                 </button>
-              )}
-              <InlineReceiptCapture
-                onCaptured={(id) => {
-                  // Add to local list and auto-attach
-                  setReceipts((prev) => [{ id }, ...prev]);
-                  handleAttachToPayment(id);
-                }}
+              );
+            })}
+          </div>
+        )}
+
+        {/* Step 2: pick receipt */}
+        {selectedPaymentId && (
+          <>
+            {hasPayments && (
+              <button
+                onClick={() => setSelectedPaymentId(null)}
+                className="flex items-center gap-1 text-xs text-text-secondary hover:text-text-primary"
+              >
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 16 16" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" d="M10 4L6 8l4 4" />
+                </svg>
+                Back to payments
+              </button>
+            )}
+            <InlineReceiptCapture
+              onCaptured={(id) => {
+                // Add to local list and auto-attach
+                setReceipts((prev) => [{ id }, ...prev]);
+                handleAttachToPayment(id);
+              }}
+            />
+            {loading ? (
+              <div className="grid grid-cols-3 gap-2 animate-pulse">
+                {[1,2,3,4,5,6].map((i) => <div key={i} className="aspect-square bg-background rounded-lg" />)}
+              </div>
+            ) : (
+              <GroupedReceiptPicker
+                receipts={receipts}
+                selectedId={currentReceiptId}
+                onSelect={handleAttachToPayment}
+                disabled={attaching}
+                filterLinked={true}
+                currentReceiptId={currentReceiptId}
               />
-              {loading ? (
-                <div className="grid grid-cols-3 gap-2 animate-pulse">
-                  {[1,2,3,4,5,6].map((i) => <div key={i} className="aspect-square bg-background rounded-lg" />)}
-                </div>
-              ) : (
-                <GroupedReceiptPicker
-                  receipts={receipts}
-                  selectedId={currentReceiptId}
-                  onSelect={handleAttachToPayment}
-                  disabled={attaching}
-                  filterLinked={true}
-                  currentReceiptId={currentReceiptId}
-                />
-              )}
-            </>
-          )}
-        </div>
+            )}
+          </>
+        )}
       </div>
-    </div>
+    </Modal>
   );
 }
 
