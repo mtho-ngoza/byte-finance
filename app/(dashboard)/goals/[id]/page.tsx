@@ -75,6 +75,7 @@ function GoalDetail({ goal, allCommitments }: GoalDetailProps) {
   const [loadingPayments, setLoadingPayments] = useState(false);
   const [selectedPayments, setSelectedPayments] = useState<Set<string>>(new Set());
   const [linking, setLinking] = useState(false);
+  const [paymentSearch, setPaymentSearch] = useState('');
 
   const fetchUnlinkedPayments = async () => {
     setLoadingPayments(true);
@@ -102,6 +103,17 @@ function GoalDetail({ goal, allCommitments }: GoalDetailProps) {
     });
   };
 
+  // Filter payments by search
+  const filteredPayments = useMemo(() => {
+    if (!paymentSearch.trim()) return unlinkedPayments;
+    const q = paymentSearch.toLowerCase();
+    return unlinkedPayments.filter((p) =>
+      p.itemLabel.toLowerCase().includes(q) ||
+      p.cycleName.toLowerCase().includes(q) ||
+      (p.note && p.note.toLowerCase().includes(q))
+    );
+  }, [unlinkedPayments, paymentSearch]);
+
   const handleLinkPayments = async () => {
     if (selectedPayments.size === 0) return;
 
@@ -121,6 +133,7 @@ function GoalDetail({ goal, allCommitments }: GoalDetailProps) {
       toast(`Linked ${data.linked} payments (R${(data.totalAdded / 100).toFixed(2)})`, 'success');
       setShowLinkPayments(false);
       setSelectedPayments(new Set());
+      setPaymentSearch('');
       setUnlinkedPayments([]);
     } catch {
       toast('Failed to link payments', 'error');
@@ -347,7 +360,7 @@ function GoalDetail({ goal, allCommitments }: GoalDetailProps) {
             <div className="flex items-center justify-between mb-3">
               <p className="text-xs text-text-secondary">Select payments to link to this goal</p>
               <button
-                onClick={() => { setShowLinkPayments(false); setSelectedPayments(new Set()); }}
+                onClick={() => { setShowLinkPayments(false); setSelectedPayments(new Set()); setPaymentSearch(''); }}
                 className="text-xs text-text-secondary hover:text-text-primary"
               >
                 Cancel
@@ -367,8 +380,23 @@ function GoalDetail({ goal, allCommitments }: GoalDetailProps) {
               </p>
             ) : (
               <>
+                {/* Search input */}
+                <div className="mb-3">
+                  <input
+                    type="text"
+                    value={paymentSearch}
+                    onChange={(e) => setPaymentSearch(e.target.value)}
+                    placeholder="Search payments..."
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-surface text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:border-primary"
+                  />
+                </div>
+
                 <div className="max-h-64 overflow-y-auto space-y-1 mb-3">
-                  {unlinkedPayments.map((payment) => {
+                  {filteredPayments.length === 0 ? (
+                    <p className="text-sm text-text-secondary text-center py-4">
+                      No payments match your search.
+                    </p>
+                  ) : filteredPayments.map((payment) => {
                     const key = `${payment.cycleItemId}-${payment.paymentId}`;
                     const isSelected = selectedPayments.has(key);
                     const date = new Date(payment.date);
