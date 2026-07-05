@@ -776,7 +776,16 @@ function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete, onAddPay
       {/* Collapsible payments list */}
       {hasPayments && showPayments && (
         <div className="border-t border-border px-3 pb-2 pt-1 space-y-1">
-          {(item.payments ?? []).map((p, idx) => {
+          {[...(item.payments ?? [])].sort((a, b) => {
+            // Sort by payment date (oldest first)
+            const dateA = a.date && typeof (a.date as { toDate?: () => Date }).toDate === 'function'
+              ? (a.date as { toDate: () => Date }).toDate().getTime()
+              : 0;
+            const dateB = b.date && typeof (b.date as { toDate?: () => Date }).toDate === 'function'
+              ? (b.date as { toDate: () => Date }).toDate().getTime()
+              : 0;
+            return dateA - dateB;
+          }).map((p, idx) => {
             const date = p.date && typeof (p.date as { toDate?: () => Date }).toDate === 'function'
               ? (p.date as { toDate: () => Date }).toDate().toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })
               : '';

@@ -744,7 +744,16 @@ function SortableItemRow({ item, cycleId, userId, onStatusChange, onAmountChange
       {/* Collapsible payments list */}
       {hasPayments && showPayments && (
         <div className="border-t border-border px-3 pb-2 pt-1 space-y-1">
-          {(item.payments ?? []).map((p, idx) => {
+          {[...(item.payments ?? [])].sort((a, b) => {
+            // Sort by payment date (oldest first)
+            const dateA = a.date && typeof (a.date as { toDate?: () => Date }).toDate === 'function'
+              ? (a.date as { toDate: () => Date }).toDate().getTime()
+              : 0;
+            const dateB = b.date && typeof (b.date as { toDate?: () => Date }).toDate === 'function'
+              ? (b.date as { toDate: () => Date }).toDate().getTime()
+              : 0;
+            return dateA - dateB;
+          }).map((p, idx) => {
             const dateObj = p.date && typeof (p.date as { toDate?: () => Date }).toDate === 'function'
               ? (p.date as { toDate: () => Date }).toDate()
               : null;
@@ -1086,7 +1095,15 @@ function ReceiptPickerModal({ item, cycleId, userId, onClose, onAttached }: Rece
         {hasPayments && !selectedPaymentId && (
           <div className="space-y-2">
             <p className="text-xs text-text-secondary">Select the payment to attach a receipt to:</p>
-            {(item.payments ?? []).map((p: PaymentEntry, idx: number) => {
+            {[...(item.payments ?? [])].sort((a, b) => {
+              const dateA = a.date && typeof (a.date as { toDate?: () => Date }).toDate === 'function'
+                ? (a.date as { toDate: () => Date }).toDate().getTime()
+                : 0;
+              const dateB = b.date && typeof (b.date as { toDate?: () => Date }).toDate === 'function'
+                ? (b.date as { toDate: () => Date }).toDate().getTime()
+                : 0;
+              return dateA - dateB;
+            }).map((p: PaymentEntry, idx: number) => {
               const date = p.date && typeof (p.date as { toDate?: () => Date }).toDate === 'function'
                 ? (p.date as { toDate: () => Date }).toDate().toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })
                 : '';

@@ -24,7 +24,8 @@
       "Bash(node scripts/seed-2025.mjs:*)",
       "Bash(dir:*)",
       "Bash(git check-ignore:*)",
-      "Bash(wc:*)"
+      "Bash(wc:*)",
+      "Bash(grep:*)"
     ]
   }
 }
