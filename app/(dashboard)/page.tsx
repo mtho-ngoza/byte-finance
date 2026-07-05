@@ -539,7 +539,7 @@ interface CycleItemRowProps {
   onStatusChange: (id: string, status: CycleItemStatus, actualAmount?: number) => Promise<void>;
   onAmountChange: (id: string, amount: number) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
-  onAddPayment: (id: string, amount: number, note?: string, receiptId?: string) => Promise<void>;
+  onAddPayment: (id: string, amount: number, note?: string, receiptId?: string, date?: string) => Promise<void>;
   onDeletePayment: (id: string, paymentId: string) => Promise<void>;
   onEditPayment: (id: string, paymentId: string, amount: number, note?: string) => Promise<void>;
 }
@@ -555,6 +555,7 @@ function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete, onAddPay
   const [showPayments, setShowPayments] = useState(false);
   const [paymentValue, setPaymentValue] = useState('');
   const [paymentNote, setPaymentNote] = useState('');
+  const [paymentDate, setPaymentDate] = useState('');
   const [paymentReceiptId, setPaymentReceiptId] = useState<string | undefined>(undefined);
   const [receipts, setReceipts] = useState<Array<{ id: string; thumbnailUrl?: string; imageUrl?: string; vendor?: string; amountInCents?: number }>>([]);
   const [receiptsLoaded, setReceiptsLoaded] = useState(false);
@@ -592,11 +593,12 @@ function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete, onAddPay
     // Open payment prompt for unpaid items
     setPaymentValue((item.amount / 100).toFixed(2));
     setPaymentNote('');
+    setPaymentDate(new Date().toISOString().split('T')[0]);
     setPaymentReceiptId(undefined);
     setShowPaymentPrompt(true);
     // Lazy-load receipts for the picker
     if (!receiptsLoaded) {
-      fetch('/api/receipts?limit=12')
+      fetch('/api/receipts')
         .then((r) => r.json())
         .then((d) => { setReceipts(d.receipts ?? []); setReceiptsLoaded(true); })
         .catch(() => setReceiptsLoaded(true));
@@ -609,7 +611,7 @@ function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete, onAddPay
     try {
       const amt = Math.round(parseFloat(paymentValue) * 100);
       if (isNaN(amt) || amt <= 0) return;
-      await onAddPayment(item.id, amt, paymentNote.trim() || undefined, paymentReceiptId);
+      await onAddPayment(item.id, amt, paymentNote.trim() || undefined, paymentReceiptId, paymentDate || undefined);
     } finally {
       setLoading(false);
     }
@@ -771,10 +773,11 @@ function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete, onAddPay
               onClick={() => {
                 setPaymentValue('');
                 setPaymentNote('');
+                setPaymentDate(new Date().toISOString().split('T')[0]);
                 setPaymentReceiptId(undefined);
                 setShowPaymentPrompt(true);
                 if (!receiptsLoaded) {
-                  fetch('/api/receipts?limit=12')
+                  fetch('/api/receipts')
                     .then((r) => r.json())
                     .then((d) => { setReceipts(d.receipts ?? []); setReceiptsLoaded(true); })
                     .catch(() => setReceiptsLoaded(true));
@@ -925,15 +928,26 @@ function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete, onAddPay
                 />
               </div>
             </div>
-            <div>
-              <label className="block text-xs text-text-secondary mb-1">Note (optional)</label>
-              <input
-                type="text"
-                value={paymentNote}
-                onChange={(e) => setPaymentNote(e.target.value)}
-                placeholder="e.g. Engen Sandton"
-                className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background text-text-primary focus:outline-none focus:border-primary"
-              />
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <label className="block text-xs text-text-secondary mb-1">Note (optional)</label>
+                <input
+                  type="text"
+                  value={paymentNote}
+                  onChange={(e) => setPaymentNote(e.target.value)}
+                  placeholder="e.g. Engen Sandton"
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background text-text-primary focus:outline-none focus:border-primary"
+                />
+              </div>
+              <div className="w-[120px] shrink-0">
+                <label className="block text-xs text-text-secondary mb-1">Date</label>
+                <input
+                  type="date"
+                  value={paymentDate}
+                  onChange={(e) => setPaymentDate(e.target.value)}
+                  className="w-full px-2 py-2 text-sm rounded-lg border border-border bg-background text-text-primary focus:outline-none focus:border-primary [color-scheme:dark]"
+                />
+              </div>
             </div>
             {/* Receipt picker */}
             <div>
