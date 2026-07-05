@@ -8,6 +8,7 @@ import { useReceiptQueue } from '@/hooks/use-receipt-queue';
 import { useReceiptUpload } from '@/hooks/use-receipt-upload';
 import { AmountDisplay } from '@/components/shared/amount-display';
 import { CurrencyInput } from '@/components/shared/currency-input';
+import { DateInput } from '@/components/shared/date-input';
 import { useToast } from '@/components/shared/toast';
 import type { Receipt, PendingReceipt } from '@/types';
 
@@ -583,16 +584,16 @@ function TaxExportSection({ receiptsCount }: { receiptsCount: number }) {
         <div className="mt-4 space-y-4">
           <p className="text-xs text-text-secondary">Filter by date range (optional) then export all receipts as CSV or ZIP with images.</p>
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs text-text-secondary mb-1">From</label>
-              <input type="date" value={from} onChange={(e) => setFrom(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary text-sm focus:outline-none focus:border-primary" />
-            </div>
-            <div>
-              <label className="block text-xs text-text-secondary mb-1">To</label>
-              <input type="date" value={to} onChange={(e) => setTo(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary text-sm focus:outline-none focus:border-primary" />
-            </div>
+            <DateInput
+              label="From"
+              value={from}
+              onChange={(e) => setFrom(e.target.value)}
+            />
+            <DateInput
+              label="To"
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+            />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <button onClick={() => handleExport('csv')} disabled={exporting !== null}

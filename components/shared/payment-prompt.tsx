@@ -1,22 +1,14 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { InlineReceiptCapture } from './inline-receipt-capture';
+import { GroupedReceiptPicker, ReceiptItem } from './grouped-receipt-picker';
+import { DateInput } from './date-input';
 import { useToast } from './toast';
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
-interface Receipt {
-  id: string;
-  thumbnailUrl?: string;
-  imageUrl?: string;
-  vendor?: string;
-  amountInCents?: number;
-  cycleItemId?: string;
-  capturedAt?: string;
-}
 
 interface PaymentPromptProps {
   itemLabel: string;
@@ -25,101 +17,6 @@ interface PaymentPromptProps {
   isPartial: boolean;
   onConfirm: (amount: number, note?: string, receiptId?: string, date?: string) => Promise<void>;
   onClose: () => void;
-}
-
-// ---------------------------------------------------------------------------
-// Helper: Group receipts by month
-// ---------------------------------------------------------------------------
-
-function groupReceiptsByMonth(receipts: Receipt[]) {
-  const groups = new Map<string, Receipt[]>();
-
-  for (const receipt of receipts) {
-    const date = receipt.capturedAt
-      ? new Date(receipt.capturedAt)
-      : new Date();
-    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key)!.push(receipt);
-  }
-
-  return Array.from(groups.entries())
-    .sort((a, b) => b[0].localeCompare(a[0]))
-    .map(([key, items]) => {
-      const [year, month] = key.split('-').map(Number);
-      const label = new Date(year, month - 1).toLocaleDateString('en-ZA', { month: 'short', year: 'numeric' });
-      return { key, label, receipts: items };
-    });
-}
-
-// ---------------------------------------------------------------------------
-// GroupedReceiptPicker
-// ---------------------------------------------------------------------------
-
-function GroupedReceiptPicker({
-  receipts,
-  selectedId,
-  onSelect,
-  filterLinked = false,
-}: {
-  receipts: Receipt[];
-  selectedId?: string;
-  onSelect: (id: string) => void;
-  filterLinked?: boolean;
-}) {
-  const filteredReceipts = filterLinked
-    ? receipts.filter((r) => {
-        if (selectedId && r.id === selectedId) return true;
-        const isLinked = r.cycleItemId && typeof r.cycleItemId === 'string' && r.cycleItemId.length > 0;
-        return !isLinked;
-      })
-    : receipts;
-
-  const grouped = groupReceiptsByMonth(filteredReceipts);
-
-  if (filteredReceipts.length === 0) {
-    return (
-      <p className="text-xs text-text-secondary text-center py-2">
-        No unlinked receipts available
-      </p>
-    );
-  }
-
-  return (
-    <div className="max-h-48 overflow-y-auto space-y-3">
-      {grouped.map(({ key, label, receipts: monthReceipts }) => (
-        <div key={key}>
-          <p className="text-xs text-text-secondary mb-1.5">{label}</p>
-          <div className="flex flex-wrap gap-1.5">
-            {monthReceipts.map((r) => (
-              <button
-                key={r.id}
-                onClick={() => onSelect(r.id)}
-                className={`w-12 h-12 rounded-lg border-2 overflow-hidden transition-all ${
-                  selectedId === r.id
-                    ? 'border-primary ring-2 ring-primary/30'
-                    : 'border-border hover:border-primary/50'
-                }`}
-              >
-                {r.thumbnailUrl || r.imageUrl ? (
-                  <img
-                    src={r.thumbnailUrl || r.imageUrl}
-                    alt={r.vendor || 'Receipt'}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full bg-surface flex items-center justify-center text-text-secondary text-xs">
-                    ?
-                  </div>
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -143,7 +40,7 @@ export function PaymentPrompt({
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
   const [paymentReceiptId, setPaymentReceiptId] = useState<string | undefined>(undefined);
   const [showReceiptPicker, setShowReceiptPicker] = useState(false);
-  const [receipts, setReceipts] = useState<Receipt[]>([]);
+  const [receipts, setReceipts] = useState<ReceiptItem[]>([]);
   const [receiptsLoaded, setReceiptsLoaded] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -226,16 +123,12 @@ export function PaymentPrompt({
                 className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background text-text-primary focus:outline-none focus:border-primary"
               />
             </div>
-            <div className="w-[130px] shrink-0">
-              <label className="block text-xs text-text-secondary mb-1">Date</label>
-              <input
-                type="date"
-                value={paymentDate}
-                onChange={(e) => setPaymentDate(e.target.value)}
-                className="w-full px-2 py-2 text-sm rounded-lg border border-border bg-background text-text-primary focus:outline-none focus:border-primary appearance-none [color-scheme:dark]"
-                style={{ colorScheme: 'dark' }}
-              />
-            </div>
+            <DateInput
+              label="Date"
+              value={paymentDate}
+              onChange={(e) => setPaymentDate(e.target.value)}
+              containerClassName="w-[130px] shrink-0"
+            />
           </div>
 
           {/* Receipt section - collapsible */}
@@ -316,6 +209,7 @@ export function PaymentPrompt({
                       if (paymentReceiptId !== id) setShowReceiptPicker(false);
                     }}
                     filterLinked={true}
+                    collapsible={false}
                   />
                 ) : (
                   <div className="flex items-center justify-center py-4">

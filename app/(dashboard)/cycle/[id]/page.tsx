@@ -31,6 +31,8 @@ import { useToast } from '@/components/shared/toast';
 import { FloatingMenu } from '@/components/shared/floating-menu';
 import { PaymentPrompt } from '@/components/shared/payment-prompt';
 import { InlineReceiptCapture } from '@/components/shared/inline-receipt-capture';
+import { GroupedReceiptPicker, ReceiptItem } from '@/components/shared/grouped-receipt-picker';
+import { DateInput } from '@/components/shared/date-input';
 import type { CycleItem, CycleItemStatus, Category, Cycle } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -752,11 +754,11 @@ function SortableItemRow({ item, cycleId, userId, onStatusChange, onAmountChange
               <div key={p.id} className="flex items-center justify-between text-xs py-0.5 group">
                 {isEditing ? (
                   <div className="flex items-center gap-2 flex-1">
-                    <input
-                      type="date"
+                    <DateInput
                       value={editingPaymentDate}
                       onChange={(e) => setEditingPaymentDate(e.target.value)}
-                      className="px-2 py-1 text-xs rounded border border-primary bg-background text-text-primary focus:outline-none [color-scheme:dark]"
+                      inputSize="sm"
+                      className="border-primary"
                       autoFocus
                     />
                     <button
@@ -986,155 +988,6 @@ function EditItemModal({ item, userId, onClose }: EditItemModalProps) {
 // ReceiptPickerModal
 // ---------------------------------------------------------------------------
 
-type ReceiptItem = { id: string; thumbnailUrl?: string; imageUrl?: string; vendor?: string; amountInCents?: number; cycleItemId?: string; capturedAt?: string };
-
-// Group receipts by month for picker display
-interface ReceiptMonthGroup {
-  key: string; // "2026-06"
-  label: string; // "June 2026"
-  receipts: ReceiptItem[];
-}
-
-function groupReceiptsByMonth(receipts: ReceiptItem[]): ReceiptMonthGroup[] {
-  const monthMap = new Map<string, ReceiptItem[]>();
-
-  for (const receipt of receipts) {
-    const date = receipt.capturedAt ? new Date(receipt.capturedAt) : new Date();
-    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-    if (!monthMap.has(key)) monthMap.set(key, []);
-    monthMap.get(key)!.push(receipt);
-  }
-
-  // Sort months descending
-  const sortedKeys = Array.from(monthMap.keys()).sort((a, b) => b.localeCompare(a));
-
-  return sortedKeys.map((key) => {
-    const [year, monthNum] = key.split('-').map(Number);
-    const label = new Date(year, monthNum - 1).toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' });
-    return { key, label, receipts: monthMap.get(key)! };
-  });
-}
-
-// Grouped receipt picker component
-interface GroupedReceiptPickerProps {
-  receipts: ReceiptItem[];
-  selectedId?: string;
-  onSelect: (id: string) => void;
-  disabled?: boolean;
-  filterLinked?: boolean; // Filter out already-linked receipts
-  currentReceiptId?: string; // Always show this one even if linked
-}
-
-function GroupedReceiptPicker({ receipts, selectedId, onSelect, disabled, filterLinked = true, currentReceiptId }: GroupedReceiptPickerProps) {
-  const [expandedMonths, setExpandedMonths] = useState<Set<string>>(() => {
-    // Auto-expand current month
-    const now = new Date();
-    const currentKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    return new Set([currentKey]);
-  });
-
-  // Filter out receipts that are linked to other cycle items
-  // A receipt is "linked" if cycleItemId is a non-empty string
-  const filteredReceipts = filterLinked
-    ? receipts.filter((r) => {
-        // Always show the currently selected receipt
-        if (currentReceiptId && r.id === currentReceiptId) return true;
-        // Filter out if linked (cycleItemId is a non-empty truthy value)
-        const isLinked = r.cycleItemId && typeof r.cycleItemId === 'string' && r.cycleItemId.length > 0;
-        return !isLinked;
-      })
-    : receipts;
-
-  const groups = groupReceiptsByMonth(filteredReceipts);
-
-  const toggleMonth = (key: string) => {
-    setExpandedMonths((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  };
-
-  if (filteredReceipts.length === 0) {
-    return (
-      <div className="text-center py-4 text-text-secondary text-sm">
-        <p className="text-xl mb-1">📷</p>
-        <p className="text-xs">No unlinked receipts available.</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-2 max-h-48 overflow-y-auto">
-      {groups.map((group) => {
-        const isExpanded = expandedMonths.has(group.key);
-        return (
-          <div key={group.key} className="rounded-lg border border-border/50 bg-background overflow-hidden">
-            {/* Month header */}
-            <button
-              onClick={() => toggleMonth(group.key)}
-              className="w-full px-3 py-2 flex items-center justify-between hover:bg-surface/50 transition-colors"
-            >
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded bg-primary/10 flex items-center justify-center">
-                  <span className="text-primary font-semibold text-[10px]">{group.receipts.length}</span>
-                </div>
-                <span className="text-sm font-medium text-text-primary">{group.label}</span>
-              </div>
-              <svg
-                className={`w-4 h-4 text-text-secondary transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-                fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
-
-            {/* Receipts grid */}
-            {isExpanded && (
-              <div className="px-2 pb-2 pt-1">
-                <div className="grid grid-cols-4 gap-1.5">
-                  {group.receipts.map((r) => {
-                    const isSelected = r.id === selectedId;
-                    return (
-                      <button
-                        key={r.id}
-                        onClick={() => onSelect(r.id)}
-                        disabled={disabled}
-                        className={`relative aspect-square rounded-lg overflow-hidden border-2 transition-colors ${
-                          isSelected ? 'border-primary' : 'border-transparent hover:border-primary/40'
-                        }`}
-                      >
-                        {r.thumbnailUrl || r.imageUrl ? (
-                          <img src={r.thumbnailUrl || r.imageUrl} alt="Receipt" className="w-full h-full object-cover" />
-                        ) : (
-                          <div className="w-full h-full bg-surface flex items-center justify-center text-text-secondary text-base">📄</div>
-                        )}
-                        {r.amountInCents && (
-                          <div className="absolute bottom-0 left-0 right-0 bg-black/60 px-1 py-0.5 text-[9px] text-white font-mono">
-                            R{(r.amountInCents / 100).toFixed(0)}
-                          </div>
-                        )}
-                        {isSelected && (
-                          <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
-                            <svg className="w-4 h-4 text-primary" fill="none" viewBox="0 0 16 16">
-                              <circle cx="8" cy="8" r="7" fill="currentColor" fillOpacity="0.2" stroke="currentColor" strokeWidth="1.5" />
-                              <path d="M5 8l2 2 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
-                          </div>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
 type PaymentEntry = { id: string; amount: number; date: unknown; note?: string; receiptId?: string };
 
 interface ReceiptPickerModalProps {

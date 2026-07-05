@@ -7,6 +7,7 @@ import { useGoals, GoalWithComputed } from '@/hooks/use-goals';
 import { useCommitments } from '@/hooks/use-commitments';
 import { AmountDisplay } from '@/components/shared/amount-display';
 import { CurrencyInput } from '@/components/shared/currency-input';
+import { DateInput } from '@/components/shared/date-input';
 import { useToast } from '@/components/shared/toast';
 
 export default function GoalDetailPage() {
@@ -462,15 +463,11 @@ function GoalDetail({ goal, allCommitments }: GoalDetailProps) {
                 <label className="block text-xs text-text-secondary mb-1">Amount</label>
                 <CurrencyInput value={contributionAmount} onChange={setContributionAmount} />
               </div>
-              <div>
-                <label className="block text-xs text-text-secondary mb-1">Date</label>
-                <input
-                  type="date"
-                  value={contributionDate}
-                  onChange={(e) => setContributionDate(e.target.value)}
-                  className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-surface text-text-primary focus:outline-none focus:border-primary [color-scheme:dark]"
-                />
-              </div>
+              <DateInput
+                label="Date"
+                value={contributionDate}
+                onChange={(e) => setContributionDate(e.target.value)}
+              />
             </div>
             <div>
               <label className="block text-xs text-text-secondary mb-1">Note (optional)</label>
