@@ -67,12 +67,44 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: 'Cycle not found' }, { status: 404 });
   }
 
-  // Also delete all cycle items for this cycle
+  // Get all cycle items for this cycle
   const itemsSnap = await db
     .collection(`users/${userId}/cycleItems`)
     .where('cycleId', '==', id)
     .get();
 
+  // Build a map of goal contributions to remove
+  const goalContributionsToRemove = new Map<string, { ids: string[]; totalAmount: number }>();
+
+  for (const itemDoc of itemsSnap.docs) {
+    const item = itemDoc.data();
+    if (item.linkedGoalId && item.payments?.length > 0) {
+      const existing = goalContributionsToRemove.get(item.linkedGoalId) ?? { ids: [], totalAmount: 0 };
+      for (const payment of item.payments) {
+        existing.ids.push(`${itemDoc.id}-${payment.id}`);
+        existing.totalAmount += payment.amount ?? 0;
+      }
+      goalContributionsToRemove.set(item.linkedGoalId, existing);
+    }
+  }
+
+  // Remove contributions from linked goals
+  for (const [goalId, { ids, totalAmount }] of goalContributionsToRemove) {
+    const goalRef = db.collection(`users/${userId}/goals`).doc(goalId);
+    const goalSnap = await goalRef.get();
+    if (goalSnap.exists) {
+      const goal = goalSnap.data()!;
+      const contributions: Array<{ id: string; [key: string]: unknown }> = goal.contributions ?? [];
+      const filteredContributions = contributions.filter((c) => !ids.includes(c.id));
+      await goalRef.update({
+        contributions: filteredContributions,
+        currentAmount: FieldValue.increment(-totalAmount),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
+  }
+
+  // Delete cycle items and cycle
   const batch = db.batch();
   itemsSnap.docs.forEach((itemDoc) => {
     batch.delete(itemDoc.ref);

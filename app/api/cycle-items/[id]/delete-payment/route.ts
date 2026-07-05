@@ -48,6 +48,7 @@ export async function POST(
   const remainingPayments = payments.filter((p) => p.id !== paymentId);
   const newTotalPaid = remainingPayments.reduce((sum, p) => sum + p.amount, 0);
   const newStatus = remainingPayments.length === 0 ? 'upcoming' : 'partial';
+  const wasPaid = item.status === 'paid';
 
   const now = FieldValue.serverTimestamp();
 
@@ -55,15 +56,39 @@ export async function POST(
     payments: remainingPayments,
     totalPaidAmount: newTotalPaid,
     status: newStatus,
+    paidDate: null,
     updatedAt: now,
   });
 
   // Update cycle totalPaid — subtract the deleted payment amount
+  // Also decrement paidCount if item was previously marked as paid
   const cycleRef = db.collection(`users/${userId}/cycles`).doc(item.cycleId);
   await cycleRef.update({
     totalPaid: FieldValue.increment(-paymentToDelete.amount),
+    ...(wasPaid ? { paidCount: FieldValue.increment(-1) } : {}),
     updatedAt: now,
   });
+
+  // Remove goal contribution if cycle item is linked to a goal
+  if (item.linkedGoalId) {
+    const goalRef = db.collection(`users/${userId}/goals`).doc(item.linkedGoalId);
+    const goalSnap = await goalRef.get();
+    if (goalSnap.exists) {
+      const goal = goalSnap.data()!;
+      const contributions: Array<{ id: string; amount: number; [key: string]: unknown }> = goal.contributions ?? [];
+      const contributionId = `${id}-${paymentId}`;
+      const contributionToRemove = contributions.find((c) => c.id === contributionId);
+
+      if (contributionToRemove) {
+        const updatedContributions = contributions.filter((c) => c.id !== contributionId);
+        await goalRef.update({
+          contributions: updatedContributions,
+          currentAmount: FieldValue.increment(-contributionToRemove.amount),
+          updatedAt: now,
+        });
+      }
+    }
+  }
 
   const updated = await ref.get();
   return NextResponse.json({ id, ...updated.data() }, { status: 200 });

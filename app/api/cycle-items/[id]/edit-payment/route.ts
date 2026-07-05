@@ -74,6 +74,33 @@ export async function POST(
     });
   }
 
+  // Update goal contribution if cycle item is linked to a goal and amount changed
+  if (item.linkedGoalId && amountDiff !== 0) {
+    const goalRef = db.collection(`users/${userId}/goals`).doc(item.linkedGoalId);
+    const goalSnap = await goalRef.get();
+    if (goalSnap.exists) {
+      const goal = goalSnap.data()!;
+      const contributions: Array<{ id: string; amount: number; date?: Date; [key: string]: unknown }> = goal.contributions ?? [];
+      const contributionId = `${id}-${paymentId}`;
+      const contributionIdx = contributions.findIndex((c) => c.id === contributionId);
+
+      if (contributionIdx !== -1) {
+        // Update contribution amount in array
+        const updatedContributions = [...contributions];
+        updatedContributions[contributionIdx] = {
+          ...updatedContributions[contributionIdx],
+          amount,
+          ...(date !== undefined ? { date: new Date(date) } : {}),
+        };
+        await goalRef.update({
+          contributions: updatedContributions,
+          currentAmount: FieldValue.increment(amountDiff),
+          updatedAt: now,
+        });
+      }
+    }
+  }
+
   const updated = await ref.get();
   return NextResponse.json({ id, ...updated.data() }, { status: 200 });
 }

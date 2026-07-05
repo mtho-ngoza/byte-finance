@@ -80,13 +80,23 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       updatedAt: now,
     });
 
-    // Reverse goal contribution
+    // Reverse goal contribution - remove from contributions array
     if (currentData.linkedGoalId) {
       const goalRef = db.collection(`users/${userId}/goals`).doc(currentData.linkedGoalId);
-      await goalRef.update({
-        currentAmount: FieldValue.increment(-currentData.amount),
-        updatedAt: now,
-      });
+      const goalSnap = await goalRef.get();
+      if (goalSnap.exists) {
+        const goal = goalSnap.data()!;
+        const contributions: Array<{ id: string; cycleItemId?: string; amount: number; [key: string]: unknown }> = goal.contributions ?? [];
+        // Find contributions from this cycle item
+        const toRemove = contributions.filter((c) => c.cycleItemId === id);
+        const totalToRemove = toRemove.reduce((sum, c) => sum + c.amount, 0);
+        const updatedContributions = contributions.filter((c) => c.cycleItemId !== id);
+        await goalRef.update({
+          contributions: updatedContributions,
+          currentAmount: FieldValue.increment(-totalToRemove),
+          updatedAt: now,
+        });
+      }
     }
   }
 
@@ -120,12 +130,38 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     updatedAt: now,
   };
 
-  if (data.status === 'paid') {
-    updates.totalPaid = FieldValue.increment(-data.amount);
-    updates.paidCount = FieldValue.increment(-1);
+  if (data.status === 'paid' || data.status === 'partial') {
+    const paidAmount = data.totalPaidAmount ?? (data.status === 'paid' ? data.amount : 0);
+    if (paidAmount > 0) {
+      updates.totalPaid = FieldValue.increment(-paidAmount);
+    }
+    if (data.status === 'paid') {
+      updates.paidCount = FieldValue.increment(-1);
+    }
   }
 
   await cycleRef.update(updates);
+
+  // Remove goal contributions if linked
+  if (data.linkedGoalId) {
+    const goalRef = db.collection(`users/${userId}/goals`).doc(data.linkedGoalId);
+    const goalSnap = await goalRef.get();
+    if (goalSnap.exists) {
+      const goal = goalSnap.data()!;
+      const contributions: Array<{ id: string; cycleItemId?: string; amount: number; [key: string]: unknown }> = goal.contributions ?? [];
+      const toRemove = contributions.filter((c) => c.cycleItemId === id);
+      const totalToRemove = toRemove.reduce((sum, c) => sum + c.amount, 0);
+      if (toRemove.length > 0) {
+        const updatedContributions = contributions.filter((c) => c.cycleItemId !== id);
+        await goalRef.update({
+          contributions: updatedContributions,
+          currentAmount: FieldValue.increment(-totalToRemove),
+          updatedAt: now,
+        });
+      }
+    }
+  }
+
   await ref.delete();
 
   return NextResponse.json({ success: true });
