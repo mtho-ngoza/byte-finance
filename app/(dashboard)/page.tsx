@@ -12,7 +12,7 @@ import { FilterBar } from '@/components/shared/filter-bar';
 import { AmountDisplay } from '@/components/shared/amount-display';
 import { useToast } from '@/components/shared/toast';
 import { FloatingMenu } from '@/components/shared/floating-menu';
-import { InlineReceiptCapture } from '@/components/shared/inline-receipt-capture';
+import { PaymentPrompt } from '@/components/shared/payment-prompt';
 import type { CycleItem, CycleItemStatus, Goal, Insight } from '@/types';
 
 export default function DashboardPage() {
@@ -553,12 +553,6 @@ function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete, onAddPay
   const [editValue, setEditValue] = useState('');
   const [showPaymentPrompt, setShowPaymentPrompt] = useState(false);
   const [showPayments, setShowPayments] = useState(false);
-  const [paymentValue, setPaymentValue] = useState('');
-  const [paymentNote, setPaymentNote] = useState('');
-  const [paymentDate, setPaymentDate] = useState('');
-  const [paymentReceiptId, setPaymentReceiptId] = useState<string | undefined>(undefined);
-  const [receipts, setReceipts] = useState<Array<{ id: string; thumbnailUrl?: string; imageUrl?: string; vendor?: string; amountInCents?: number }>>([]);
-  const [receiptsLoaded, setReceiptsLoaded] = useState(false);
   const { toast, confirm } = useToast();
 
   const isSkipped = item.status === 'skipped';
@@ -591,27 +585,13 @@ function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete, onAddPay
       return;
     }
     // Open payment prompt for unpaid items
-    setPaymentValue((item.amount / 100).toFixed(2));
-    setPaymentNote('');
-    setPaymentDate(new Date().toISOString().split('T')[0]);
-    setPaymentReceiptId(undefined);
     setShowPaymentPrompt(true);
-    // Lazy-load receipts for the picker
-    if (!receiptsLoaded) {
-      fetch('/api/receipts')
-        .then((r) => r.json())
-        .then((d) => { setReceipts(d.receipts ?? []); setReceiptsLoaded(true); })
-        .catch(() => setReceiptsLoaded(true));
-    }
   };
 
-  const handleConfirmPayment = async () => {
-    setShowPaymentPrompt(false);
+  const handleConfirmPayment = async (amount: number, note?: string, receiptId?: string, date?: string) => {
     setLoading(true);
     try {
-      const amt = Math.round(parseFloat(paymentValue) * 100);
-      if (isNaN(amt) || amt <= 0) return;
-      await onAddPayment(item.id, amt, paymentNote.trim() || undefined, paymentReceiptId, paymentDate || undefined);
+      await onAddPayment(item.id, amount, note, receiptId, date);
     } finally {
       setLoading(false);
     }
@@ -770,19 +750,7 @@ function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete, onAddPay
         >
           {isPartial && (
             <button
-              onClick={() => {
-                setPaymentValue('');
-                setPaymentNote('');
-                setPaymentDate(new Date().toISOString().split('T')[0]);
-                setPaymentReceiptId(undefined);
-                setShowPaymentPrompt(true);
-                if (!receiptsLoaded) {
-                  fetch('/api/receipts')
-                    .then((r) => r.json())
-                    .then((d) => { setReceipts(d.receipts ?? []); setReceiptsLoaded(true); })
-                    .catch(() => setReceiptsLoaded(true));
-                }
-              }}
+              onClick={() => setShowPaymentPrompt(true)}
               className="w-full px-3 py-1.5 text-left text-sm text-text-primary hover:bg-background transition-colors"
             >
               Add payment
@@ -902,121 +870,14 @@ function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete, onAddPay
 
       {/* Payment prompt */}
       {showPaymentPrompt && (
-        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
-          <div className="bg-surface border border-border rounded-t-xl sm:rounded-xl w-full sm:max-w-xs p-4 space-y-4 max-h-[90vh] overflow-y-auto">
-            <div>
-              <h3 className="text-sm font-semibold text-text-primary">Add Payment — {item.label}</h3>
-              <p className="text-xs text-text-secondary mt-1">
-                {isPartial
-                  ? `Paid so far: R${(totalPaidSoFar / 100).toFixed(2)} · Budget: R${(item.amount / 100).toFixed(2)}`
-                  : `Budget: R${(item.amount / 100).toFixed(2)}`}
-              </p>
-            </div>
-            <div>
-              <label className="block text-xs text-text-secondary mb-1">Amount paid (R)</label>
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-text-secondary font-mono">R</span>
-                <input
-                  type="number"
-                  value={paymentValue}
-                  onChange={(e) => setPaymentValue(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') handleConfirmPayment(); if (e.key === 'Escape') setShowPaymentPrompt(false); }}
-                  autoFocus
-                  step="0.01"
-                  min="0"
-                  className="flex-1 px-3 py-2 text-sm rounded-lg border border-primary bg-background text-text-primary focus:outline-none font-mono"
-                />
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <div className="flex-1">
-                <label className="block text-xs text-text-secondary mb-1">Note (optional)</label>
-                <input
-                  type="text"
-                  value={paymentNote}
-                  onChange={(e) => setPaymentNote(e.target.value)}
-                  placeholder="e.g. Engen Sandton"
-                  className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background text-text-primary focus:outline-none focus:border-primary"
-                />
-              </div>
-              <div className="w-[120px] shrink-0">
-                <label className="block text-xs text-text-secondary mb-1">Date</label>
-                <input
-                  type="date"
-                  value={paymentDate}
-                  onChange={(e) => setPaymentDate(e.target.value)}
-                  className="w-full px-2 py-2 text-sm rounded-lg border border-border bg-background text-text-primary focus:outline-none focus:border-primary [color-scheme:dark]"
-                />
-              </div>
-            </div>
-            {/* Receipt picker */}
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-xs text-text-secondary">
-                  Receipt (optional)
-                  {paymentReceiptId && (
-                    <button
-                      onClick={() => setPaymentReceiptId(undefined)}
-                      className="ml-2 text-primary hover:text-primary/70"
-                    >
-                      clear
-                    </button>
-                  )}
-                </label>
-                <InlineReceiptCapture
-                  onCaptured={(id) => {
-                    setPaymentReceiptId(id);
-                    setReceipts((prev) => [{ id, thumbnailUrl: undefined, imageUrl: undefined }, ...prev]);
-                    setReceiptsLoaded(true);
-                  }}
-                  onError={(msg) => toast(msg, 'error')}
-                />
-              </div>
-              {receipts.length === 0 && receiptsLoaded ? (
-                <p className="text-xs text-text-secondary">No receipts captured yet.</p>
-              ) : (
-                <div className="grid grid-cols-4 gap-1.5">
-                  {receipts.map((r) => {
-                    const selected = r.id === paymentReceiptId;
-                    return (
-                      <button
-                        key={r.id}
-                        onClick={() => setPaymentReceiptId(selected ? undefined : r.id)}
-                        className={`relative aspect-square rounded-lg overflow-hidden border-2 transition-colors ${
-                          selected ? 'border-primary' : 'border-transparent hover:border-primary/40'
-                        }`}
-                      >
-                        {r.thumbnailUrl || r.imageUrl ? (
-                          <img src={r.thumbnailUrl || r.imageUrl} alt="Receipt" className="w-full h-full object-cover" />
-                        ) : (
-                          <div className="w-full h-full bg-background flex items-center justify-center text-text-secondary text-base">📄</div>
-                        )}
-                        {selected && (
-                          <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
-                            <svg className="w-4 h-4 text-primary" fill="none" viewBox="0 0 16 16">
-                              <circle cx="8" cy="8" r="7" fill="currentColor" fillOpacity="0.2" stroke="currentColor" strokeWidth="1.5" />
-                              <path d="M5 8l2 2 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
-                          </div>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-            <div className="flex gap-2">
-              <button onClick={() => setShowPaymentPrompt(false)}
-                className="flex-1 py-2 rounded-lg border border-border text-text-secondary text-sm">
-                Cancel
-              </button>
-              <button onClick={handleConfirmPayment}
-                className="flex-1 py-2 rounded-lg bg-primary text-background font-medium text-sm">
-                {paymentReceiptId ? 'Add Payment + Receipt' : 'Add Payment'}
-              </button>
-            </div>
-          </div>
-        </div>
+        <PaymentPrompt
+          itemLabel={item.label}
+          budgetAmount={item.amount}
+          totalPaidSoFar={totalPaidSoFar}
+          isPartial={isPartial}
+          onConfirm={handleConfirmPayment}
+          onClose={() => setShowPaymentPrompt(false)}
+        />
       )}
     </div>
   );
