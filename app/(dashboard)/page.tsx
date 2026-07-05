@@ -180,8 +180,8 @@ export default function DashboardPage() {
 
   // Item search
   const [itemSearch, setItemSearch] = useState('');
-  const searchedItems = itemSearch
-    ? items.filter((i) => i.label.toLowerCase().includes(itemSearch.toLowerCase()) || i.category.toLowerCase().includes(itemSearch.toLowerCase()))
+  const searchedItems = itemSearch.trim()
+    ? items.filter((i) => i.label.toLowerCase().includes(itemSearch.trim().toLowerCase()) || i.category.toLowerCase().includes(itemSearch.trim().toLowerCase()))
     : items;
 
   // Group items by status
@@ -370,7 +370,7 @@ export default function DashboardPage() {
             placeholder="Search items..."
             className="w-full pl-9 pr-3 py-2 rounded-lg border border-border bg-surface text-sm text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-primary"
           />
-          {itemSearch && (
+          {itemSearch.trim() && (
             <button onClick={() => setItemSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text-primary">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" d="M6 18L18 6M6 6l12 12" /></svg>
             </button>
@@ -467,7 +467,7 @@ export default function DashboardPage() {
       )}
       {items.length > 0 && searchedItems.length === 0 && (
         <div className="text-center py-8 text-text-secondary">
-          <p>No items matching &quot;{itemSearch}&quot;</p>
+          <p>No items matching &quot;{itemSearch.trim()}&quot;</p>
         </div>
       )}
 
