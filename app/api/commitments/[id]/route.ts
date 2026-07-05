@@ -30,20 +30,32 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
   await ref.update(updateData);
 
-  // If linkedGoalId changed, propagate to unpaid cycle items
-  if ('linkedGoalId' in body) {
+  // Propagate changes to cycle items if relevant fields changed
+  if ('linkedGoalId' in body || 'isVariable' in body) {
     const cycleItemsRef = db.collection(`users/${userId}/cycleItems`);
+    // For isVariable, propagate to all non-paid items (upcoming, due, partial)
+    // For linkedGoalId, only propagate to unpaid items (upcoming, due)
+    const statuses = 'isVariable' in body
+      ? ['upcoming', 'due', 'partial']
+      : ['upcoming', 'due'];
+
     const snapshot = await cycleItemsRef
       .where('commitmentId', '==', id)
-      .where('status', 'in', ['upcoming', 'due'])
+      .where('status', 'in', statuses)
       .get();
 
     const batch = db.batch();
     for (const itemDoc of snapshot.docs) {
-      batch.update(itemDoc.ref, {
-        linkedGoalId: body.linkedGoalId || null,
+      const updates: Record<string, unknown> = {
         updatedAt: FieldValue.serverTimestamp(),
-      });
+      };
+      if ('linkedGoalId' in body) {
+        updates.linkedGoalId = body.linkedGoalId || null;
+      }
+      if ('isVariable' in body) {
+        updates.isVariable = body.isVariable ?? false;
+      }
+      batch.update(itemDoc.ref, updates);
     }
     if (!snapshot.empty) {
       await batch.commit();
