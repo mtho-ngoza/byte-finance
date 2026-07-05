@@ -116,6 +116,9 @@ export async function POST(request: NextRequest) {
             )
           : null,
         sortOrder: index,
+        payments: [],
+        totalPaidAmount: 0,
+        paidDate: null,
         createdAt: now,
         updatedAt: now,
       });

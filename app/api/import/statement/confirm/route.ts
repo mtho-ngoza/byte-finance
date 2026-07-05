@@ -53,6 +53,8 @@ export async function POST(request: NextRequest) {
       notes: `Imported from bank statement (${tx.date})`,
       tags: ['bank-import'],
       sortOrder: index,
+      payments: [],
+      totalPaidAmount: 0,
       createdAt: now,
       updatedAt: now,
     });

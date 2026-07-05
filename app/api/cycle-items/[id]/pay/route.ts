@@ -64,18 +64,29 @@ export async function POST(
     payments: FieldValue.arrayUnion(payment),
     totalPaidAmount: FieldValue.increment(amount),
     status: newStatus,
-    paidDate: nowPaid ? new Date() : null,
+    paidDate: nowPaid ? paymentDate : null,
     updatedAt: now,
   });
 
   // Link the receipt to this cycle item if provided
   if (receiptId) {
     const receiptRef = db.collection(`users/${userId}/receipts`).doc(receiptId);
-    await receiptRef.update({
-      cycleItemId: id,
-      cycleId: item.cycleId,
-      updatedAt: now,
-    });
+    const receiptSnap = await receiptRef.get();
+
+    if (receiptSnap.exists) {
+      const receipt = receiptSnap.data()!;
+      // Check if receipt is already linked to a different payment
+      if (receipt.cycleItemId && receipt.cycleItemId !== id) {
+        // Receipt already linked - skip linking but don't fail the payment
+        console.warn(`Receipt ${receiptId} already linked to ${receipt.cycleItemId}`);
+      } else {
+        await receiptRef.update({
+          cycleItemId: id,
+          cycleId: item.cycleId,
+          updatedAt: now,
+        });
+      }
+    }
   }
 
   // Update cycle totalPaid (always increment — partial counts toward paid total)

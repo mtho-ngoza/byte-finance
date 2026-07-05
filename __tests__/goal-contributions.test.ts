@@ -4,6 +4,10 @@ import { createMockFirestore, type MockFirestore } from './setup';
 // Test user ID
 const TEST_USER_ID = 'test-user-123';
 
+// Type helpers for test assertions
+type GoalDoc = { currentAmount: number; contributions: Array<{ cycleItemId?: string; amount: number; id: string }> };
+type ItemDoc = { status: string; totalPaidAmount?: number; isVariable?: boolean };
+
 // Mock the database - this needs to be set before each test
 let mockDb: MockFirestore;
 
@@ -63,7 +67,7 @@ describe('Goal Contributions Integration Tests', () => {
       await POST(request as never, { params: Promise.resolve({ id: 'item-1' }) });
 
       // Assert: Check goal was updated
-      const goal = mockDb._getDoc(`users/${TEST_USER_ID}/goals`, 'goal-1');
+      const goal = mockDb._getDoc(`users/${TEST_USER_ID}/goals`, 'goal-1') as GoalDoc | undefined;
       expect(goal?.currentAmount).toBe(100000);
       expect(goal?.contributions).toHaveLength(1);
       expect(goal?.contributions[0]).toMatchObject({
@@ -117,7 +121,7 @@ describe('Goal Contributions Integration Tests', () => {
       await POST(request as never, { params: Promise.resolve({ id: 'item-1' }) });
 
       // Assert: Check goal was updated with difference
-      const goal = mockDb._getDoc(`users/${TEST_USER_ID}/goals`, 'goal-1');
+      const goal = mockDb._getDoc(`users/${TEST_USER_ID}/goals`, 'goal-1') as GoalDoc | undefined;
       expect(goal?.currentAmount).toBe(75000); // 50000 + 25000 diff
     });
 
@@ -161,7 +165,7 @@ describe('Goal Contributions Integration Tests', () => {
       await POST(request as never, { params: Promise.resolve({ id: 'item-1' }) });
 
       // Assert: Check goal contribution was removed
-      const goal = mockDb._getDoc(`users/${TEST_USER_ID}/goals`, 'goal-1');
+      const goal = mockDb._getDoc(`users/${TEST_USER_ID}/goals`, 'goal-1') as GoalDoc | undefined;
       expect(goal?.currentAmount).toBe(0);
       expect(goal?.contributions).toHaveLength(0);
     });
@@ -208,7 +212,7 @@ describe('Goal Contributions Integration Tests', () => {
       await PATCH(request as never, { params: Promise.resolve({ id: 'item-1' }) });
 
       // Assert: Check only item-1 contributions were removed
-      const goal = mockDb._getDoc(`users/${TEST_USER_ID}/goals`, 'goal-1');
+      const goal = mockDb._getDoc(`users/${TEST_USER_ID}/goals`, 'goal-1') as GoalDoc | undefined;
       expect(goal?.currentAmount).toBe(50000); // Only item-2 contribution remains
       expect(goal?.contributions).toHaveLength(1);
       expect(goal?.contributions[0].cycleItemId).toBe('item-2');
@@ -253,7 +257,7 @@ describe('Goal Contributions Integration Tests', () => {
       await DELETE(request as never, { params: Promise.resolve({ id: 'item-1' }) });
 
       // Assert: Check contribution was removed from goal
-      const goal = mockDb._getDoc(`users/${TEST_USER_ID}/goals`, 'goal-1');
+      const goal = mockDb._getDoc(`users/${TEST_USER_ID}/goals`, 'goal-1') as GoalDoc | undefined;
       expect(goal?.currentAmount).toBe(0);
       expect(goal?.contributions).toHaveLength(0);
     });
@@ -304,7 +308,7 @@ describe('Goal Contributions Integration Tests', () => {
       await DELETE(request as never, { params: Promise.resolve({ id: 'cycle-2024-01' }) });
 
       // Assert: Check all contributions were removed from goal
-      const goal = mockDb._getDoc(`users/${TEST_USER_ID}/goals`, 'goal-1');
+      const goal = mockDb._getDoc(`users/${TEST_USER_ID}/goals`, 'goal-1') as GoalDoc | undefined;
       expect(goal?.currentAmount).toBe(0);
       expect(goal?.contributions).toHaveLength(0);
     });
@@ -376,7 +380,7 @@ describe('Goal Contributions Integration Tests', () => {
 
       // Assert: Only new contribution was added
       expect(response.status).toBe(200);
-      const goal = mockDb._getDoc(`users/${TEST_USER_ID}/goals`, 'goal-1');
+      const goal = mockDb._getDoc(`users/${TEST_USER_ID}/goals`, 'goal-1') as GoalDoc | undefined;
       expect(goal?.currentAmount).toBe(125000); // 50000 + 75000
       expect(goal?.contributions).toHaveLength(2);
     });
@@ -410,7 +414,7 @@ describe('Goal Contributions Integration Tests', () => {
       await POST(request as never, { params: Promise.resolve({ id: 'item-1' }) });
 
       // Assert: Status should be partial, not paid
-      const item = mockDb._getDoc(`users/${TEST_USER_ID}/cycleItems`, 'item-1');
+      const item = mockDb._getDoc(`users/${TEST_USER_ID}/cycleItems`, 'item-1') as ItemDoc | undefined;
       expect(item?.status).toBe('partial');
       expect(item?.totalPaidAmount).toBe(250000);
     });
@@ -442,7 +446,7 @@ describe('Goal Contributions Integration Tests', () => {
       await POST(request as never, { params: Promise.resolve({ id: 'item-1' }) });
 
       // Assert: Status should be paid
-      const item = mockDb._getDoc(`users/${TEST_USER_ID}/cycleItems`, 'item-1');
+      const item = mockDb._getDoc(`users/${TEST_USER_ID}/cycleItems`, 'item-1') as ItemDoc | undefined;
       expect(item?.status).toBe('paid');
     });
   });
@@ -475,7 +479,7 @@ describe('Goal Contributions Integration Tests', () => {
       await PATCH(request as never, { params: Promise.resolve({ id: 'commitment-1' }) });
 
       // Assert: Cycle item should also be updated
-      const item = mockDb._getDoc(`users/${TEST_USER_ID}/cycleItems`, 'item-1');
+      const item = mockDb._getDoc(`users/${TEST_USER_ID}/cycleItems`, 'item-1') as ItemDoc | undefined;
       expect(item?.isVariable).toBe(true);
     });
   });

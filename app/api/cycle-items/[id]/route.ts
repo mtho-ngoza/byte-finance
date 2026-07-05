@@ -64,7 +64,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       await goalRef.update({
         currentAmount: FieldValue.increment(currentData.amount),
         contributions: FieldValue.arrayUnion({
-          id: `${id}-${Date.now()}`,
+          id: `${id}-status-${Date.now()}`,
           date: contributionDate,
           amount: currentData.amount,
           cycleId: currentData.cycleId,

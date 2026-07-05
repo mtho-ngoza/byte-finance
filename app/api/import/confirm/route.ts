@@ -78,6 +78,8 @@ export async function POST(request: NextRequest) {
       notes: null,
       tags: [],
       sortOrder: index,
+      payments: [],
+      totalPaidAmount: 0,
       createdAt: now,
       updatedAt: now,
     });
