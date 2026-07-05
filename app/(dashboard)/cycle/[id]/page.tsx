@@ -34,6 +34,7 @@ import { InlineReceiptCapture } from '@/components/shared/inline-receipt-capture
 import { GroupedReceiptPicker, ReceiptItem } from '@/components/shared/grouped-receipt-picker';
 import { DateInput } from '@/components/shared/date-input';
 import { Modal, ModalActions } from '@/components/shared/modal';
+import { ProgressBar } from '@/components/shared/progress-bar';
 import type { CycleItem, CycleItemStatus, Category, Cycle } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -191,12 +192,11 @@ export default function CycleDetailPage() {
             </span>
             <span>{progressPercent > 100 ? '>100%' : `${progressPercent}%`}</span>
           </div>
-          <div className="h-2 bg-background rounded-full overflow-hidden">
-            <div
-              className={`h-full rounded-full transition-all ${totalPaid > totalCommitted ? 'bg-error' : 'bg-primary'}`}
-              style={{ width: `${Math.min(100, progressPercent)}%` }}
-            />
-          </div>
+          <ProgressBar
+            value={progressPercent}
+            color={totalPaid > totalCommitted ? 'bg-error' : 'bg-primary'}
+            showOverflow
+          />
           {totalPaid > totalCommitted && (
             <p className="text-xs text-error mt-1">
               +<AmountDisplay amount={totalPaid - totalCommitted} size="xs" className="inline" /> over budget
@@ -1375,14 +1375,11 @@ function IncomeEntry({ cycle, cycleId, totalCommitted, vatPercentage }: IncomeEn
               <span>Committed: <AmountDisplay amount={totalCommitted} size="xs" className="inline" /></span>
               <span>{netIncome > 0 ? Math.round((totalCommitted / netIncome) * 100) : 0}%</span>
             </div>
-            <div className="h-2 bg-background rounded-full overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all ${
-                  totalCommitted > netIncome ? 'bg-error' : 'bg-primary'
-                }`}
-                style={{ width: `${Math.min(100, netIncome > 0 ? (totalCommitted / netIncome) * 100 : 0)}%` }}
-              />
-            </div>
+            <ProgressBar
+              value={netIncome > 0 ? (totalCommitted / netIncome) * 100 : 0}
+              color={totalCommitted > netIncome ? 'bg-error' : 'bg-primary'}
+              showOverflow
+            />
           </div>
         </div>
       ) : (

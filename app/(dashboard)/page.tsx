@@ -14,6 +14,7 @@ import { useToast } from '@/components/shared/toast';
 import { FloatingMenu } from '@/components/shared/floating-menu';
 import { PaymentPrompt } from '@/components/shared/payment-prompt';
 import { Modal, ModalActions } from '@/components/shared/modal';
+import { ProgressBar } from '@/components/shared/progress-bar';
 import type { CycleItem, CycleItemStatus, Goal, Insight } from '@/types';
 
 export default function DashboardPage() {
@@ -286,12 +287,11 @@ export default function DashboardPage() {
             <span>Paid: <AmountDisplay amount={totalPaid} size="xs" className="inline" /></span>
             <span>{progressPercent > 100 ? '>100%' : `${progressPercent}%`}</span>
           </div>
-          <div className="h-2 bg-background rounded-full overflow-hidden">
-            <div
-              className={`h-full rounded-full transition-all ${totalPaid > totalCommitted ? 'bg-error' : 'bg-primary'}`}
-              style={{ width: `${Math.min(100, progressPercent)}%` }}
-            />
-          </div>
+          <ProgressBar
+            value={progressPercent}
+            color={totalPaid > totalCommitted ? 'bg-error' : 'bg-primary'}
+            showOverflow
+          />
           {totalPaid > totalCommitted && (
             <p className="text-xs text-error mt-1">
               +<AmountDisplay amount={totalPaid - totalCommitted} size="xs" className="inline" /> over budget

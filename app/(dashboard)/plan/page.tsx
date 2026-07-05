@@ -8,35 +8,10 @@ import { AmountDisplay } from '@/components/shared/amount-display';
 import { CurrencyInput } from '@/components/shared/currency-input';
 import { useToast } from '@/components/shared/toast';
 import { Modal } from '@/components/shared/modal';
+import { ToggleSwitch } from '@/components/shared/toggle-switch';
+import { ProgressBar } from '@/components/shared/progress-bar';
+import { CATEGORIES, CATEGORY_LABELS, GOAL_TYPE_ICONS } from '@/lib/constants';
 import type { Category, Commitment } from '@/types';
-
-// ---------------------------------------------------------------------------
-// Category display helpers
-// ---------------------------------------------------------------------------
-
-const CATEGORY_LABELS: Record<Category, string> = {
-  housing: 'Housing',
-  transport: 'Transport',
-  family: 'Family',
-  utilities: 'Utilities',
-  health: 'Health',
-  education: 'Education',
-  savings: 'Savings',
-  lifestyle: 'Lifestyle',
-  business: 'Business',
-  other: 'Other',
-};
-
-const CATEGORIES: Category[] = [
-  'housing', 'transport', 'family', 'utilities', 'health',
-  'education', 'savings', 'lifestyle', 'business', 'other',
-];
-
-const GOAL_TYPE_ICONS: Record<string, string> = {
-  savings: '💰',
-  debt_payoff: '📉',
-  investment: '📈',
-};
 
 // ---------------------------------------------------------------------------
 // Plan Page
@@ -312,20 +287,13 @@ function CommitmentRow({ commitment, goals, onEdit, onDelete, onToggleActive }: 
       {/* Actions */}
       <div className="flex items-center gap-1 shrink-0">
         {/* Active/inactive toggle */}
-        <button
-          onClick={() => onToggleActive(commitment.id, !commitment.isActive)}
-          className={`relative w-8 h-4 rounded-full transition-colors shrink-0 ${
-            commitment.isActive ? 'bg-primary' : 'bg-border'
-          }`}
-          aria-label={commitment.isActive ? 'Deactivate commitment' : 'Activate commitment'}
+        <ToggleSwitch
+          checked={commitment.isActive}
+          onChange={(checked) => onToggleActive(commitment.id, checked)}
+          size="sm"
+          label={commitment.isActive ? 'Deactivate commitment' : 'Activate commitment'}
           title={commitment.isActive ? 'Active — click to deactivate' : 'Inactive — click to activate'}
-        >
-          <span
-            className={`absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white transition-transform ${
-              commitment.isActive ? 'translate-x-4' : 'translate-x-0'
-            }`}
-          />
-        </button>
+        />
         <button
           onClick={() => onEdit(commitment)}
           className="w-7 h-7 flex items-center justify-center rounded hover:bg-background text-text-secondary hover:text-text-primary transition-colors"
@@ -491,21 +459,10 @@ function CommitmentForm({ initial, goals, onSave, onCancel }: CommitmentFormProp
 
         {/* Variable toggle */}
         <div className="sm:col-span-2 flex items-center gap-3">
-          <button
-            type="button"
-            role="switch"
-            aria-checked={isVariable}
-            onClick={() => setIsVariable(!isVariable)}
-            className={`relative w-10 h-5 rounded-full transition-colors ${
-              isVariable ? 'bg-primary' : 'bg-border'
-            }`}
-          >
-            <span
-              className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
-                isVariable ? 'translate-x-5' : 'translate-x-0'
-              }`}
-            />
-          </button>
+          <ToggleSwitch
+            checked={isVariable}
+            onChange={setIsVariable}
+          />
           <span className="text-sm text-text-primary">Variable amount (changes each month)</span>
         </div>
       </div>
@@ -594,12 +551,7 @@ function GoalCard({ goal, onDelete }: GoalCardProps) {
           <span>{progressPercent}%</span>
           <AmountDisplay amount={goal.targetAmount} size="xs" />
         </div>
-        <div className="h-2 bg-background rounded-full overflow-hidden">
-          <div
-            className={`h-full rounded-full transition-all ${goal.isOnTrack ? 'bg-primary' : 'bg-warning'}`}
-            style={{ width: `${progressPercent}%` }}
-          />
-        </div>
+        <ProgressBar value={progressPercent} isOnTrack={goal.isOnTrack} />
       </div>
 
       {/* Footer row */}
