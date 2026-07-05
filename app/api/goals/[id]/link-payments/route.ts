@@ -33,8 +33,12 @@ export async function POST(
     return NextResponse.json({ error: 'Goal not found' }, { status: 404 });
   }
 
-  // Create contributions from the selected payments
-  const contributions = payments.map((p: {
+  const goal = goalDoc.data()!;
+  const existingContributions: Array<{ id: string }> = goal.contributions ?? [];
+  const existingIds = new Set(existingContributions.map((c) => c.id));
+
+  // Create contributions from the selected payments, filtering out duplicates
+  const allContributions = payments.map((p: {
     paymentId: string;
     cycleItemId: string;
     cycleId: string;
@@ -49,6 +53,13 @@ export async function POST(
     cycleItemId: p.cycleItemId,
     note: p.note ?? null,
   }));
+
+  // Filter out contributions that already exist
+  const contributions = allContributions.filter((c) => !existingIds.has(c.id));
+
+  if (contributions.length === 0) {
+    return NextResponse.json({ error: 'All payments are already linked to this goal' }, { status: 400 });
+  }
 
   const totalAmount = contributions.reduce((sum, c) => sum + c.amount, 0);
 
