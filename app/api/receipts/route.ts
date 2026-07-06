@@ -27,7 +27,8 @@ export async function GET(request: NextRequest) {
       .orderBy('capturedAt', 'desc');
   }
 
-  const snap = await query.limit(100).get();
+  // TODO: Implement cursor-based pagination for large receipt lists
+  const snap = await query.limit(500).get();
 
   const receipts = snap.docs.map((doc) => {
     const data = doc.data();

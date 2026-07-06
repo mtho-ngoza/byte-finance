@@ -44,16 +44,18 @@ export function PaymentPrompt({
   const [receiptsLoaded, setReceiptsLoaded] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  // Fetch receipts when opening the picker
-  const fetchReceipts = () => {
-    if (!receiptsLoaded) {
-      fetch('/api/receipts')
-        .then((r) => r.json())
-        .then((d) => {
-          setReceipts(d.receipts ?? []);
-          setReceiptsLoaded(true);
-        })
-        .catch(() => setReceiptsLoaded(true));
+  // Fetch receipts when opening the picker (always refresh to get latest)
+  const fetchReceipts = async () => {
+    try {
+      const res = await fetch('/api/receipts');
+      if (!res.ok) throw new Error('Failed to fetch receipts');
+      const d = await res.json();
+      setReceipts(d.receipts ?? []);
+      setReceiptsLoaded(true);
+    } catch (err) {
+      console.error('Receipt fetch error:', err);
+      toast('Failed to load receipts', 'error');
+      // Don't set receiptsLoaded so user can retry
     }
   };
 

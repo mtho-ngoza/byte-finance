@@ -37,15 +37,42 @@ export async function POST(
   const existingContributions: Array<{ id: string }> = goal.contributions ?? [];
   const existingIds = new Set(existingContributions.map((c) => c.id));
 
-  // Create contributions from the selected payments, filtering out duplicates
-  const allContributions = payments.map((p: {
+  // Validate that all payments exist in their respective cycle items
+  const validatedPayments: Array<{
     paymentId: string;
     cycleItemId: string;
     cycleId: string;
     amount: number;
     date: string;
     note?: string;
-  }) => ({
+  }> = [];
+
+  for (const p of payments as Array<{
+    paymentId: string;
+    cycleItemId: string;
+    cycleId: string;
+    amount: number;
+    date: string;
+    note?: string;
+  }>) {
+    const itemRef = db.collection(`users/${userId}/cycleItems`).doc(p.cycleItemId);
+    const itemDoc = await itemRef.get();
+    if (!itemDoc.exists) continue; // Skip non-existent items
+
+    const item = itemDoc.data()!;
+    const itemPayments: Array<{ id: string }> = item.payments ?? [];
+    const paymentExists = itemPayments.some((pay) => pay.id === p.paymentId);
+    if (paymentExists) {
+      validatedPayments.push(p);
+    }
+  }
+
+  if (validatedPayments.length === 0) {
+    return NextResponse.json({ error: 'No valid payments found to link' }, { status: 400 });
+  }
+
+  // Create contributions from validated payments, filtering out duplicates
+  const allContributions = validatedPayments.map((p) => ({
     id: `${p.cycleItemId}-${p.paymentId}`,
     date: new Date(p.date),
     amount: p.amount,

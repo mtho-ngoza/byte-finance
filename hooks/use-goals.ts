@@ -41,6 +41,20 @@ function computeIsOnTrack(goal: Goal, effectiveMonthlyTarget: number): boolean {
     return daysSinceCreation < 30; // Grace period of 30 days
   }
 
+  // Check for stale contributions - if last contribution was > 60 days ago, not on track
+  const sortedContributions = [...contributions].sort((a, b) => {
+    const dateA = a.date?.toDate?.()?.getTime() ?? 0;
+    const dateB = b.date?.toDate?.()?.getTime() ?? 0;
+    return dateB - dateA; // Most recent first
+  });
+  const lastContribution = sortedContributions[0]?.date?.toDate?.();
+  if (lastContribution) {
+    const daysSinceLastContribution = Math.floor((now.getTime() - lastContribution.getTime()) / (1000 * 60 * 60 * 24));
+    if (daysSinceLastContribution > 60) {
+      return false; // Stale - no contributions in 60+ days
+    }
+  }
+
   // Get earliest contribution date
   const firstContribution = contributions[0]?.date?.toDate?.() ?? now;
   const monthsElapsed = Math.max(

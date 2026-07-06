@@ -331,6 +331,15 @@ describe('Goal Contributions Integration Tests', () => {
         contributions: [existingContribution],
       });
 
+      // Setup: Cycle item with the payment (required for validation)
+      mockDb._setDoc(`users/${TEST_USER_ID}/cycleItems`, 'item-1', {
+        cycleId: 'cycle-2024-01',
+        label: 'Savings',
+        amount: 50000,
+        status: 'paid',
+        payments: [{ id: 'pay-123', amount: 50000, date: new Date('2024-01-15') }],
+      });
+
       // Import route handler
       const { POST } = await import('@/app/api/goals/[id]/link-payments/route');
 
@@ -363,6 +372,23 @@ describe('Goal Contributions Integration Tests', () => {
         targetAmount: 1000000,
         currentAmount: 50000,
         contributions: [existingContribution],
+      });
+
+      // Setup: Cycle items with payments (required for validation)
+      mockDb._setDoc(`users/${TEST_USER_ID}/cycleItems`, 'item-1', {
+        cycleId: 'cycle-2024-01',
+        label: 'Savings 1',
+        amount: 50000,
+        status: 'paid',
+        payments: [{ id: 'pay-123', amount: 50000, date: new Date('2024-01-15') }],
+      });
+
+      mockDb._setDoc(`users/${TEST_USER_ID}/cycleItems`, 'item-2', {
+        cycleId: 'cycle-2024-01',
+        label: 'Savings 2',
+        amount: 75000,
+        status: 'paid',
+        payments: [{ id: 'pay-456', amount: 75000, date: new Date('2024-01-20') }],
       });
 
       // Import route handler
