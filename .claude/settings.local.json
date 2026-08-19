@@ -26,7 +26,12 @@
       "Bash(git check-ignore:*)",
       "Bash(wc:*)",
       "Bash(grep:*)",
-      "Bash(npm test:*)"
+      "Bash(npm test:*)",
+      "Bash(gh issue list:*)",
+      "Bash(ls:*)",
+      "Bash(tail:*)",
+      "Bash(git reset:*)",
+      "Bash(git show:*)"
     ]
   }
 }

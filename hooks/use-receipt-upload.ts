@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { addToQueue, removeFromQueue } from '@/hooks/use-receipt-queue';
 import { useReceipts } from '@/hooks/use-receipts';
+import { runWorker } from '@/lib/worker-utils';
 import type { PendingReceipt } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -56,45 +57,6 @@ export function useReceiptUpload() {
   const { createReceipt } = useReceipts();
   const [status, setStatus] = useState<UploadStatus>('');
   const [isUploading, setIsUploading] = useState(false);
-
-  // Run a Web Worker and return its result, with a timeout fallback
-  const runWorker = useCallback(
-    <T,>(workerPath: string, message: object, timeoutMs = 15000): Promise<T> => {
-      return new Promise((resolve, reject) => {
-        let worker: Worker;
-        try {
-          worker = new Worker(workerPath);
-        } catch (err) {
-          reject(err);
-          return;
-        }
-
-        const timer = setTimeout(() => {
-          worker.terminate();
-          reject(new Error(`Worker ${workerPath} timed out`));
-        }, timeoutMs);
-
-        worker.onmessage = (event) => {
-          clearTimeout(timer);
-          worker.terminate();
-          if (event.data.error) {
-            reject(new Error(event.data.error));
-          } else {
-            resolve(event.data as T);
-          }
-        };
-
-        worker.onerror = (err) => {
-          clearTimeout(timer);
-          worker.terminate();
-          reject(err);
-        };
-
-        worker.postMessage(message);
-      });
-    },
-    []
-  );
 
   const upload = useCallback(
     async (params: ReceiptUploadParams): Promise<ReceiptUploadResult> => {
@@ -224,7 +186,7 @@ export function useReceiptUpload() {
         setStatus('');
       }
     },
-    [runWorker, createReceipt]
+    [createReceipt]
   );
 
   return { upload, status, isUploading };
