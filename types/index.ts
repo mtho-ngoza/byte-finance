@@ -297,6 +297,7 @@ export interface PendingReceipt {
   id: string;                       // Temporary local ID
   imageBlob: Blob;                  // Original image
   compressedBlob?: Blob;            // Compressed (if worker finished)
+  thumbnailBlob?: Blob;             // Thumbnail (if worker finished)
   imageHash: string;                // SHA-256
   amountInCents?: number;
   vendor?: string;

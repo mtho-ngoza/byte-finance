@@ -5,8 +5,11 @@ import crypto from 'crypto';
 
 /**
  * POST /api/receipts/upload
- * Upload receipt image to Firebase Storage
- * Accepts multipart/form-data with 'image' file
+ * Upload receipt image variants to Firebase Storage
+ * Accepts multipart/form-data with 3 files:
+ * - 'original': Full resolution original image
+ * - 'compressed': Compressed variant (1920px max, JPEG 80%)
+ * - 'thumbnail': Thumbnail variant (300px max, JPEG 75%)
  */
 export async function POST(request: NextRequest) {
   const auth = await withAuth(request);
@@ -15,26 +18,35 @@ export async function POST(request: NextRequest) {
 
   try {
     const formData = await request.formData();
-    const file = formData.get('image') as File | null;
+    const originalFile = formData.get('original') as File | null;
+    const compressedFile = formData.get('compressed') as File | null;
+    const thumbnailFile = formData.get('thumbnail') as File | null;
 
-    if (!file) {
-      return NextResponse.json({ error: 'No image provided' }, { status: 400 });
+    if (!originalFile || !compressedFile || !thumbnailFile) {
+      return NextResponse.json(
+        { error: 'Missing image variants (original, compressed, thumbnail required)' },
+        { status: 400 }
+      );
     }
 
-    // Validate file type
-    if (!file.type.startsWith('image/')) {
-      return NextResponse.json({ error: 'File must be an image' }, { status: 400 });
+    // Validate file types
+    if (!originalFile.type.startsWith('image/') ||
+        !compressedFile.type.startsWith('image/') ||
+        !thumbnailFile.type.startsWith('image/')) {
+      return NextResponse.json({ error: 'All files must be images' }, { status: 400 });
     }
 
-    // Validate file size (10MB max)
-    if (file.size > 10 * 1024 * 1024) {
-      return NextResponse.json({ error: 'File too large (max 10MB)' }, { status: 400 });
+    // Validate file size (10MB max for original)
+    if (originalFile.size > 10 * 1024 * 1024) {
+      return NextResponse.json({ error: 'Original file too large (max 10MB)' }, { status: 400 });
     }
 
-    const buffer = Buffer.from(await file.arrayBuffer());
+    const originalBuffer = Buffer.from(await originalFile.arrayBuffer());
+    const compressedBuffer = Buffer.from(await compressedFile.arrayBuffer());
+    const thumbnailBuffer = Buffer.from(await thumbnailFile.arrayBuffer());
 
-    // Generate hash for duplicate detection
-    const imageHash = crypto.createHash('sha256').update(buffer).digest('hex');
+    // Generate hash from original image for duplicate detection
+    const imageHash = crypto.createHash('sha256').update(originalBuffer).digest('hex');
 
     // Generate unique receipt ID
     const receiptId = `${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -43,29 +55,28 @@ export async function POST(request: NextRequest) {
     const storage = getAdminStorage();
     const bucket = storage.bucket();
 
-    // Upload original image
-    const originalFile = bucket.file(`${basePath}/original.jpg`);
-    await originalFile.save(buffer, {
+    // Upload original image (full resolution)
+    const originalStorageFile = bucket.file(`${basePath}/original.jpg`);
+    await originalStorageFile.save(originalBuffer, {
       metadata: { contentType: 'image/jpeg' },
     });
-    await originalFile.makePublic();
+    await originalStorageFile.makePublic();
     const originalImageUrl = `https://storage.googleapis.com/${bucket.name}/${basePath}/original.jpg`;
 
-    // For compressed and thumbnail, we'll use the same image for now
-    // (proper compression should be done client-side before upload for performance)
-    const imageFile = bucket.file(`${basePath}/image.jpg`);
-    await imageFile.save(buffer, {
+    // Upload compressed image (1920px max, JPEG 80%)
+    const imageStorageFile = bucket.file(`${basePath}/image.jpg`);
+    await imageStorageFile.save(compressedBuffer, {
       metadata: { contentType: 'image/jpeg' },
     });
-    await imageFile.makePublic();
+    await imageStorageFile.makePublic();
     const imageUrl = `https://storage.googleapis.com/${bucket.name}/${basePath}/image.jpg`;
 
-    // Create a simple thumbnail (using same image for MVP)
-    const thumbFile = bucket.file(`${basePath}/thumb.jpg`);
-    await thumbFile.save(buffer, {
+    // Upload thumbnail (300px max, JPEG 75%)
+    const thumbStorageFile = bucket.file(`${basePath}/thumb.jpg`);
+    await thumbStorageFile.save(thumbnailBuffer, {
       metadata: { contentType: 'image/jpeg' },
     });
-    await thumbFile.makePublic();
+    await thumbStorageFile.makePublic();
     const thumbnailUrl = `https://storage.googleapis.com/${bucket.name}/${basePath}/thumb.jpg`;
 
     return NextResponse.json({

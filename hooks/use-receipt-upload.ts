@@ -118,15 +118,17 @@ export function useReceiptUpload() {
           imageHash = `fallback-${Date.now()}-${Math.random().toString(36).slice(2)}`;
         }
 
-        // Step 2: Compress the blob (fall back to original if worker fails)
+        // Step 2: Create compressed and thumbnail variants (fall back to original if worker fails)
         let compressedBlob: Blob | undefined;
+        let thumbnailBlob: Blob | undefined;
         try {
           setStatus('Compressing…');
-          const compressResult = await runWorker<{ blob: Blob }>(
+          const compressResult = await runWorker<{ compressed: Blob; thumbnail: Blob }>(
             '/workers/compress.worker.js',
             { blob: imageBlob }
           );
-          compressedBlob = compressResult.blob;
+          compressedBlob = compressResult.compressed;
+          thumbnailBlob = compressResult.thumbnail;
         } catch (compressErr) {
           console.warn('Compress worker failed, will upload original:', compressErr);
         }
@@ -137,6 +139,7 @@ export function useReceiptUpload() {
           id: pendingId,
           imageBlob,
           compressedBlob,
+          thumbnailBlob,
           imageHash,
           amountInCents: amount > 0 ? amount : undefined,
           vendor: vendor.trim() || undefined,
@@ -167,9 +170,10 @@ export function useReceiptUpload() {
 
         // Step 5: Attempt upload now (optimistic — may fail if offline)
         setStatus('Uploading…');
-        const uploadBlob = compressedBlob ?? imageBlob;
         const formData = new FormData();
-        formData.append('image', uploadBlob, 'receipt.jpg');
+        formData.append('original', imageBlob, 'original.jpg');
+        formData.append('compressed', compressedBlob ?? imageBlob, 'compressed.jpg');
+        formData.append('thumbnail', thumbnailBlob ?? compressedBlob ?? imageBlob, 'thumbnail.jpg');
 
         const uploadRes = await fetch('/api/receipts/upload', {
           method: 'POST',

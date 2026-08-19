@@ -171,9 +171,11 @@ async function processReceiptQueue() {
 
   for (const item of items) {
     try {
-      const blob = item.compressedBlob ?? item.imageBlob;
+      // Build FormData with all 3 image variants
       const formData = new FormData();
-      formData.append('image', blob, 'receipt.jpg');
+      formData.append('original', item.imageBlob, 'original.jpg');
+      formData.append('compressed', item.compressedBlob ?? item.imageBlob, 'compressed.jpg');
+      formData.append('thumbnail', item.thumbnailBlob ?? item.compressedBlob ?? item.imageBlob, 'thumbnail.jpg');
 
       const uploadRes = await fetch('/api/receipts/upload', {
         method: 'POST',
