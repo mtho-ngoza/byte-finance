@@ -23,7 +23,9 @@ export function InlineReceiptCapture({ onCaptured, onError }: InlineReceiptCaptu
     try {
       // 1. Upload image to Storage
       const formData = new FormData();
-      formData.append('image', file, 'receipt.jpg');
+      formData.append('original', file, 'original.jpg');
+      formData.append('compressed', file, 'compressed.jpg');
+      formData.append('thumbnail', file, 'thumbnail.jpg');
       const uploadRes = await fetch('/api/receipts/upload', { method: 'POST', body: formData });
       if (!uploadRes.ok) throw new Error('Upload failed');
       const { imageUrl, originalImageUrl, thumbnailUrl, imageHash } = await uploadRes.json();
