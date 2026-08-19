@@ -42,11 +42,6 @@ export default function GoalDetailPage() {
     );
   }
 
-  // Route to project view for project type goals
-  if (goal.type === 'project') {
-    return <ProjectGoalDetail goal={goal} />;
-  }
-
   return <GoalDetail goal={goal} allCommitments={allCommitments} />;
 }
 

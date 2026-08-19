@@ -64,19 +64,17 @@ export interface Commitment {
 }
 
 /**
- * Goal - A financial target (savings, debt payoff, or investment)
+ * Goal - A personal financial target (savings, debt payoff, or investment)
+ * For shared/family pools, use Project instead
  */
 export interface Goal {
   id: string;
-  name: string;                     // "Medical Fund", "Pay off car", "Byte Fusion", "House - Roofing"
-  type: 'savings' | 'debt_payoff' | 'investment' | 'project';
+  name: string;                     // "Medical Fund", "Pay off car", "Emergency Fund"
+  type: 'savings' | 'debt_payoff' | 'investment';
 
   // Target tracking
-  targetAmount: number;             // Target in cents
+  targetAmount: number;             // Target in cents (required)
   currentAmount: number;            // Current progress (auto-calculated)
-
-  // For project type (quotations, invoices)
-  quotedAmount?: number;            // Quote amount in cents (for projects)
 
   // For debt_payoff type
   debtTracking?: {
@@ -135,12 +133,51 @@ export interface Goal {
 }
 
 /**
- * ProjectTransaction - Contributions and payments for project goals
- * Separate from normal cycle items - tracks family contributions and vendor payments
+ * Project - A shared/family fund with contributions and payments
+ * Distinct from Goals - no fixed target, just pool money and track spending
+ */
+export interface Project {
+  id: string;
+  name: string;                     // "House - Roofing", "Family Event Fund"
+  description?: string;             // What this project is for
+  type: 'construction' | 'family' | 'event' | 'other';
+
+  // Current pool balance (auto-calculated)
+  currentAmount: number;            // Current balance in cents
+
+  // Optional target (if quoted or estimated)
+  targetAmount?: number;            // Optional target/quote in cents
+  quotedAmount?: number;            // Deprecated: use targetAmount
+
+  // Transaction history
+  transactions: Array<{
+    id: string;
+    type: 'contribution' | 'payment';
+    amount: number;                 // cents (positive for both)
+    contributorName?: string;       // Who contributed (for contributions)
+    description: string;            // What this is for
+    receiptId?: string;             // Receipt (for payments)
+    date: Timestamp;
+  }>;
+
+  // Status
+  status: 'active' | 'completed' | 'paused';
+
+  // Metadata
+  priority: 'high' | 'medium' | 'low';
+  notes?: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+  completedAt?: Timestamp;
+}
+
+/**
+ * ProjectTransaction - Individual transaction within a project
+ * Used for API payloads and transaction operations
  */
 export interface ProjectTransaction {
   id: string;
-  goalId: string;                   // Which project/goal this belongs to
+  projectId: string;                // Which project this belongs to
   type: 'contribution' | 'payment'; // Money IN or money OUT
   amount: number;                   // Amount in cents (always positive)
   contributorName?: string;         // "Uncle Joe", "Sister" (optional for privacy)
@@ -300,9 +337,9 @@ export interface Receipt {
   cycleItemId?: string;
   cycleId?: string;
 
-  // Linking to project goals
+  // Linking to projects
   projectTransactionId?: string;
-  projectGoalId?: string;
+  projectId?: string;
 
   // Sage Business Cloud integration
   sageTransactionId?: string;
@@ -387,6 +424,7 @@ export interface WishlistItem {
  */
 export type CreateCommitment = Omit<Commitment, 'id' | 'createdAt' | 'updatedAt'>;
 export type CreateGoal = Omit<Goal, 'id' | 'createdAt' | 'updatedAt' | 'completedAt' | 'contributions' | 'withdrawals' | 'currentAmount' | 'isOnTrack'>;
+export type CreateProject = Omit<Project, 'id' | 'createdAt' | 'updatedAt' | 'completedAt' | 'transactions' | 'currentAmount'>;
 export type CreateCycle = Omit<Cycle, 'id' | 'createdAt' | 'updatedAt'>;
 export type CreateCycleItem = Omit<CycleItem, 'id' | 'createdAt' | 'updatedAt'>;
 export type CreateReceipt = Omit<Receipt, 'id' | 'createdAt' | 'updatedAt'>;
