@@ -64,6 +64,7 @@ interface UnlinkedPayment {
 
 function GoalDetail({ goal, allCommitments }: GoalDetailProps) {
   const { toast } = useToast();
+  const [showEdit, setShowEdit] = useState(false);
   const [showAddContribution, setShowAddContribution] = useState(false);
   const [contributionAmount, setContributionAmount] = useState(0);
   const [contributionDate, setContributionDate] = useState(new Date().toISOString().split('T')[0]);
@@ -149,6 +150,37 @@ function GoalDetail({ goal, allCommitments }: GoalDetailProps) {
 
   const remaining = Math.max(0, goal.targetAmount - goal.currentAmount);
 
+  const handleEdit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+
+    const body: Record<string, any> = {
+      name: formData.get('name'),
+      type: formData.get('type'),
+      targetAmount: Number(formData.get('targetAmount')) * 100, // Convert to cents
+      monthlyTarget: formData.get('monthlyTarget') ? Number(formData.get('monthlyTarget')) * 100 : null,
+      priority: formData.get('priority'),
+      notes: formData.get('notes') || null,
+      status: formData.get('status'),
+    };
+
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/goals/${goal.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error('Failed to update goal');
+      toast('Goal updated', 'success');
+      setShowEdit(false);
+    } catch {
+      toast('Failed to update goal', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleAddContribution = async () => {
     if (contributionAmount <= 0) {
       toast('Please enter a valid amount', 'error');
@@ -214,27 +246,153 @@ function GoalDetail({ goal, allCommitments }: GoalDetailProps) {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <Link
-          href="/goals"
-          className="p-2 rounded-lg text-text-secondary hover:bg-surface transition-colors"
-        >
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 20 20">
-            <path d="M12 4l-6 6 6 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </Link>
-        <div>
-          <h1 className="text-xl font-semibold text-text-primary">{goal.name}</h1>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-text-secondary capitalize">{goal.type.replace('_', ' ')}</span>
-            {goal.isOnTrack ? (
-              <span className="text-xs px-1.5 py-0.5 rounded bg-primary/10 text-primary">On Track</span>
-            ) : (
-              <span className="text-xs px-1.5 py-0.5 rounded bg-warning/10 text-warning">Behind</span>
-            )}
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <Link
+            href="/goals"
+            className="p-2 rounded-lg text-text-secondary hover:bg-surface transition-colors"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 20 20">
+              <path d="M12 4l-6 6 6 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </Link>
+          <div>
+            <h1 className="text-xl font-semibold text-text-primary">{goal.name}</h1>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-text-secondary capitalize">{goal.type.replace('_', ' ')}</span>
+              {goal.isOnTrack ? (
+                <span className="text-xs px-1.5 py-0.5 rounded bg-primary/10 text-primary">On Track</span>
+              ) : (
+                <span className="text-xs px-1.5 py-0.5 rounded bg-warning/10 text-warning">Behind</span>
+              )}
+            </div>
           </div>
         </div>
+        {!showEdit && (
+          <button
+            onClick={() => setShowEdit(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-text-secondary hover:border-primary hover:text-primary transition-colors text-sm"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
+            </svg>
+            Edit
+          </button>
+        )}
       </div>
+
+      {/* Edit Form */}
+      {showEdit && (
+        <form onSubmit={handleEdit} className="p-4 rounded-xl border border-border bg-surface space-y-4">
+          <h2 className="text-base font-semibold text-text-primary">Edit Goal</h2>
+
+          <div>
+            <label className="block text-sm text-text-secondary mb-1">Name</label>
+            <input
+              name="name"
+              required
+              defaultValue={goal.name}
+              className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary"
+              placeholder="e.g., Emergency Fund"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm text-text-secondary mb-1">Type</label>
+              <select
+                name="type"
+                required
+                defaultValue={goal.type}
+                className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary"
+              >
+                <option value="savings">Savings</option>
+                <option value="debt_payoff">Debt Payoff</option>
+                <option value="investment">Investment</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm text-text-secondary mb-1">Priority</label>
+              <select
+                name="priority"
+                required
+                defaultValue={goal.priority}
+                className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary"
+              >
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm text-text-secondary mb-1">Target Amount (R)</label>
+              <input
+                name="targetAmount"
+                type="number"
+                required
+                min="0"
+                defaultValue={goal.targetAmount / 100}
+                className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-text-secondary mb-1">Monthly Target (R)</label>
+              <input
+                name="monthlyTarget"
+                type="number"
+                min="0"
+                defaultValue={goal.monthlyTarget ? goal.monthlyTarget / 100 : ''}
+                className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm text-text-secondary mb-1">Status</label>
+            <select
+              name="status"
+              required
+              defaultValue={goal.status}
+              className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary"
+            >
+              <option value="active">Active</option>
+              <option value="paused">Paused</option>
+              <option value="completed">Completed</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm text-text-secondary mb-1">Notes</label>
+            <textarea
+              name="notes"
+              rows={2}
+              defaultValue={goal.notes || ''}
+              className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setShowEdit(false)}
+              disabled={saving}
+              className="px-4 py-2 rounded-lg text-text-secondary hover:bg-background transition-colors disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="px-4 py-2 rounded-lg bg-primary text-background font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
+            >
+              {saving ? 'Saving...' : 'Save Changes'}
+            </button>
+          </div>
+        </form>
+      )}
 
       {/* Progress Card */}
       <div className="p-4 rounded-xl border border-border bg-surface">
