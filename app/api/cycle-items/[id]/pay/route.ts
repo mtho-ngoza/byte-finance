@@ -70,40 +70,48 @@ export async function POST(
 
   // Link the receipt to this cycle item if provided
   if (receiptId) {
-    const receiptRef = db.collection(`users/${userId}/receipts`).doc(receiptId);
-    const receiptSnap = await receiptRef.get();
+    try {
+      const receiptRef = db.collection(`users/${userId}/receipts`).doc(receiptId);
+      const receiptSnap = await receiptRef.get();
 
-    if (receiptSnap.exists) {
-      const receipt = receiptSnap.data()!;
-      // Check if receipt is already linked to a different payment
-      if (receipt.cycleItemId && receipt.cycleItemId !== id) {
-        // Receipt already linked - skip linking but don't fail the payment
-        console.warn(`Receipt ${receiptId} already linked to ${receipt.cycleItemId}`);
+      if (receiptSnap.exists) {
+        const receipt = receiptSnap.data()!;
+        // Check if receipt is already linked to a different payment
+        if (receipt.cycleItemId && receipt.cycleItemId !== id) {
+          // Receipt already linked - skip linking but don't fail the payment
+          console.warn(`Receipt ${receiptId} already linked to ${receipt.cycleItemId}`);
+        } else {
+          // Auto-populate amount and vendor from payment if not already set
+          const receiptUpdate: any = {
+            cycleItemId: id,
+            cycleId: item.cycleId,
+            updatedAt: now,
+          };
+
+          // If receipt doesn't have amount, use payment amount
+          if (!receipt.amountInCents) {
+            receiptUpdate.amountInCents = amount;
+          }
+
+          // If receipt doesn't have vendor, use cycle item label as vendor
+          if (!receipt.vendor && item.label) {
+            receiptUpdate.vendor = item.label;
+          }
+
+          // Update needsAttention flag based on whether we now have amount and vendor
+          const willHaveAmount = receipt.amountInCents || amount;
+          const willHaveVendor = receipt.vendor || item.label;
+          receiptUpdate.needsAttention = !(willHaveAmount && willHaveVendor);
+
+          await receiptRef.update(receiptUpdate);
+        }
       } else {
-        // Auto-populate amount and vendor from payment if not already set
-        const receiptUpdate: any = {
-          cycleItemId: id,
-          cycleId: item.cycleId,
-          updatedAt: now,
-        };
-
-        // If receipt doesn't have amount, use payment amount
-        if (!receipt.amountInCents) {
-          receiptUpdate.amountInCents = amount;
-        }
-
-        // If receipt doesn't have vendor, use cycle item label as vendor
-        if (!receipt.vendor && item.label) {
-          receiptUpdate.vendor = item.label;
-        }
-
-        // Update needsAttention flag based on whether we now have amount and vendor
-        const willHaveAmount = receipt.amountInCents || amount;
-        const willHaveVendor = receipt.vendor || item.label;
-        receiptUpdate.needsAttention = !(willHaveAmount && willHaveVendor);
-
-        await receiptRef.update(receiptUpdate);
+        console.warn(`Receipt ${receiptId} not found`);
       }
+    } catch (receiptError) {
+      // Log error but don't fail the payment
+      console.error('Failed to link receipt:', receiptError);
+      // Continue with payment even if receipt linking fails
     }
   }
 
