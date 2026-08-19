@@ -9,6 +9,7 @@ import { useReceiptUpload } from '@/hooks/use-receipt-upload';
 import { AmountDisplay } from '@/components/shared/amount-display';
 import { CurrencyInput } from '@/components/shared/currency-input';
 import { DateInput } from '@/components/shared/date-input';
+import { VendorAutocomplete } from '@/components/shared/vendor-autocomplete';
 import { useToast } from '@/components/shared/toast';
 import type { Receipt, PendingReceipt } from '@/types';
 
@@ -139,7 +140,6 @@ export default function ReceiptsPage() {
       if (!q) return true;
       return (
         r.vendor?.toLowerCase().includes(q) ||
-        r.note?.toLowerCase().includes(q) ||
         (r.amountInCents !== undefined && `r${(r.amountInCents / 100).toFixed(0)}`.includes(q))
       );
     });
@@ -222,7 +222,7 @@ export default function ReceiptsPage() {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search vendor, note, amount..."
+            placeholder="Search vendor, amount..."
             className="w-full pl-9 pr-3 py-2 rounded-lg border border-border bg-surface text-sm text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-primary"
           />
           {search && (
@@ -628,7 +628,6 @@ function ReceiptCapture({ onClose }: { onClose: () => void }) {
   const [imageBlob, setImageBlob] = useState<Blob | null>(null);
   const [amount, setAmount] = useState(0);
   const [vendor, setVendor] = useState('');
-  const [note, setNote] = useState('');
   const [capturedDate, setCapturedDate] = useState(new Date().toISOString().split('T')[0]);
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -691,7 +690,6 @@ function ReceiptCapture({ onClose }: { onClose: () => void }) {
       imageBlob,
       amount,
       vendor,
-      note,
       capturedAt: capturedDate ? new Date(capturedDate).toISOString() : undefined,
       location: location ? { lat: location.lat, lng: location.lng, accuracy: location.accuracy } : undefined,
     });
@@ -729,22 +727,16 @@ function ReceiptCapture({ onClose }: { onClose: () => void }) {
             </div>
             <div>
               <label className="block text-xs text-white/70 mb-1">Vendor</label>
-              <div className="flex flex-wrap gap-2 mb-2">
-                {suggestedVendors.slice(0, 6).map((v) => (
-                  <button key={v} onClick={() => setVendor(v)} className={`px-3 py-1.5 rounded-full text-sm transition-colors ${vendor === v ? 'bg-primary text-black' : 'bg-white/20 text-white hover:bg-white/30'}`}>{v}</button>
-                ))}
-              </div>
-              <input type="text" value={vendor} onChange={(e) => setVendor(e.target.value)} placeholder="Or type vendor name..." className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder:text-white/50 focus:outline-none focus:border-primary text-sm" />
+              <VendorAutocomplete
+                value={vendor}
+                onChange={setVendor}
+                placeholder="e.g., Checkers, KFC, Netflix..."
+                className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder:text-white/50 focus:outline-none focus:border-primary text-sm"
+              />
             </div>
-            <div className="flex gap-3">
-              <div className="flex-1">
-                <label className="block text-xs text-white/70 mb-1">Note (optional)</label>
-                <input type="text" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Quick context..." className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder:text-white/50 focus:outline-none focus:border-primary text-sm" />
-              </div>
-              <div className="w-[130px] shrink-0">
-                <label className="block text-xs text-white/70 mb-1">Date</label>
-                <input type="date" value={capturedDate} onChange={(e) => setCapturedDate(e.target.value)} className="w-full px-2 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:border-primary text-sm [color-scheme:dark]" style={{ colorScheme: 'dark' }} />
-              </div>
+            <div>
+              <label className="block text-xs text-white/70 mb-1">Date</label>
+              <input type="date" value={capturedDate} onChange={(e) => setCapturedDate(e.target.value)} className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:border-primary text-sm [color-scheme:dark]" style={{ colorScheme: 'dark' }} />
             </div>
             <div className="flex gap-3">
               <button onClick={() => { setStep('camera'); setImageData(null); setImageBlob(null); startCamera(); }} className="flex-1 py-3 rounded-lg border border-white/30 text-white font-medium">Retake</button>

@@ -14,7 +14,6 @@ export interface ReceiptUploadParams {
   imageBlob: Blob;
   amount: number;
   vendor: string;
-  note: string;
   capturedAt?: string; // ISO date string, defaults to now
   location?: {
     lat: number;
@@ -60,7 +59,7 @@ export function useReceiptUpload() {
 
   const upload = useCallback(
     async (params: ReceiptUploadParams): Promise<ReceiptUploadResult> => {
-      const { imageBlob, amount, vendor, note, capturedAt, location } = params;
+      const { imageBlob, amount, vendor, capturedAt, location } = params;
 
       setIsUploading(true);
 
@@ -105,7 +104,6 @@ export function useReceiptUpload() {
           imageHash,
           amountInCents: amount > 0 ? amount : undefined,
           vendor: vendor.trim() || undefined,
-          note: note.trim() || undefined,
           location,
           capturedAt: Date.now(),
           uploadAttempts: 0,
@@ -163,7 +161,6 @@ export function useReceiptUpload() {
           imageHash: imageHash.startsWith('fallback-') ? serverHash : imageHash,
           amountInCents: amount > 0 ? amount : undefined,
           vendor: vendor.trim() || undefined,
-          note: note.trim() || undefined,
           location,
           capturedAt: capturedAt || new Date().toISOString(),
         });

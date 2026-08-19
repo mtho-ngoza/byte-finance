@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { InlineReceiptCapture } from './inline-receipt-capture';
 import { GroupedReceiptPicker, ReceiptItem } from './grouped-receipt-picker';
+import { VendorAutocomplete } from './vendor-autocomplete';
 import { DateInput } from './date-input';
 import { useToast } from './toast';
 
@@ -36,7 +37,7 @@ export function PaymentPrompt({
   const [paymentValue, setPaymentValue] = useState(
     isPartial ? '' : (budgetAmount / 100).toFixed(2)
   );
-  const [paymentNote, setPaymentNote] = useState('');
+  const [paymentVendor, setPaymentVendor] = useState('');
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
   const [paymentReceiptId, setPaymentReceiptId] = useState<string | undefined>(undefined);
   const [showReceiptPicker, setShowReceiptPicker] = useState(false);
@@ -68,7 +69,7 @@ export function PaymentPrompt({
 
     setSubmitting(true);
     try {
-      await onConfirm(amt, paymentNote.trim() || undefined, paymentReceiptId, paymentDate || undefined);
+      await onConfirm(amt, paymentVendor.trim() || undefined, paymentReceiptId, paymentDate || undefined);
       onClose();
     } catch {
       toast('Failed to add payment', 'error');
@@ -113,15 +114,14 @@ export function PaymentPrompt({
             </div>
           </div>
 
-          {/* Note + Date row */}
+          {/* Vendor + Date row */}
           <div className="flex gap-2">
             <div className="flex-1">
-              <label className="block text-xs text-text-secondary mb-1">Note</label>
-              <input
-                type="text"
-                value={paymentNote}
-                onChange={(e) => setPaymentNote(e.target.value)}
-                placeholder="optional"
+              <label className="block text-xs text-text-secondary mb-1">Vendor (optional)</label>
+              <VendorAutocomplete
+                value={paymentVendor}
+                onChange={setPaymentVendor}
+                placeholder="e.g., KFC, Checkers"
                 className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background text-text-primary focus:outline-none focus:border-primary"
               />
             </div>

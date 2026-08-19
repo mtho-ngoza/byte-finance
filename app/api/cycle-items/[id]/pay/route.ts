@@ -93,31 +93,27 @@ export async function POST(
             return; // Skip linking
           }
 
-          // Auto-populate amount and vendor from payment if not already set
+          // Auto-populate amount from payment if not already set
+          // Note: We DON'T auto-populate vendor from cycle item label
+          // (label is "Entertainment", not "Netflix" - user must enter vendor manually)
           if (!receipt.amountInCents) {
             receiptUpdate.amountInCents = amount;
           }
 
-          if (!receipt.vendor && item.label) {
-            receiptUpdate.vendor = item.label;
-          }
-
           // Update needsAttention flag based on whether we now have amount and vendor
           const willHaveAmount = receipt.amountInCents || amount;
-          const willHaveVendor = receipt.vendor || item.label;
+          const willHaveVendor = !!receipt.vendor; // Only if vendor already set
           receiptUpdate.needsAttention = !(willHaveAmount && willHaveVendor);
         } else {
-          // Receipt doesn't exist yet (race condition) - set default values
+          // Receipt doesn't exist yet (race condition) - set amount only
           receiptUpdate.amountInCents = amount;
-          receiptUpdate.vendor = item.label || null;
-          receiptUpdate.needsAttention = !item.label;
+          receiptUpdate.needsAttention = true; // Missing vendor
         }
       } catch (getError) {
         // If get fails, still try to update with payment data
         console.warn('Receipt get failed, using payment data:', getError);
         receiptUpdate.amountInCents = amount;
-        receiptUpdate.vendor = item.label || null;
-        receiptUpdate.needsAttention = !item.label;
+        receiptUpdate.needsAttention = true; // Missing vendor
       }
 
       // Use set with merge to update or create

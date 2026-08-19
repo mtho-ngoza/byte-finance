@@ -134,7 +134,6 @@ export async function processQueue(): Promise<void> {
           imageHash: item.imageHash || serverHash,
           amountInCents: item.amountInCents,
           vendor: item.vendor,
-          note: item.note,
           location: item.location,
           capturedAt: new Date(item.capturedAt).toISOString(),
         }),

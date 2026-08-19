@@ -281,7 +281,6 @@ export interface Receipt {
   // Quick inputs
   amountInCents?: number;           // Integer! Never float.
   vendor?: string;                  // "Engen", "Makro", etc.
-  note?: string;                    // Quick context
 
   // Location capture
   location?: {
@@ -325,7 +324,6 @@ export interface PendingReceipt {
   imageHash: string;                // SHA-256
   amountInCents?: number;
   vendor?: string;
-  note?: string;
   location?: {
     lat: number;
     lng: number;

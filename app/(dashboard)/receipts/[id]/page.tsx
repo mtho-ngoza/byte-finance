@@ -6,6 +6,7 @@ import { useReceipts } from '@/hooks/use-receipts';
 import { useSage, type SageMatch } from '@/hooks/use-sage';
 import { AmountDisplay } from '@/components/shared/amount-display';
 import { CurrencyInput } from '@/components/shared/currency-input';
+import { VendorAutocomplete } from '@/components/shared/vendor-autocomplete';
 import { useToast } from '@/components/shared/toast';
 import type { Receipt } from '@/types';
 
@@ -21,7 +22,6 @@ export default function ReceiptDetailPage({ params }: ReceiptDetailPageProps) {
   const [editing, setEditing] = useState(false);
   const [amount, setAmount] = useState(0);
   const [vendor, setVendor] = useState('');
-  const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [zoomed, setZoomed] = useState(false);
@@ -44,7 +44,6 @@ export default function ReceiptDetailPage({ params }: ReceiptDetailPageProps) {
     if (receipt) {
       setAmount(receipt.amountInCents ?? 0);
       setVendor(receipt.vendor ?? '');
-      setNote(receipt.note ?? '');
     }
   }, [receipt]);
 
@@ -69,7 +68,6 @@ export default function ReceiptDetailPage({ params }: ReceiptDetailPageProps) {
       await updateReceipt(receipt.id, {
         amountInCents: amount > 0 ? amount : undefined,
         vendor: vendor.trim() || undefined,
-        note: note.trim() || undefined,
       });
       setEditing(false);
     } catch (err) {
@@ -283,22 +281,11 @@ export default function ReceiptDetailPage({ params }: ReceiptDetailPageProps) {
             </div>
             <div>
               <label className="block text-xs text-text-secondary mb-1">Vendor</label>
-              <input
-                type="text"
+              <VendorAutocomplete
                 value={vendor}
-                onChange={(e) => setVendor(e.target.value)}
+                onChange={setVendor}
+                placeholder="e.g., Checkers, KFC, Netflix"
                 className="w-full px-3 py-2 bg-background border border-border rounded-lg text-text-primary focus:outline-none focus:border-primary text-sm"
-                placeholder="e.g. Engen, Makro"
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-text-secondary mb-1">Note</label>
-              <input
-                type="text"
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                className="w-full px-3 py-2 bg-background border border-border rounded-lg text-text-primary focus:outline-none focus:border-primary text-sm"
-                placeholder="Quick context..."
               />
             </div>
             <button
@@ -325,13 +312,6 @@ export default function ReceiptDetailPage({ params }: ReceiptDetailPageProps) {
                 <p className="text-text-primary font-medium">{receipt.vendor || <span className="text-warning text-sm">Not set</span>}</p>
               </div>
             </div>
-
-            {receipt.note && (
-              <div>
-                <p className="text-xs text-text-secondary mb-1">Note</p>
-                <p className="text-sm text-text-primary">{receipt.note}</p>
-              </div>
-            )}
 
             <div>
               <p className="text-xs text-text-secondary mb-1">Captured</p>
