@@ -592,7 +592,7 @@ interface GoalFormProps {
 
 function GoalForm({ onSave, onCancel }: GoalFormProps) {
   const [name, setName] = useState('');
-  const [type, setType] = useState<'savings' | 'debt_payoff' | 'investment'>('savings');
+  const [type, setType] = useState<'savings' | 'debt_payoff' | 'investment' | 'project'>('savings');
   const [targetAmount, setTargetAmount] = useState(0);
   const [monthlyTarget, setMonthlyTarget] = useState(0);
   const [priority, setPriority] = useState<'high' | 'medium' | 'low'>('medium');
@@ -657,6 +657,7 @@ function GoalForm({ onSave, onCancel }: GoalFormProps) {
             <option value="savings">💰 Savings</option>
             <option value="debt_payoff">📉 Debt Payoff</option>
             <option value="investment">📈 Investment</option>
+            <option value="project">🏗️ Project / Quotation</option>
           </select>
         </div>
 

@@ -504,6 +504,7 @@ function GoalSummaryRow({ goal }: GoalSummaryRowProps) {
     savings: '💰',
     debt_payoff: '📉',
     investment: '📈',
+    project: '🏗️',
   }[goal.type];
 
   return (

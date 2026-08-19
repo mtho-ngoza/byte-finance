@@ -68,12 +68,15 @@ export interface Commitment {
  */
 export interface Goal {
   id: string;
-  name: string;                     // "Medical Fund", "Pay off car", "Byte Fusion"
-  type: 'savings' | 'debt_payoff' | 'investment';
+  name: string;                     // "Medical Fund", "Pay off car", "Byte Fusion", "House - Roofing"
+  type: 'savings' | 'debt_payoff' | 'investment' | 'project';
 
   // Target tracking
   targetAmount: number;             // Target in cents
   currentAmount: number;            // Current progress (auto-calculated)
+
+  // For project type (quotations, invoices)
+  quotedAmount?: number;            // Quote amount in cents (for projects)
 
   // For debt_payoff type
   debtTracking?: {
@@ -129,6 +132,22 @@ export interface Goal {
   createdAt: Timestamp;
   updatedAt: Timestamp;
   completedAt?: Timestamp;
+}
+
+/**
+ * ProjectTransaction - Contributions and payments for project goals
+ * Separate from normal cycle items - tracks family contributions and vendor payments
+ */
+export interface ProjectTransaction {
+  id: string;
+  goalId: string;                   // Which project/goal this belongs to
+  type: 'contribution' | 'payment'; // Money IN or money OUT
+  amount: number;                   // Amount in cents (always positive)
+  contributorName?: string;         // "Uncle Joe", "Sister" (optional for privacy)
+  description: string;              // "First installment", "Deposit", etc.
+  date: Timestamp;                  // Transaction date (can be backdated)
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
 }
 
 /**

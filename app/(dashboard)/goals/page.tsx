@@ -132,6 +132,7 @@ export default function GoalsPage() {
                 <option value="savings">Savings</option>
                 <option value="debt_payoff">Debt Payoff</option>
                 <option value="investment">Investment</option>
+                <option value="project">Project / Quotation</option>
               </select>
             </div>
             <div>

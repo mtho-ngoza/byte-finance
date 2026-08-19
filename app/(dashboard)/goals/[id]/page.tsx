@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useGoals, GoalWithComputed } from '@/hooks/use-goals';
@@ -37,6 +37,11 @@ export default function GoalDetailPage() {
         </Link>
       </div>
     );
+  }
+
+  // Route to project view for project type goals
+  if (goal.type === 'project') {
+    return <ProjectGoalDetail goal={goal} />;
   }
 
   return <GoalDetail goal={goal} allCommitments={allCommitments} />;
@@ -309,6 +314,7 @@ function GoalDetail({ goal, allCommitments }: GoalDetailProps) {
                 <option value="savings">Savings</option>
                 <option value="debt_payoff">Debt Payoff</option>
                 <option value="investment">Investment</option>
+                <option value="project">Project / Quotation</option>
               </select>
             </div>
             <div>
@@ -801,6 +807,352 @@ function LinkedCommitmentsEditor({ goal, allCommitments }: LinkedCommitmentsEdit
           </select>
         </div>
       )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ProjectGoalDetail Component
+// ---------------------------------------------------------------------------
+
+interface ProjectGoalDetailProps {
+  goal: GoalWithComputed;
+}
+
+interface ProjectTransaction {
+  id: string;
+  goalId: string;
+  type: 'contribution' | 'payment';
+  amount: number;
+  contributorName?: string;
+  description: string;
+  date: { toDate?: () => Date } | Date;
+  createdAt: { toDate?: () => Date } | Date;
+}
+
+function ProjectGoalDetail({ goal }: ProjectGoalDetailProps) {
+  const { toast } = useToast();
+  const [transactions, setTransactions] = useState<ProjectTransaction[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showAddTransaction, setShowAddTransaction] = useState(false);
+  const [transactionType, setTransactionType] = useState<'contribution' | 'payment'>('contribution');
+  const [amount, setAmount] = useState(0);
+  const [description, setDescription] = useState('');
+  const [contributorName, setContributorName] = useState('');
+  const [transactionDate, setTransactionDate] = useState(new Date().toISOString().split('T')[0]);
+  const [saving, setSaving] = useState(false);
+
+  // Fetch transactions
+  const fetchTransactions = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/goals/${goal.id}/transactions`);
+      if (!res.ok) throw new Error('Failed to fetch');
+      const data = await res.json();
+      setTransactions(data.transactions ?? []);
+    } catch {
+      toast('Failed to load transactions', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Load transactions on mount
+  useEffect(() => {
+    fetchTransactions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleAddTransaction = async () => {
+    if (amount <= 0) {
+      toast('Please enter a valid amount', 'error');
+      return;
+    }
+    if (!description.trim()) {
+      toast('Please enter a description', 'error');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/goals/${goal.id}/transactions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: transactionType,
+          amount,
+          description: description.trim(),
+          contributorName: contributorName.trim() || undefined,
+          date: transactionDate,
+        }),
+      });
+
+      if (!res.ok) throw new Error('Failed to add transaction');
+
+      toast(`${transactionType === 'contribution' ? 'Contribution' : 'Payment'} added`, 'success');
+      setShowAddTransaction(false);
+      setAmount(0);
+      setDescription('');
+      setContributorName('');
+      fetchTransactions(); // Reload transactions
+    } catch {
+      toast('Failed to add transaction', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Calculate totals
+  const contributionsTotal = transactions
+    .filter((t) => t.type === 'contribution')
+    .reduce((sum, t) => sum + t.amount, 0);
+
+  const paymentsTotal = transactions
+    .filter((t) => t.type === 'payment')
+    .reduce((sum, t) => sum + t.amount, 0);
+
+  const poolBalance = contributionsTotal - paymentsTotal;
+  const amountOwed = Math.max(0, goal.targetAmount - paymentsTotal);
+
+  // Group transactions by month
+  const transactionsByMonth = useMemo(() => {
+    const groups = new Map<string, ProjectTransaction[]>();
+
+    for (const txn of transactions) {
+      const dateValue = txn.date;
+      const date = typeof dateValue === 'object' && 'toDate' in dateValue && dateValue.toDate
+        ? dateValue.toDate()
+        : new Date(dateValue as Date);
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+
+      if (!groups.has(key)) {
+        groups.set(key, []);
+      }
+      groups.get(key)!.push(txn);
+    }
+
+    return Array.from(groups.entries()).map(([key, txns]) => {
+      const [year, month] = key.split('-');
+      const date = new Date(parseInt(year, 10), parseInt(month, 10) - 1);
+      return {
+        label: date.toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' }),
+        transactions: txns,
+      };
+    });
+  }, [transactions]);
+
+  const formatAmount = (cents: number) => {
+    return `R${(cents / 100).toLocaleString('en-ZA', { minimumFractionDigits: 0 })}`;
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center gap-3">
+        <Link
+          href="/goals"
+          className="p-2 rounded-lg text-text-secondary hover:bg-surface transition-colors"
+        >
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 20 20">
+            <path d="M12 4l-6 6 6 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </Link>
+        <div>
+          <h1 className="text-xl font-semibold text-text-primary">{goal.name}</h1>
+          <span className="text-sm text-text-secondary">Project</span>
+        </div>
+      </div>
+
+      {/* Summary Card */}
+      <div className="p-4 rounded-xl border border-border bg-surface space-y-3">
+        <div className="flex items-center justify-between">
+          <span className="text-sm text-text-secondary">Quoted Amount</span>
+          <span className="text-lg font-semibold text-text-primary">{formatAmount(goal.targetAmount)}</span>
+        </div>
+
+        <div className="border-t border-border pt-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-text-secondary">Contributions IN</span>
+            <span className="text-sm font-medium text-primary">+{formatAmount(contributionsTotal)}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-text-secondary">Payments OUT</span>
+            <span className="text-sm font-medium text-danger">-{formatAmount(paymentsTotal)}</span>
+          </div>
+        </div>
+
+        <div className="border-t border-border pt-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-text-secondary">Pool Balance</span>
+            <span className="text-lg font-semibold text-text-primary">{formatAmount(poolBalance)}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-text-secondary">Amount Owed</span>
+            <span className="text-lg font-semibold text-text-primary">{formatAmount(amountOwed)}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Statement */}
+      <div className="p-4 rounded-xl border border-border bg-surface">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-sm font-medium text-text-primary">
+            Statement ({transactions.length})
+          </h2>
+          {!showAddTransaction && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  setTransactionType('contribution');
+                  setShowAddTransaction(true);
+                }}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-primary text-background text-xs font-medium"
+              >
+                + Contribution
+              </button>
+              <button
+                onClick={() => {
+                  setTransactionType('payment');
+                  setShowAddTransaction(true);
+                }}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border text-text-secondary hover:border-primary hover:text-primary text-xs"
+              >
+                + Payment
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Add Transaction Form */}
+        {showAddTransaction && (
+          <div className="mb-4 p-3 rounded-lg bg-background border border-border space-y-3">
+            <p className="text-xs text-text-secondary">
+              Add {transactionType === 'contribution' ? 'Contribution' : 'Payment'}
+            </p>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-text-secondary mb-1">Amount (R)</label>
+                <input
+                  type="number"
+                  value={amount === 0 ? '' : amount / 100}
+                  onChange={(e) => setAmount(Math.round(Number(e.target.value) * 100))}
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-surface text-text-primary"
+                  min="0"
+                  step="0.01"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-text-secondary mb-1">Date</label>
+                <input
+                  type="date"
+                  value={transactionDate}
+                  onChange={(e) => setTransactionDate(e.target.value)}
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-surface text-text-primary"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs text-text-secondary mb-1">Description</label>
+              <input
+                type="text"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder={transactionType === 'contribution' ? 'e.g., Uncle Joe' : 'e.g., First installment'}
+                className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-surface text-text-primary"
+              />
+            </div>
+
+            {transactionType === 'contribution' && (
+              <div>
+                <label className="block text-xs text-text-secondary mb-1">From (optional, private)</label>
+                <input
+                  type="text"
+                  value={contributorName}
+                  onChange={(e) => setContributorName(e.target.value)}
+                  placeholder="e.g., Uncle Joe"
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-surface text-text-primary"
+                />
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  setShowAddTransaction(false);
+                  setAmount(0);
+                  setDescription('');
+                  setContributorName('');
+                }}
+                className="flex-1 py-2 rounded-lg border border-border text-text-secondary text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAddTransaction}
+                disabled={saving || amount <= 0 || !description.trim()}
+                className="flex-1 py-2 rounded-lg bg-primary text-background font-medium text-sm disabled:opacity-50"
+              >
+                {saving ? 'Adding...' : 'Add'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Transactions List */}
+        {loading ? (
+          <div className="text-center py-8">
+            <svg className="w-5 h-5 animate-spin mx-auto text-text-secondary" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+          </div>
+        ) : transactions.length === 0 ? (
+          <p className="text-sm text-text-secondary text-center py-8">
+            No transactions yet. Add a contribution or payment to get started.
+          </p>
+        ) : (
+          <div className="space-y-4">
+            {transactionsByMonth.map(({ label, transactions: monthTxns }) => (
+              <div key={label}>
+                <div className="text-xs font-medium text-text-secondary mb-2">{label}</div>
+                <div className="space-y-2">
+                  {monthTxns.map((txn) => {
+                    const dateValue = txn.date;
+                    const date = typeof dateValue === 'object' && 'toDate' in dateValue && dateValue.toDate
+                      ? dateValue.toDate()
+                      : new Date(dateValue as Date);
+                    const isContribution = txn.type === 'contribution';
+
+                    return (
+                      <div
+                        key={txn.id}
+                        className="flex items-center justify-between py-2 border-b border-border/50 last:border-0"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-text-primary">
+                            {date.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })}
+                          </p>
+                          <p className="text-xs text-text-secondary truncate">
+                            {isContribution ? 'Contribution' : 'Payment'} - {txn.description}
+                          </p>
+                          {txn.contributorName && (
+                            <p className="text-xs text-text-secondary/70">From: {txn.contributorName}</p>
+                          )}
+                        </div>
+                        <span className={`text-sm font-mono font-medium ${isContribution ? 'text-primary' : 'text-danger'}`}>
+                          {isContribution ? '+' : '-'}{formatAmount(txn.amount)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
