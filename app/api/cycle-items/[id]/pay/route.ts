@@ -72,28 +72,32 @@ export async function POST(
   if (receiptId) {
     try {
       const receiptRef = db.collection(`users/${userId}/receipts`).doc(receiptId);
-      const receiptSnap = await receiptRef.get();
 
-      if (receiptSnap.exists) {
-        const receipt = receiptSnap.data()!;
-        // Check if receipt is already linked to a different payment
-        if (receipt.cycleItemId && receipt.cycleItemId !== id) {
-          // Receipt already linked - skip linking but don't fail the payment
-          console.warn(`Receipt ${receiptId} already linked to ${receipt.cycleItemId}`);
-        } else {
+      // Use set with merge to handle race condition where receipt may not be fully created yet
+      // This will update existing fields or create the document if it doesn't exist
+      const receiptUpdate: any = {
+        cycleItemId: id,
+        cycleId: item.cycleId,
+        updatedAt: now,
+      };
+
+      // Try to get existing receipt data to check if we should populate amount/vendor
+      try {
+        const receiptSnap = await receiptRef.get();
+        if (receiptSnap.exists) {
+          const receipt = receiptSnap.data()!;
+
+          // Check if receipt is already linked to a different cycle item
+          if (receipt.cycleItemId && receipt.cycleItemId !== id) {
+            console.warn(`Receipt ${receiptId} already linked to ${receipt.cycleItemId}`);
+            return; // Skip linking
+          }
+
           // Auto-populate amount and vendor from payment if not already set
-          const receiptUpdate: any = {
-            cycleItemId: id,
-            cycleId: item.cycleId,
-            updatedAt: now,
-          };
-
-          // If receipt doesn't have amount, use payment amount
           if (!receipt.amountInCents) {
             receiptUpdate.amountInCents = amount;
           }
 
-          // If receipt doesn't have vendor, use cycle item label as vendor
           if (!receipt.vendor && item.label) {
             receiptUpdate.vendor = item.label;
           }
@@ -102,12 +106,22 @@ export async function POST(
           const willHaveAmount = receipt.amountInCents || amount;
           const willHaveVendor = receipt.vendor || item.label;
           receiptUpdate.needsAttention = !(willHaveAmount && willHaveVendor);
-
-          await receiptRef.update(receiptUpdate);
+        } else {
+          // Receipt doesn't exist yet (race condition) - set default values
+          receiptUpdate.amountInCents = amount;
+          receiptUpdate.vendor = item.label || null;
+          receiptUpdate.needsAttention = !item.label;
         }
-      } else {
-        console.warn(`Receipt ${receiptId} not found`);
+      } catch (getError) {
+        // If get fails, still try to update with payment data
+        console.warn('Receipt get failed, using payment data:', getError);
+        receiptUpdate.amountInCents = amount;
+        receiptUpdate.vendor = item.label || null;
+        receiptUpdate.needsAttention = !item.label;
       }
+
+      // Use set with merge to update or create
+      await receiptRef.set(receiptUpdate, { merge: true });
     } catch (receiptError) {
       // Log error but don't fail the payment
       console.error('Failed to link receipt:', receiptError);
