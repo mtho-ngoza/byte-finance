@@ -1,7 +1,6 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { runWorker } from '@/lib/worker-utils';
 
 interface InlineReceiptCaptureProps {
   /** Called with the newly created receipt id after upload + Firestore doc creation */
@@ -11,10 +10,10 @@ interface InlineReceiptCaptureProps {
 
 /**
  * Lightweight inline receipt capture button.
- * Opens the camera/file picker, compresses via worker,
- * uploads to /api/receipts/upload, creates the Firestore doc
- * via /api/receipts, then calls onCaptured(id).
- * No queue — simple synchronous flow for inline use.
+ * Opens the camera/file picker, uploads to /api/receipts/upload,
+ * creates the Firestore doc via /api/receipts, then calls onCaptured(id).
+ * Uses legacy single-file upload format - no compression, no queue.
+ * Intentionally simple for inline use.
  */
 export function InlineReceiptCapture({ onCaptured, onError }: InlineReceiptCaptureProps) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -23,30 +22,14 @@ export function InlineReceiptCapture({ onCaptured, onError }: InlineReceiptCaptu
   const handleFile = async (file: File) => {
     setUploading(true);
     try {
-      // 1. Compress image (fall back to original if worker fails)
-      let compressedBlob: Blob = file;
-      let thumbnailBlob: Blob = file;
-      try {
-        const compressResult = await runWorker<{ compressed: Blob; thumbnail: Blob }>(
-          '/workers/compress.worker.js',
-          { blob: file }
-        );
-        compressedBlob = compressResult.compressed;
-        thumbnailBlob = compressResult.thumbnail;
-      } catch (compressErr) {
-        console.warn('Compress worker failed, will upload original:', compressErr);
-      }
-
-      // 2. Upload image variants to Storage
+      // 1. Upload image to Storage (using legacy single-file format)
       const formData = new FormData();
-      formData.append('original', file, 'original.jpg');
-      formData.append('compressed', compressedBlob, 'compressed.jpg');
-      formData.append('thumbnail', thumbnailBlob, 'thumbnail.jpg');
+      formData.append('image', file, 'receipt.jpg');
       const uploadRes = await fetch('/api/receipts/upload', { method: 'POST', body: formData });
       if (!uploadRes.ok) throw new Error('Upload failed');
       const { imageUrl, originalImageUrl, thumbnailUrl, imageHash } = await uploadRes.json();
 
-      // 3. Create Firestore receipt doc
+      // 2. Create Firestore receipt doc
       const createRes = await fetch('/api/receipts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

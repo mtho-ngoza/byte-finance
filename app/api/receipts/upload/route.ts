@@ -6,10 +6,10 @@ import crypto from 'crypto';
 /**
  * POST /api/receipts/upload
  * Upload receipt image variants to Firebase Storage
- * Accepts multipart/form-data with 3 files:
- * - 'original': Full resolution original image
- * - 'compressed': Compressed variant (1920px max, JPEG 80%)
- * - 'thumbnail': Thumbnail variant (300px max, JPEG 75%)
+ *
+ * Accepts two formats for backward compatibility:
+ * 1. New format (3 files): 'original', 'compressed', 'thumbnail'
+ * 2. Legacy format (1 file): 'image' (uploads same buffer 3 times)
  */
 export async function POST(request: NextRequest) {
   const auth = await withAuth(request);
@@ -18,32 +18,54 @@ export async function POST(request: NextRequest) {
 
   try {
     const formData = await request.formData();
+
+    // Check for new 3-file format
     const originalFile = formData.get('original') as File | null;
     const compressedFile = formData.get('compressed') as File | null;
     const thumbnailFile = formData.get('thumbnail') as File | null;
 
-    if (!originalFile || !compressedFile || !thumbnailFile) {
+    // Check for legacy single-file format
+    const legacyFile = formData.get('image') as File | null;
+
+    let originalBuffer: Buffer;
+    let compressedBuffer: Buffer;
+    let thumbnailBuffer: Buffer;
+
+    if (originalFile && compressedFile && thumbnailFile) {
+      // New 3-file format
+      if (!originalFile.type.startsWith('image/') ||
+          !compressedFile.type.startsWith('image/') ||
+          !thumbnailFile.type.startsWith('image/')) {
+        return NextResponse.json({ error: 'All files must be images' }, { status: 400 });
+      }
+
+      if (originalFile.size > 10 * 1024 * 1024) {
+        return NextResponse.json({ error: 'Original file too large (max 10MB)' }, { status: 400 });
+      }
+
+      originalBuffer = Buffer.from(await originalFile.arrayBuffer());
+      compressedBuffer = Buffer.from(await compressedFile.arrayBuffer());
+      thumbnailBuffer = Buffer.from(await thumbnailFile.arrayBuffer());
+    } else if (legacyFile) {
+      // Legacy single-file format - use same buffer for all 3 variants
+      if (!legacyFile.type.startsWith('image/')) {
+        return NextResponse.json({ error: 'File must be an image' }, { status: 400 });
+      }
+
+      if (legacyFile.size > 10 * 1024 * 1024) {
+        return NextResponse.json({ error: 'File too large (max 10MB)' }, { status: 400 });
+      }
+
+      const buffer = Buffer.from(await legacyFile.arrayBuffer());
+      originalBuffer = buffer;
+      compressedBuffer = buffer;
+      thumbnailBuffer = buffer;
+    } else {
       return NextResponse.json(
-        { error: 'Missing image variants (original, compressed, thumbnail required)' },
+        { error: 'No image provided. Send either "image" or "original", "compressed", "thumbnail"' },
         { status: 400 }
       );
     }
-
-    // Validate file types
-    if (!originalFile.type.startsWith('image/') ||
-        !compressedFile.type.startsWith('image/') ||
-        !thumbnailFile.type.startsWith('image/')) {
-      return NextResponse.json({ error: 'All files must be images' }, { status: 400 });
-    }
-
-    // Validate file size (10MB max for original)
-    if (originalFile.size > 10 * 1024 * 1024) {
-      return NextResponse.json({ error: 'Original file too large (max 10MB)' }, { status: 400 });
-    }
-
-    const originalBuffer = Buffer.from(await originalFile.arrayBuffer());
-    const compressedBuffer = Buffer.from(await compressedFile.arrayBuffer());
-    const thumbnailBuffer = Buffer.from(await thumbnailFile.arrayBuffer());
 
     // Generate hash from original image for duplicate detection
     const imageHash = crypto.createHash('sha256').update(originalBuffer).digest('hex');
