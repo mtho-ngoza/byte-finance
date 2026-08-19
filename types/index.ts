@@ -145,6 +145,7 @@ export interface ProjectTransaction {
   amount: number;                   // Amount in cents (always positive)
   contributorName?: string;         // "Uncle Joe", "Sister" (optional for privacy)
   description: string;              // "First installment", "Deposit", etc.
+  receiptId?: string;               // Linked receipt (for payments)
   date: Timestamp;                  // Transaction date (can be backdated)
   createdAt: Timestamp;
   updatedAt: Timestamp;
@@ -296,9 +297,13 @@ export interface Receipt {
   // Completion status
   needsAttention: boolean;          // True if amountInCents or vendor missing
 
-  // Future linking
+  // Linking to budget cycles
   cycleItemId?: string;
   cycleId?: string;
+
+  // Linking to project goals
+  projectTransactionId?: string;
+  projectGoalId?: string;
 
   // Sage Business Cloud integration
   sageTransactionId?: string;

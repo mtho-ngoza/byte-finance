@@ -57,6 +57,7 @@ export async function GET(request: NextRequest, { params }: Params) {
  *   amount: number (in cents),
  *   description: string,
  *   contributorName?: string,
+ *   receiptId?: string (for payments),
  *   date?: string (ISO date, defaults to now)
  * }
  */
@@ -67,7 +68,7 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   const { id: goalId } = await params;
   const body = await request.json();
-  const { type, amount, description, contributorName, date } = body;
+  const { type, amount, description, contributorName, receiptId, date } = body;
 
   // Validation
   if (!type || !['contribution', 'payment'].includes(type)) {
@@ -106,12 +107,32 @@ export async function POST(request: NextRequest, { params }: Params) {
     amount,
     description: description.trim(),
     ...(contributorName ? { contributorName: contributorName.trim() } : {}),
+    ...(receiptId ? { receiptId } : {}),
     date: transactionDate,
     createdAt: now,
     updatedAt: now,
   };
 
   await transactionRef.set(transaction);
+
+  // Link receipt to this transaction if provided (for payments)
+  if (receiptId && type === 'payment') {
+    const receiptRef = db.collection(`users/${userId}/receipts`).doc(receiptId);
+    const receiptSnap = await receiptRef.get();
+
+    if (receiptSnap.exists) {
+      const receipt = receiptSnap.data()!;
+      // Only link if not already linked to something else
+      if (!receipt.cycleItemId) {
+        await receiptRef.update({
+          // Store transaction reference for project payments
+          projectTransactionId: transactionRef.id,
+          projectGoalId: goalId,
+          updatedAt: now,
+        });
+      }
+    }
+  }
 
   // Update goal's currentAmount
   // Contributions add to the pool, payments subtract

@@ -9,6 +9,9 @@ import { AmountDisplay } from '@/components/shared/amount-display';
 import { CurrencyInput } from '@/components/shared/currency-input';
 import { DateInput } from '@/components/shared/date-input';
 import { useToast } from '@/components/shared/toast';
+import { InlineReceiptCapture } from '@/components/shared/inline-receipt-capture';
+import { GroupedReceiptPicker } from '@/components/shared/grouped-receipt-picker';
+import { useReceipts } from '@/hooks/use-receipts';
 
 export default function GoalDetailPage() {
   const params = useParams();
@@ -826,12 +829,18 @@ interface ProjectTransaction {
   amount: number;
   contributorName?: string;
   description: string;
+  receiptId?: string;
+  receipt?: {
+    thumbnailUrl?: string;
+    imageUrl: string;
+  };
   date: { toDate?: () => Date } | Date;
   createdAt: { toDate?: () => Date } | Date;
 }
 
 function ProjectGoalDetail({ goal }: ProjectGoalDetailProps) {
   const { toast } = useToast();
+  const { receipts } = useReceipts();
   const [transactions, setTransactions] = useState<ProjectTransaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddTransaction, setShowAddTransaction] = useState(false);
@@ -841,6 +850,9 @@ function ProjectGoalDetail({ goal }: ProjectGoalDetailProps) {
   const [contributorName, setContributorName] = useState('');
   const [transactionDate, setTransactionDate] = useState(new Date().toISOString().split('T')[0]);
   const [saving, setSaving] = useState(false);
+  const [receiptId, setReceiptId] = useState<string | null>(null);
+  const [showReceiptCapture, setShowReceiptCapture] = useState(false);
+  const [showReceiptPicker, setShowReceiptPicker] = useState(false);
 
   // Fetch transactions
   const fetchTransactions = async () => {
@@ -849,7 +861,33 @@ function ProjectGoalDetail({ goal }: ProjectGoalDetailProps) {
       const res = await fetch(`/api/goals/${goal.id}/transactions`);
       if (!res.ok) throw new Error('Failed to fetch');
       const data = await res.json();
-      setTransactions(data.transactions ?? []);
+
+      // Fetch receipt data for transactions with receiptIds
+      const transactionsWithReceipts = await Promise.all(
+        (data.transactions ?? []).map(async (txn: ProjectTransaction) => {
+          if (txn.receiptId) {
+            try {
+              const receiptRes = await fetch(`/api/receipts/${txn.receiptId}`);
+              if (receiptRes.ok) {
+                const receiptData = await receiptRes.json();
+                return {
+                  ...txn,
+                  receipt: {
+                    thumbnailUrl: receiptData.thumbnailUrl,
+                    imageUrl: receiptData.imageUrl,
+                  },
+                };
+              }
+            } catch {
+              // If receipt fetch fails, just return transaction without receipt data
+              return txn;
+            }
+          }
+          return txn;
+        })
+      );
+
+      setTransactions(transactionsWithReceipts);
     } catch {
       toast('Failed to load transactions', 'error');
     } finally {
@@ -883,6 +921,7 @@ function ProjectGoalDetail({ goal }: ProjectGoalDetailProps) {
           amount,
           description: description.trim(),
           contributorName: contributorName.trim() || undefined,
+          receiptId: receiptId || undefined,
           date: transactionDate,
         }),
       });
@@ -894,6 +933,7 @@ function ProjectGoalDetail({ goal }: ProjectGoalDetailProps) {
       setAmount(0);
       setDescription('');
       setContributorName('');
+      setReceiptId(null);
       fetchTransactions(); // Reload transactions
     } catch {
       toast('Failed to add transaction', 'error');
@@ -912,7 +952,6 @@ function ProjectGoalDetail({ goal }: ProjectGoalDetailProps) {
     .reduce((sum, t) => sum + t.amount, 0);
 
   const poolBalance = contributionsTotal - paymentsTotal;
-  const amountOwed = Math.max(0, goal.targetAmount - paymentsTotal);
 
   // Group transactions by month
   const transactionsByMonth = useMemo(() => {
@@ -965,30 +1004,21 @@ function ProjectGoalDetail({ goal }: ProjectGoalDetailProps) {
 
       {/* Summary Card */}
       <div className="p-4 rounded-xl border border-border bg-surface space-y-3">
-        <div className="flex items-center justify-between">
-          <span className="text-sm text-text-secondary">Quoted Amount</span>
-          <span className="text-lg font-semibold text-text-primary">{formatAmount(goal.targetAmount)}</span>
-        </div>
-
-        <div className="border-t border-border pt-3 space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-text-secondary">Contributions IN</span>
-            <span className="text-sm font-medium text-primary">+{formatAmount(contributionsTotal)}</span>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <span className="text-xs text-text-secondary block mb-1">Contributions IN</span>
+            <span className="text-lg font-semibold text-primary">+{formatAmount(contributionsTotal)}</span>
           </div>
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-text-secondary">Payments OUT</span>
-            <span className="text-sm font-medium text-danger">-{formatAmount(paymentsTotal)}</span>
+          <div>
+            <span className="text-xs text-text-secondary block mb-1">Payments OUT</span>
+            <span className="text-lg font-semibold text-danger">-{formatAmount(paymentsTotal)}</span>
           </div>
         </div>
 
-        <div className="border-t border-border pt-3 space-y-2">
+        <div className="border-t border-border pt-3">
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium text-text-secondary">Pool Balance</span>
-            <span className="text-lg font-semibold text-text-primary">{formatAmount(poolBalance)}</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-text-secondary">Amount Owed</span>
-            <span className="text-lg font-semibold text-text-primary">{formatAmount(amountOwed)}</span>
+            <span className="text-2xl font-bold text-text-primary">{formatAmount(poolBalance)}</span>
           </div>
         </div>
       </div>
@@ -1022,6 +1052,66 @@ function ProjectGoalDetail({ goal }: ProjectGoalDetailProps) {
             </div>
           )}
         </div>
+
+        {/* Receipt Capture Modal */}
+        {showReceiptCapture && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-surface rounded-xl max-w-md w-full p-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-base font-semibold text-text-primary">Capture Receipt</h3>
+                <button
+                  onClick={() => setShowReceiptCapture(false)}
+                  className="text-text-secondary hover:text-text-primary"
+                >
+                  ✕
+                </button>
+              </div>
+              <InlineReceiptCapture
+                onCaptured={(id) => {
+                  setReceiptId(id);
+                  setShowReceiptCapture(false);
+                  toast('Receipt captured', 'success');
+                }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Receipt Picker Modal */}
+        {showReceiptPicker && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-surface rounded-xl max-w-2xl w-full max-h-[80vh] overflow-y-auto p-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-base font-semibold text-text-primary">Select Receipt</h3>
+                <button
+                  onClick={() => setShowReceiptPicker(false)}
+                  className="text-text-secondary hover:text-text-primary"
+                >
+                  ✕
+                </button>
+              </div>
+              <GroupedReceiptPicker
+                receipts={receipts
+                  .filter(r => !r.cycleItemId && !r.projectTransactionId)
+                  .map(r => ({
+                    id: r.id,
+                    thumbnailUrl: r.thumbnailUrl,
+                    imageUrl: r.imageUrl,
+                    vendor: r.vendor,
+                    amountInCents: r.amountInCents,
+                    cycleItemId: r.cycleItemId,
+                    capturedAt: r.capturedAt?.toDate?.().toISOString() ?? new Date().toISOString(),
+                  }))}
+                onSelect={(id) => {
+                  setReceiptId(id);
+                  setShowReceiptPicker(false);
+                  toast('Receipt linked', 'success');
+                }}
+                filterLinked={false}
+              />
+            </div>
+          </div>
+        )}
 
         {/* Add Transaction Form */}
         {showAddTransaction && (
@@ -1077,6 +1167,41 @@ function ProjectGoalDetail({ goal }: ProjectGoalDetailProps) {
               </div>
             )}
 
+            {transactionType === 'payment' && (
+              <div>
+                <label className="block text-xs text-text-secondary mb-1">Receipt (optional)</label>
+                {!receiptId ? (
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowReceiptCapture(true)}
+                      className="flex-1 px-3 py-2 text-sm rounded-lg border border-border bg-surface text-text-primary hover:border-primary"
+                    >
+                      📸 Take/Upload Photo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowReceiptPicker(true)}
+                      className="flex-1 px-3 py-2 text-sm rounded-lg border border-border bg-surface text-text-primary hover:border-primary"
+                    >
+                      🔗 Link Existing
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 p-2 rounded-lg bg-primary/10 border border-primary/30">
+                    <span className="text-sm text-text-primary flex-1">Receipt attached</span>
+                    <button
+                      type="button"
+                      onClick={() => setReceiptId(null)}
+                      className="text-xs text-danger hover:text-danger/70"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="flex gap-2">
               <button
                 onClick={() => {
@@ -1128,8 +1253,16 @@ function ProjectGoalDetail({ goal }: ProjectGoalDetailProps) {
                     return (
                       <div
                         key={txn.id}
-                        className="flex items-center justify-between py-2 border-b border-border/50 last:border-0"
+                        className="flex items-center gap-3 py-2 border-b border-border/50 last:border-0"
                       >
+                        {txn.receipt && (
+                          <img
+                            src={txn.receipt.thumbnailUrl || txn.receipt.imageUrl}
+                            alt="Receipt"
+                            className="w-12 h-12 rounded object-cover cursor-pointer hover:opacity-80"
+                            onClick={() => window.open(txn.receipt?.imageUrl, '_blank')}
+                          />
+                        )}
                         <div className="flex-1 min-w-0">
                           <p className="text-sm text-text-primary">
                             {date.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })}
