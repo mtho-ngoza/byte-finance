@@ -80,11 +80,29 @@ export async function POST(
         // Receipt already linked - skip linking but don't fail the payment
         console.warn(`Receipt ${receiptId} already linked to ${receipt.cycleItemId}`);
       } else {
-        await receiptRef.update({
+        // Auto-populate amount and vendor from payment if not already set
+        const receiptUpdate: any = {
           cycleItemId: id,
           cycleId: item.cycleId,
           updatedAt: now,
-        });
+        };
+
+        // If receipt doesn't have amount, use payment amount
+        if (!receipt.amountInCents) {
+          receiptUpdate.amountInCents = amount;
+        }
+
+        // If receipt doesn't have vendor, use cycle item label as vendor
+        if (!receipt.vendor && item.label) {
+          receiptUpdate.vendor = item.label;
+        }
+
+        // Update needsAttention flag based on whether we now have amount and vendor
+        const willHaveAmount = receipt.amountInCents || amount;
+        const willHaveVendor = receipt.vendor || item.label;
+        receiptUpdate.needsAttention = !(willHaveAmount && willHaveVendor);
+
+        await receiptRef.update(receiptUpdate);
       }
     }
   }
