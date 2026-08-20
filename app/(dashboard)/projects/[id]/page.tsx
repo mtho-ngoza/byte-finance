@@ -64,10 +64,26 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
 
   if (!project) return null;
 
+  // Helper to parse various date formats from API/Firestore
+  const parseDate = (dateValue: unknown): Date => {
+    if (!dateValue) return new Date();
+    if (typeof dateValue === 'string') return new Date(dateValue);
+    if (dateValue instanceof Date) return dateValue;
+    // Firestore Timestamp serialized to JSON: { _seconds, _nanoseconds }
+    if (typeof dateValue === 'object' && '_seconds' in (dateValue as object)) {
+      return new Date((dateValue as { _seconds: number })._seconds * 1000);
+    }
+    // Firestore Timestamp with toDate method
+    if (typeof dateValue === 'object' && 'toDate' in (dateValue as object)) {
+      return (dateValue as { toDate: () => Date }).toDate();
+    }
+    return new Date();
+  };
+
   const transactions = project.transactions || [];
   const sortedTransactions = [...transactions].sort((a, b) => {
-    const dateA = typeof a.date === 'string' ? new Date(a.date) : (a.date as any).toDate();
-    const dateB = typeof b.date === 'string' ? new Date(b.date) : (b.date as any).toDate();
+    const dateA = parseDate(a.date);
+    const dateB = parseDate(b.date);
     return dateB.getTime() - dateA.getTime();
   });
 
@@ -115,7 +131,7 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
           <p className="text-sm text-text-secondary text-center py-6">No transactions yet</p>
         ) : (
           sortedTransactions.map((txn) => (
-            <TransactionCard key={txn.id} transaction={txn} />
+            <TransactionCard key={txn.id} transaction={txn} parseDate={parseDate} />
           ))
         )}
       </div>
@@ -123,11 +139,8 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
   );
 }
 
-function TransactionCard({ transaction }: { transaction: any }) {
-  const dateValue = transaction.date;
-  const date = typeof dateValue === 'object' && 'toDate' in dateValue && dateValue.toDate
-    ? dateValue.toDate()
-    : new Date(dateValue as Date);
+function TransactionCard({ transaction, parseDate }: { transaction: any; parseDate: (d: unknown) => Date }) {
+  const date = parseDate(transaction.date);
 
   const formattedDate = date.toLocaleDateString('en-ZA', {
     day: 'numeric',
