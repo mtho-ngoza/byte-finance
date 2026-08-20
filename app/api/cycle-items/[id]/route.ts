@@ -88,14 +88,21 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         const goal = goalSnap.data()!;
         const contributions: Array<{ id: string; cycleItemId?: string; amount: number; [key: string]: unknown }> = goal.contributions ?? [];
         // Find contributions from this cycle item
-        const toRemove = contributions.filter((c) => c.cycleItemId === id);
+        // Match by cycleItemId OR by contribution ID prefix (for old data without cycleItemId)
+        const toRemove = contributions.filter((c) =>
+          c.cycleItemId === id || c.id.startsWith(`${id}-`)
+        );
         const totalToRemove = toRemove.reduce((sum, c) => sum + c.amount, 0);
-        const updatedContributions = contributions.filter((c) => c.cycleItemId !== id);
-        await goalRef.update({
-          contributions: updatedContributions,
-          currentAmount: FieldValue.increment(-totalToRemove),
-          updatedAt: now,
-        });
+        const updatedContributions = contributions.filter((c) =>
+          c.cycleItemId !== id && !c.id.startsWith(`${id}-`)
+        );
+        if (toRemove.length > 0) {
+          await goalRef.update({
+            contributions: updatedContributions,
+            currentAmount: FieldValue.increment(-totalToRemove),
+            updatedAt: now,
+          });
+        }
       }
     }
   }
@@ -149,10 +156,15 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     if (goalSnap.exists) {
       const goal = goalSnap.data()!;
       const contributions: Array<{ id: string; cycleItemId?: string; amount: number; [key: string]: unknown }> = goal.contributions ?? [];
-      const toRemove = contributions.filter((c) => c.cycleItemId === id);
+      // Match by cycleItemId OR by contribution ID prefix (for old data without cycleItemId)
+      const toRemove = contributions.filter((c) =>
+        c.cycleItemId === id || c.id.startsWith(`${id}-`)
+      );
       const totalToRemove = toRemove.reduce((sum, c) => sum + c.amount, 0);
       if (toRemove.length > 0) {
-        const updatedContributions = contributions.filter((c) => c.cycleItemId !== id);
+        const updatedContributions = contributions.filter((c) =>
+          c.cycleItemId !== id && !c.id.startsWith(`${id}-`)
+        );
         await goalRef.update({
           contributions: updatedContributions,
           currentAmount: FieldValue.increment(-totalToRemove),
