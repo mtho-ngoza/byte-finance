@@ -132,7 +132,6 @@ export default function GoalsPage() {
                 <option value="savings">Savings</option>
                 <option value="debt_payoff">Debt Payoff</option>
                 <option value="investment">Investment</option>
-                <option value="project">Project / Quotation</option>
               </select>
             </div>
             <div>
@@ -247,34 +246,76 @@ export default function GoalsPage() {
       </div>
 
       {/* Goals List */}
-      {filteredGoals.length === 0 ? (
-        <div className="text-center py-12 text-text-secondary">
-          {search ? (
-            <p>{`No goals matching "${search}"`}</p>
-          ) : (
-            <>
-              <p className="text-4xl mb-3">🎯</p>
-              <p className="text-sm font-medium text-text-primary mb-1">No goals yet</p>
-              <p className="text-xs mb-4">Set a savings target, track debt payoff, or monitor an investment.</p>
-              <button
-                onClick={() => setShowForm(true)}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-background text-sm font-medium hover:bg-primary/90 transition-colors"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 16 16">
-                  <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                </svg>
-                Create your first goal
-              </button>
-            </>
-          )}
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {filteredGoals.map((goal) => (
-            <GoalCard key={goal.id} goal={goal} onDelete={handleDelete} formatAmount={formatAmount} />
-          ))}
-        </div>
-      )}
+      {(() => {
+        // Separate active and completed goals
+        const activeFiltered = filteredGoals.filter(g => g.currentAmount < g.targetAmount && g.status !== 'completed');
+        const completedFiltered = filteredGoals.filter(g => g.currentAmount >= g.targetAmount || g.status === 'completed');
+
+        if (filteredGoals.length === 0) {
+          return (
+            <div className="text-center py-12 text-text-secondary">
+              {search ? (
+                <p>{`No goals matching "${search}"`}</p>
+              ) : (
+                <>
+                  <p className="text-4xl mb-3">🎯</p>
+                  <p className="text-sm font-medium text-text-primary mb-1">No goals yet</p>
+                  <p className="text-xs mb-4">Set a savings target, track debt payoff, or monitor an investment.</p>
+                  <button
+                    onClick={() => setShowForm(true)}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-background text-sm font-medium hover:bg-primary/90 transition-colors"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 16 16">
+                      <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                    </svg>
+                    Create your first goal
+                  </button>
+                </>
+              )}
+            </div>
+          );
+        }
+
+        return (
+          <div className="space-y-6">
+            {/* Active Goals */}
+            {activeFiltered.length > 0 && (
+              <div className="space-y-3">
+                <h2 className="text-sm font-medium text-text-secondary">Active Goals</h2>
+                {activeFiltered.map((goal) => (
+                  <GoalCard key={goal.id} goal={goal} onDelete={handleDelete} formatAmount={formatAmount} />
+                ))}
+              </div>
+            )}
+
+            {/* Completed Goals */}
+            {completedFiltered.length > 0 && showCompleted && (
+              <div className="space-y-3">
+                <h2 className="text-sm font-medium text-text-secondary flex items-center gap-2">
+                  <span>Completed</span>
+                  <span className="px-2 py-0.5 rounded-full bg-success/10 text-success text-xs">{completedFiltered.length}</span>
+                </h2>
+                {completedFiltered.map((goal) => (
+                  <GoalCard key={goal.id} goal={goal} onDelete={handleDelete} formatAmount={formatAmount} />
+                ))}
+              </div>
+            )}
+
+            {/* No active goals message */}
+            {activeFiltered.length === 0 && completedFiltered.length > 0 && !showCompleted && (
+              <div className="text-center py-8 text-text-secondary">
+                <p className="text-sm">All goals completed! 🎉</p>
+                <button
+                  onClick={() => setShowCompleted(true)}
+                  className="mt-2 text-xs text-primary hover:underline"
+                >
+                  View {completedFiltered.length} completed goal{completedFiltered.length !== 1 ? 's' : ''}
+                </button>
+              </div>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -314,7 +355,9 @@ function GoalCard({ goal, onDelete, formatAmount }: GoalCardProps) {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {goal.isOnTrack ? (
+          {goal.currentAmount >= goal.targetAmount ? (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-success/10 text-success font-medium">Complete</span>
+          ) : goal.isOnTrack ? (
             <span className="text-xs text-primary">On Track</span>
           ) : (
             <span className="text-xs text-warning">Behind</span>

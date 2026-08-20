@@ -26,6 +26,11 @@ export interface GoalWithComputed extends Goal {
  * Compute isOnTrack based on contribution pace vs monthly target
  */
 function computeIsOnTrack(goal: Goal, effectiveMonthlyTarget: number): boolean {
+  // Goal is complete if current >= target
+  if (goal.currentAmount >= goal.targetAmount) {
+    return true; // Complete = on track
+  }
+
   if (effectiveMonthlyTarget <= 0) {
     return true; // No target = always on track
   }
