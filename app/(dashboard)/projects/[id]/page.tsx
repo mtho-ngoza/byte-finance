@@ -87,6 +87,17 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
     return dateB.getTime() - dateA.getTime();
   });
 
+  // Group transactions by month
+  const groupedTransactions = sortedTransactions.reduce((groups, txn) => {
+    const date = parseDate(txn.date);
+    const monthKey = date.toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' });
+    if (!groups[monthKey]) {
+      groups[monthKey] = [];
+    }
+    groups[monthKey].push(txn);
+    return groups;
+  }, {} as Record<string, typeof sortedTransactions>);
+
   return (
     <div className="space-y-4 pb-20">
       {/* Header */}
@@ -125,13 +136,20 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
       )}
 
       {/* Transactions */}
-      <div className="space-y-3">
+      <div className="space-y-4">
         <h2 className="text-sm font-medium text-text-secondary">Transaction History</h2>
         {sortedTransactions.length === 0 ? (
           <p className="text-sm text-text-secondary text-center py-6">No transactions yet</p>
         ) : (
-          sortedTransactions.map((txn) => (
-            <TransactionCard key={txn.id} transaction={txn} parseDate={parseDate} />
+          Object.entries(groupedTransactions).map(([month, txns]) => (
+            <div key={month} className="space-y-2">
+              <h3 className="text-xs font-medium text-text-secondary sticky top-0 bg-background py-1">{month}</h3>
+              <div className="space-y-2">
+                {txns.map((txn) => (
+                  <TransactionCard key={txn.id} transaction={txn} parseDate={parseDate} />
+                ))}
+              </div>
+            </div>
           ))
         )}
       </div>
@@ -141,36 +159,27 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
 
 function TransactionCard({ transaction, parseDate }: { transaction: any; parseDate: (d: unknown) => Date }) {
   const date = parseDate(transaction.date);
-
-  const formattedDate = date.toLocaleDateString('en-ZA', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
-
+  const dayLabel = date.getDate();
   const isContribution = transaction.type === 'contribution';
 
   return (
-    <div className="bg-surface border border-border rounded-xl p-3">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-lg">{isContribution ? '💰' : '💳'}</span>
-            <span className="text-sm font-medium text-text-primary">
-              {transaction.description}
-            </span>
-          </div>
-          {transaction.contributorName && (
-            <p className="text-xs text-text-secondary">From: {transaction.contributorName}</p>
-          )}
-          <p className="text-xs text-text-secondary">{formattedDate}</p>
-        </div>
-        <div className="text-right">
-          <p className={`text-base font-semibold ${isContribution ? 'text-success' : 'text-error'}`}>
-            {isContribution ? '+' : '-'}
-            <AmountDisplay amount={transaction.amount} size="sm" />
-          </p>
-        </div>
+    <div className="flex items-center gap-3 bg-surface border border-border rounded-lg p-3">
+      {/* Day badge */}
+      <div className="w-10 h-10 rounded-lg bg-background flex items-center justify-center shrink-0">
+        <span className="text-sm font-semibold text-text-primary">{dayLabel}</span>
+      </div>
+
+      {/* Details */}
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-text-primary truncate">{transaction.description}</p>
+        {transaction.contributorName && (
+          <p className="text-xs text-text-secondary">From: {transaction.contributorName}</p>
+        )}
+      </div>
+
+      {/* Amount */}
+      <div className={`text-sm font-semibold ${isContribution ? 'text-success' : 'text-error'}`}>
+        {isContribution ? '+' : '-'}<AmountDisplay amount={transaction.amount} size="sm" />
       </div>
     </div>
   );
