@@ -98,6 +98,19 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
     return groups;
   }, {} as Record<string, typeof sortedTransactions>);
 
+  // Calculate balance from transactions (always accurate)
+  const calculatedBalance = transactions.reduce((sum, txn) => {
+    return sum + (txn.type === 'contribution' ? txn.amount : -txn.amount);
+  }, 0);
+
+  // Calculate totals for summary
+  const totalContributions = transactions
+    .filter(t => t.type === 'contribution')
+    .reduce((sum, t) => sum + t.amount, 0);
+  const totalPayments = transactions
+    .filter(t => t.type === 'payment')
+    .reduce((sum, t) => sum + t.amount, 0);
+
   return (
     <div className="space-y-4 pb-20">
       {/* Header */}
@@ -111,12 +124,31 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
       {/* Pool balance */}
       <div className="bg-surface border border-border rounded-xl p-4">
         <p className="text-xs text-text-secondary mb-1">Current Pool Balance</p>
-        <AmountDisplay amount={project.currentAmount || 0} size="lg" />
-        {project.targetAmount && (
-          <p className="text-xs text-text-secondary mt-2">
-            Target: <AmountDisplay amount={project.targetAmount} size="xs" />
-          </p>
+        <AmountDisplay amount={calculatedBalance} size="lg" />
+        {project.targetAmount && project.targetAmount > 0 && (
+          <div className="mt-2">
+            <div className="flex justify-between text-xs text-text-secondary mb-1">
+              <span>Target</span>
+              <AmountDisplay amount={project.targetAmount} size="xs" />
+            </div>
+            <div className="h-1.5 bg-background rounded-full overflow-hidden">
+              <div
+                className="h-full bg-primary rounded-full transition-all"
+                style={{ width: `${Math.min(100, (calculatedBalance / project.targetAmount) * 100)}%` }}
+              />
+            </div>
+          </div>
         )}
+        <div className="flex gap-4 mt-3 pt-3 border-t border-border">
+          <div className="flex-1">
+            <p className="text-xs text-text-secondary">Total In</p>
+            <p className="text-sm font-medium text-success">+<AmountDisplay amount={totalContributions} size="sm" /></p>
+          </div>
+          <div className="flex-1">
+            <p className="text-xs text-text-secondary">Total Out</p>
+            <p className="text-sm font-medium text-error">-<AmountDisplay amount={totalPayments} size="sm" /></p>
+          </div>
+        </div>
       </div>
 
       {/* Add transaction button */}
