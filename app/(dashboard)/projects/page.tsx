@@ -129,6 +129,11 @@ function ProjectCard({ project }: { project: Project }) {
     other: '📁',
   };
 
+  // Calculate balance from transactions for accuracy
+  const calculatedBalance = (project.transactions || []).reduce((sum, txn) => {
+    return sum + (txn.type === 'contribution' ? txn.amount : -txn.amount);
+  }, 0);
+
   return (
     <Link
       href={`/projects/${project.id}`}
@@ -148,7 +153,7 @@ function ProjectCard({ project }: { project: Project }) {
             </p>
           )}
           <div className="flex items-center gap-4 text-xs text-text-secondary">
-            <span>Pool: <AmountDisplay amount={project.currentAmount || 0} size="xs" /></span>
+            <span>Pool: <AmountDisplay amount={calculatedBalance} size="xs" /></span>
             {project.targetAmount && (
               <span>Target: <AmountDisplay amount={project.targetAmount} size="xs" /></span>
             )}
