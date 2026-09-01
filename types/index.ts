@@ -431,3 +431,51 @@ export type CreateCycle = Omit<Cycle, 'id' | 'createdAt' | 'updatedAt'>;
 export type CreateCycleItem = Omit<CycleItem, 'id' | 'createdAt' | 'updatedAt'>;
 export type CreateReceipt = Omit<Receipt, 'id' | 'createdAt' | 'updatedAt'>;
 export type CreateWishlistItem = Omit<WishlistItem, 'id' | 'createdAt' | 'updatedAt' | 'completedAt' | 'progress' | 'currentAmount'>;
+
+/**
+ * Health Score - Gamified 0-100 score based on 4 pillars
+ */
+export interface HealthScore {
+  id: string;                    // Format: "2026-05"
+  cycleId: string;
+  totalScore: number;            // 0-100
+  pillars: {
+    budgetDiscipline: {
+      score: number;             // 0-25
+      paidOnTimePercent: number; // 0-100
+      totalItems: number;
+      paidOnTimeItems: number;
+    };
+    savingsRate: {
+      score: number;             // 0-25
+      rate: number;              // 0-100 (percentage)
+      incomeAmount: number;      // cents
+      savingsAmount: number;     // cents
+    };
+    goalMomentum: {
+      score: number;             // 0-25
+      onTrackPercent: number;    // 0-100
+      totalGoals: number;
+      onTrackGoals: number;
+      recentContributions: number;
+    };
+    stabilityBuffer: {
+      score: number;             // 0-25
+      monthsCovered: number;
+      emergencyFundBalance: number;  // cents
+      monthlyExpenses: number;       // cents
+    };
+  };
+  previousScore: number | null;
+  trend: 'up' | 'down' | 'stable';
+  tips: HealthScoreTip[];
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+export interface HealthScoreTip {
+  pillar: 'budgetDiscipline' | 'savingsRate' | 'goalMomentum' | 'stabilityBuffer';
+  title: string;
+  message: string;
+  priority: 'high' | 'medium' | 'low';
+}

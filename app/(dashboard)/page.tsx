@@ -15,6 +15,7 @@ import { FloatingMenu } from '@/components/shared/floating-menu';
 import { PaymentPrompt } from '@/components/shared/payment-prompt';
 import { Modal, ModalActions } from '@/components/shared/modal';
 import { ProgressBar } from '@/components/shared/progress-bar';
+import { HealthScoreWidget } from '@/components/health-score/health-score-widget';
 import type { CycleItem, CycleItemStatus, Goal, Insight } from '@/types';
 
 export default function DashboardPage() {
@@ -341,6 +342,9 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
+
+      {/* Health Score Widget */}
+      <HealthScoreWidget cycleId={currentCycleId} />
 
       {/* Insights */}
       {insights.length > 0 && (
