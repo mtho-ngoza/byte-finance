@@ -75,7 +75,7 @@ export async function PATCH(
 
 /**
  * DELETE /api/projects/[id]
- * Delete a project
+ * Archive a project (soft delete)
  */
 export async function DELETE(
   request: NextRequest,
@@ -94,7 +94,12 @@ export async function DELETE(
     return NextResponse.json({ error: 'Project not found' }, { status: 404 });
   }
 
-  await docRef.delete();
+  // Soft delete - archive instead of hard delete
+  await docRef.update({
+    status: 'archived',
+    archivedAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
 
   return NextResponse.json({ success: true });
 }

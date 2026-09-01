@@ -80,6 +80,11 @@ export async function DELETE(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Goal not found' }, { status: 404 });
   }
 
-  await ref.delete();
+  // Soft delete - archive instead of hard delete
+  await ref.update({
+    status: 'archived',
+    archivedAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
   return NextResponse.json({ success: true });
 }

@@ -121,7 +121,7 @@ export interface Goal {
   }>;
 
   // Status
-  status: 'active' | 'completed' | 'paused';
+  status: 'active' | 'completed' | 'paused' | 'archived';
   isOnTrack: boolean;               // Calculated: meeting expected pace?
 
   // Metadata
@@ -130,6 +130,7 @@ export interface Goal {
   createdAt: Timestamp;
   updatedAt: Timestamp;
   completedAt?: Timestamp;
+  archivedAt?: Timestamp;
 }
 
 /**
@@ -161,7 +162,7 @@ export interface Project {
   }>;
 
   // Status
-  status: 'active' | 'completed' | 'paused';
+  status: 'active' | 'completed' | 'paused' | 'archived';
 
   // Metadata
   priority: 'high' | 'medium' | 'low';
@@ -169,6 +170,7 @@ export interface Project {
   createdAt: Timestamp;
   updatedAt: Timestamp;
   completedAt?: Timestamp;
+  archivedAt?: Timestamp;
 }
 
 /**

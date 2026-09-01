@@ -25,6 +25,8 @@ export async function GET(request: NextRequest) {
     cycleItemsSnap,
     commitmentsSnap,
     goalsSnap,
+    projectsSnap,
+    receiptsSnap,
     snapshotsSnap,
     insightsSnap,
   ] = await Promise.all([
@@ -33,6 +35,8 @@ export async function GET(request: NextRequest) {
     db.collection(`users/${userId}/cycleItems`).get(),
     db.collection(`users/${userId}/commitments`).orderBy('sortOrder').get(),
     db.collection(`users/${userId}/goals`).get(),
+    db.collection(`users/${userId}/projects`).get(),
+    db.collection(`users/${userId}/receipts`).orderBy('capturedAt', 'desc').get(),
     db.collection(`users/${userId}/snapshots`).orderBy('year', 'desc').get(),
     db.collection(`users/${userId}/insights`).orderBy('createdAt', 'desc').limit(50).get(),
   ]);
@@ -70,6 +74,8 @@ export async function GET(request: NextRequest) {
   const cycleItems = cycleItemsSnap.docs.map(convertDoc);
   const commitments = commitmentsSnap.docs.map(convertDoc);
   const goals = goalsSnap.docs.map(convertDoc);
+  const projects = projectsSnap.docs.map(convertDoc);
+  const receipts = receiptsSnap.docs.map(convertDoc);
   const snapshots = snapshotsSnap.docs.map(convertDoc);
   const insights = insightsSnap.docs.map(convertDoc);
 
@@ -128,6 +134,8 @@ export async function GET(request: NextRequest) {
     cycleItems,
     commitments,
     goals,
+    projects,
+    receipts,
     snapshots,
     insights,
     stats: {
@@ -135,6 +143,8 @@ export async function GET(request: NextRequest) {
       totalCycleItems: cycleItems.length,
       totalCommitments: commitments.length,
       totalGoals: goals.length,
+      totalProjects: projects.length,
+      totalReceipts: receipts.length,
     },
   };
 

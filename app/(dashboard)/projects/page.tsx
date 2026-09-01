@@ -11,6 +11,7 @@ export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [search, setSearch] = useState('');
 
   useEffect(() => {
     fetchProjects();
@@ -56,8 +57,14 @@ export default function ProjectsPage() {
     );
   }
 
-  const activeProjects = projects.filter(p => p.status === 'active');
-  const completedProjects = projects.filter(p => p.status === 'completed');
+  // Filter projects
+  const nonArchivedProjects = projects.filter(p => p.status !== 'archived');
+  const filteredProjects = nonArchivedProjects.filter(p => {
+    if (search && !p.name.toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
+  const activeProjects = filteredProjects.filter(p => p.status === 'active');
+  const completedProjects = filteredProjects.filter(p => p.status === 'completed');
 
   return (
     <div className="space-y-4 pb-20">
@@ -75,6 +82,30 @@ export default function ProjectsPage() {
         >
           + New Project
         </button>
+      </div>
+
+      {/* Search */}
+      <div className="relative">
+        <input
+          type="text"
+          placeholder="Search projects..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="w-full px-4 py-2 pl-10 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:border-primary"
+        />
+        <svg
+          className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-secondary"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+          />
+        </svg>
       </div>
 
       {/* Create form modal */}

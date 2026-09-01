@@ -90,6 +90,7 @@ export default function ReceiptsPage() {
   const [pendingQueue, setPendingQueue] = useState<PendingReceipt[]>([]);
   const [search, setSearch] = useState('');
   const [filterAttention, setFilterAttention] = useState(false);
+  const [filterUnlinked, setFilterUnlinked] = useState(false);
   const [expandedYears, setExpandedYears] = useState<Set<number>>(new Set());
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
 
@@ -131,11 +132,14 @@ export default function ReceiptsPage() {
     }
   }, [yearGroups]);
 
+  // Unlinked = complete receipts not linked to cycle item or project
+  const unlinked = complete.filter((r) => !r.cycleItemId && !r.projectId);
+
   // Filter receipts
   const q = search.toLowerCase();
-  const baseList = filterAttention ? needsAttention : receipts;
+  const baseList = filterUnlinked ? unlinked : filterAttention ? needsAttention : receipts;
   const filteredReceipts = useMemo(() => {
-    if (!q && !filterAttention) return null; // Use grouped view
+    if (!q && !filterAttention && !filterUnlinked) return null; // Use grouped view
     return baseList.filter((r) => {
       if (!q) return true;
       return (
@@ -143,7 +147,7 @@ export default function ReceiptsPage() {
         (r.amountInCents !== undefined && `r${(r.amountInCents / 100).toFixed(0)}`.includes(q))
       );
     });
-  }, [baseList, q, filterAttention]);
+  }, [baseList, q, filterAttention, filterUnlinked]);
 
   const toggleYear = (year: number) => {
     setExpandedYears((prev) => {
@@ -163,8 +167,6 @@ export default function ReceiptsPage() {
     });
   };
 
-  const unlinked = complete.filter((r) => !r.cycleItemId);
-
   if (loading) {
     return (
       <div className="animate-pulse space-y-4">
@@ -178,7 +180,7 @@ export default function ReceiptsPage() {
     );
   }
 
-  const isSearching = q || filterAttention;
+  const isSearching = q || filterAttention || filterUnlinked;
 
   return (
     <div className="space-y-4 pb-20">
@@ -232,13 +234,23 @@ export default function ReceiptsPage() {
           )}
         </div>
         <button
-          onClick={() => setFilterAttention(!filterAttention)}
+          onClick={() => { setFilterAttention(!filterAttention); setFilterUnlinked(false); }}
           className={`px-3 py-2 rounded-lg border text-sm transition-colors whitespace-nowrap ${
             filterAttention ? 'border-warning bg-warning/10 text-warning' : 'border-border text-text-secondary hover:border-primary'
           }`}
         >
           ⚠️ {needsAttention.length}
         </button>
+        {unlinked.length > 0 && (
+          <button
+            onClick={() => { setFilterUnlinked(!filterUnlinked); setFilterAttention(false); }}
+            className={`px-3 py-2 rounded-lg border text-sm transition-colors whitespace-nowrap ${
+              filterUnlinked ? 'border-primary bg-primary/10 text-primary' : 'border-border text-text-secondary hover:border-primary'
+            }`}
+          >
+            🔗 {unlinked.length}
+          </button>
+        )}
       </div>
 
       {/* Content */}
@@ -246,7 +258,7 @@ export default function ReceiptsPage() {
         /* Flat search results */
         <section>
           <h2 className="text-sm font-medium text-text-secondary mb-3">
-            {filterAttention ? `Needs Attention (${filteredReceipts?.length || 0})` : `Search Results (${filteredReceipts?.length || 0})`}
+            {filterUnlinked ? `Unlinked (${filteredReceipts?.length || 0})` : filterAttention ? `Needs Attention (${filteredReceipts?.length || 0})` : `Search Results (${filteredReceipts?.length || 0})`}
           </h2>
           {filteredReceipts && filteredReceipts.length > 0 ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">

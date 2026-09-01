@@ -301,7 +301,9 @@ function GoalDetail({ goal, allCommitments }: GoalDetailProps) {
             <h1 className="text-xl font-semibold text-text-primary">{goal.name}</h1>
             <div className="flex items-center gap-2">
               <span className="text-sm text-text-secondary capitalize">{goal.type.replace('_', ' ')}</span>
-              {goal.isOnTrack ? (
+              {calculatedBalance >= goal.targetAmount ? (
+                <span className="text-xs px-1.5 py-0.5 rounded bg-success/10 text-success font-medium">Complete</span>
+              ) : goal.isOnTrack ? (
                 <span className="text-xs px-1.5 py-0.5 rounded bg-primary/10 text-primary">On Track</span>
               ) : (
                 <span className="text-xs px-1.5 py-0.5 rounded bg-warning/10 text-warning">Behind</span>
@@ -350,7 +352,6 @@ function GoalDetail({ goal, allCommitments }: GoalDetailProps) {
                 <option value="savings">Savings</option>
                 <option value="debt_payoff">Debt Payoff</option>
                 <option value="investment">Investment</option>
-                <option value="project">Project / Quotation</option>
               </select>
             </div>
             <div>
@@ -730,7 +731,7 @@ function GoalDetail({ goal, allCommitments }: GoalDetailProps) {
                     return (
                       <div
                         key={contrib.id}
-                        className="flex items-center justify-between py-2 border-b border-border/50 last:border-0 group"
+                        className="flex items-center justify-between py-2 border-b border-border/50 last:border-0"
                       >
                         <div className="flex-1">
                           <p className="text-sm text-text-primary">
@@ -742,10 +743,10 @@ function GoalDetail({ goal, allCommitments }: GoalDetailProps) {
                         </div>
                         <div className="flex items-center gap-2">
                           <AmountDisplay amount={contrib.amount} size="sm" />
-                          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="flex">
                             <button
                               onClick={() => setEditingContribution(contrib)}
-                              className="p-1 text-text-secondary hover:text-primary"
+                              className="p-1.5 text-text-secondary/50 hover:text-primary"
                               title="Edit"
                             >
                               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -755,7 +756,7 @@ function GoalDetail({ goal, allCommitments }: GoalDetailProps) {
                             <button
                               onClick={() => handleDeleteContribution(contrib.id)}
                               disabled={isDeleting}
-                              className="p-1 text-text-secondary hover:text-error disabled:opacity-50"
+                              className="p-1.5 text-text-secondary/50 hover:text-error disabled:opacity-50"
                               title="Delete"
                             >
                               {isDeleting ? (

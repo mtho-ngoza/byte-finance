@@ -10,6 +10,8 @@ import type { Goal, Commitment } from '@/types';
  * Extended Goal with computed fields
  */
 export interface GoalWithComputed extends Goal {
+  /** Calculated balance from contributions (always accurate) */
+  calculatedBalance: number;
   /** Monthly contribution from linked commitments (computed) */
   linkedMonthlyAmount: number;
   /** Effective monthly target (linked amount or manual target) */
@@ -166,6 +168,9 @@ export function useGoals(): UseGoalsResult {
   // Compute enhanced goals with linked commitment data
   const goals = useMemo(() => {
     return rawGoals.map((goal) => {
+      // Calculate balance from contributions (always accurate)
+      const calculatedBalance = (goal.contributions ?? []).reduce((sum, c) => sum + c.amount, 0);
+
       // Find commitments linked to this goal
       const linkedCommitments = commitments.filter((c) => c.linkedGoalId === goal.id);
 
@@ -179,11 +184,12 @@ export function useGoals(): UseGoalsResult {
 
       const enhanced: GoalWithComputed = {
         ...goal,
+        calculatedBalance,
         linkedMonthlyAmount,
         effectiveMonthlyTarget,
         linkedCommitments,
-        isOnTrack: computeIsOnTrack(goal, effectiveMonthlyTarget),
-        estimatedCompletionDate: computeEstimatedCompletion(goal, effectiveMonthlyTarget),
+        isOnTrack: computeIsOnTrack({ ...goal, currentAmount: calculatedBalance }, effectiveMonthlyTarget),
+        estimatedCompletionDate: computeEstimatedCompletion({ ...goal, currentAmount: calculatedBalance }, effectiveMonthlyTarget),
         daysUntilDeadline: computeDaysUntilDeadline(goal),
       };
 
@@ -191,8 +197,11 @@ export function useGoals(): UseGoalsResult {
     });
   }, [rawGoals, commitments]);
 
-  // Filter active goals
-  const activeGoals = goals.filter((g) => g.status === 'active');
+  // Filter out archived goals
+  const nonArchivedGoals = goals.filter((g) => g.status !== 'archived');
+
+  // Filter active goals only
+  const activeGoals = nonArchivedGoals.filter((g) => g.status === 'active');
 
   // Group by type
   const goalsByType = {
@@ -201,12 +210,12 @@ export function useGoals(): UseGoalsResult {
     investment: activeGoals.filter((g) => g.type === 'investment'),
   };
 
-  // Calculate totals
-  const totalProgress = activeGoals.reduce((sum, g) => sum + g.currentAmount, 0);
+  // Calculate totals using calculated balance
+  const totalProgress = activeGoals.reduce((sum, g) => sum + g.calculatedBalance, 0);
   const totalTarget = activeGoals.reduce((sum, g) => sum + g.targetAmount, 0);
 
   return {
-    goals,
+    goals: nonArchivedGoals,
     loading,
     activeGoals,
     goalsByType,

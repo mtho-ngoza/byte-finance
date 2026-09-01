@@ -248,8 +248,8 @@ export default function GoalsPage() {
       {/* Goals List */}
       {(() => {
         // Separate active and completed goals
-        const activeFiltered = filteredGoals.filter(g => g.currentAmount < g.targetAmount && g.status !== 'completed');
-        const completedFiltered = filteredGoals.filter(g => g.currentAmount >= g.targetAmount || g.status === 'completed');
+        const activeFiltered = filteredGoals.filter(g => g.calculatedBalance < g.targetAmount && g.status !== 'completed');
+        const completedFiltered = filteredGoals.filter(g => g.calculatedBalance >= g.targetAmount || g.status === 'completed');
 
         if (filteredGoals.length === 0) {
           return (
@@ -332,7 +332,7 @@ interface GoalCardProps {
 
 function GoalCard({ goal, onDelete, formatAmount }: GoalCardProps) {
   const progressPercent = goal.targetAmount > 0
-    ? Math.min(100, Math.round((goal.currentAmount / goal.targetAmount) * 100))
+    ? Math.min(100, Math.round((goal.calculatedBalance / goal.targetAmount) * 100))
     : 0;
 
   const hasLinkedCommitments = goal.linkedCommitments.length > 0;
@@ -355,7 +355,7 @@ function GoalCard({ goal, onDelete, formatAmount }: GoalCardProps) {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {goal.currentAmount >= goal.targetAmount ? (
+          {goal.calculatedBalance >= goal.targetAmount ? (
             <span className="text-xs px-2 py-0.5 rounded-full bg-success/10 text-success font-medium">Complete</span>
           ) : goal.isOnTrack ? (
             <span className="text-xs text-primary">On Track</span>
@@ -379,7 +379,7 @@ function GoalCard({ goal, onDelete, formatAmount }: GoalCardProps) {
       <div className="flex items-center justify-between text-sm mb-2">
         <span className="text-text-secondary">Progress</span>
         <span className="font-mono text-text-primary">
-          {formatAmount(goal.currentAmount)} / {formatAmount(goal.targetAmount)}
+          {formatAmount(goal.calculatedBalance)} / {formatAmount(goal.targetAmount)}
         </span>
       </div>
 
@@ -398,7 +398,7 @@ function GoalCard({ goal, onDelete, formatAmount }: GoalCardProps) {
             <span className="text-text-secondary/70"> (from commitments)</span>
           )}
         </span>
-        {goal.estimatedCompletionDate && goal.currentAmount < goal.targetAmount && (
+        {goal.estimatedCompletionDate && goal.calculatedBalance < goal.targetAmount && (
           <span>
             Est. completion: {goal.estimatedCompletionDate.toLocaleDateString('en-ZA', { month: 'short', year: 'numeric' })}
           </span>
