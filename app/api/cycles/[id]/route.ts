@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/auth';
 import { getAdminDb } from '@/lib/firebase-admin';
-import { FieldValue } from 'firebase-admin/firestore';
+import { FieldValue, Timestamp } from 'firebase-admin/firestore';
+import { getPaydayForMonth } from '@/lib/payday-utils';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -41,10 +42,41 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: 'Cycle not found' }, { status: 404 });
   }
 
-  const updateData = {
+  const updateData: Record<string, unknown> = {
     ...body,
     updatedAt: FieldValue.serverTimestamp(),
   };
+
+  // If income.receivedDate is provided, update cycle date range
+  if (body.income?.receivedDate) {
+    const receivedDate = new Date(body.income.receivedDate);
+
+    // Get user's payday preferences
+    const userDoc = await db.collection('users').doc(userId).get();
+    const userData = userDoc.data();
+    const payDayType = userData?.preferences?.payDayType ?? 'last_working_day';
+    const payDayFixed = userData?.preferences?.payDayFixed;
+
+    // Cycle ID format: YYYY-MM (the month this budget is FOR)
+    const [cycleYear, cycleMonth] = id.split('-').map(Number);
+
+    // Start date = income received date (payday of previous month)
+    const startDate = receivedDate;
+
+    // End date = day before this month's payday
+    const thisMonthPayday = getPaydayForMonth(cycleYear, cycleMonth, payDayType, payDayFixed);
+    const endDate = new Date(thisMonthPayday);
+    endDate.setDate(endDate.getDate() - 1);
+
+    updateData.startDate = Timestamp.fromDate(startDate);
+    updateData.endDate = Timestamp.fromDate(endDate);
+
+    // Also update the income object with proper timestamp
+    updateData.income = {
+      ...body.income,
+      receivedDate: Timestamp.fromDate(receivedDate),
+    };
+  }
 
   await ref.update(updateData);
 
