@@ -8,6 +8,7 @@ const MORE_LINKS = [
     section: 'Finance',
     items: [
       { label: 'Goals', href: '/goals', icon: '◎', description: 'Track savings & debt payoff' },
+      { label: 'Trends', href: '/trends', icon: '📈', description: 'Spending patterns over time' },
       { label: 'What If', href: '/what-if', icon: '🔮', description: 'Scenario calculator' },
       { label: 'Health Score', href: '/health-score', icon: '💪', description: 'Financial health check' },
       { label: 'Wishlist', href: '/wishlist', icon: '🎯', description: 'Annual financial goals' },

@@ -8,6 +8,7 @@ const NAV_ITEMS = [
   { label: 'Plan', href: '/plan', icon: '⊟' },
   { label: 'Goals', href: '/goals', icon: '◎' },
   { label: 'Projects', href: '/projects', icon: '🏗️' },
+  { label: 'Trends', href: '/trends', icon: '📈' },
   { label: 'What If', href: '/what-if', icon: '🔮' },
   { label: 'Receipts', href: '/receipts', icon: '▤' },
   { label: 'History', href: '/history', icon: '◉' },
