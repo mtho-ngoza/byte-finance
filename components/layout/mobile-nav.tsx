@@ -8,7 +8,7 @@ const MOBILE_NAV_ITEMS = [
   { label: 'Plan', href: '/plan', icon: '⊟' },
   { label: 'Projects', href: '/projects', icon: '🏗️' },
   { label: 'Receipts', href: '/receipts', icon: '▤' },
-  { label: 'More', href: '/goals', icon: '⋯' },
+  { label: 'More', href: '/more', icon: '⋯' },
 ];
 
 export function MobileNav() {
