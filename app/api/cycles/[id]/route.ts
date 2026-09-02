@@ -63,10 +63,38 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     // Start date = income received date (payday of previous month)
     const startDate = receivedDate;
 
-    // End date = day before this month's payday
-    const thisMonthPayday = getPaydayForMonth(cycleYear, cycleMonth, payDayType, payDayFixed);
-    const endDate = new Date(thisMonthPayday);
-    endDate.setDate(endDate.getDate() - 1);
+    // End date = day before NEXT cycle's income date (if set) OR last working day
+    // Next cycle ID
+    const nextMonth = cycleMonth === 12 ? 1 : cycleMonth + 1;
+    const nextYear = cycleMonth === 12 ? cycleYear + 1 : cycleYear;
+    const nextCycleId = `${nextYear}-${String(nextMonth).padStart(2, '0')}`;
+
+    // Check if next cycle exists and has income date
+    const nextCycleRef = db.collection(`users/${userId}/cycles`).doc(nextCycleId);
+    const nextCycleSnap = await nextCycleRef.get();
+
+    let endDate: Date;
+    if (nextCycleSnap.exists) {
+      const nextCycleData = nextCycleSnap.data();
+      if (nextCycleData?.income?.receivedDate) {
+        // Next cycle has income date - end this cycle day before that
+        const nextIncomeDate = nextCycleData.income.receivedDate.toDate
+          ? nextCycleData.income.receivedDate.toDate()
+          : new Date(nextCycleData.income.receivedDate);
+        endDate = new Date(nextIncomeDate);
+        endDate.setDate(endDate.getDate() - 1);
+      } else {
+        // Next cycle exists but no income - use last working day
+        const thisMonthPayday = getPaydayForMonth(cycleYear, cycleMonth, payDayType, payDayFixed);
+        endDate = new Date(thisMonthPayday);
+        endDate.setDate(endDate.getDate() - 1);
+      }
+    } else {
+      // No next cycle - use last working day of this month as payday estimate
+      const thisMonthPayday = getPaydayForMonth(cycleYear, cycleMonth, payDayType, payDayFixed);
+      endDate = new Date(thisMonthPayday);
+      endDate.setDate(endDate.getDate() - 1);
+    }
 
     updateData.startDate = Timestamp.fromDate(startDate);
     updateData.endDate = Timestamp.fromDate(endDate);
@@ -76,6 +104,23 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       ...body.income,
       receivedDate: Timestamp.fromDate(receivedDate),
     };
+
+    // Update PREVIOUS cycle's end date to align (this income date - 1)
+    const prevMonth = cycleMonth === 1 ? 12 : cycleMonth - 1;
+    const prevYear = cycleMonth === 1 ? cycleYear - 1 : cycleYear;
+    const prevCycleId = `${prevYear}-${String(prevMonth).padStart(2, '0')}`;
+
+    const prevCycleRef = db.collection(`users/${userId}/cycles`).doc(prevCycleId);
+    const prevCycleSnap = await prevCycleRef.get();
+
+    if (prevCycleSnap.exists) {
+      const prevEndDate = new Date(receivedDate);
+      prevEndDate.setDate(prevEndDate.getDate() - 1);
+      await prevCycleRef.update({
+        endDate: Timestamp.fromDate(prevEndDate),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
 
     // Now reassign items based on payment date
     // 1. Find all paid items where paidDate falls within this cycle's new date range
