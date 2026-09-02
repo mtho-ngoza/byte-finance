@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { doc, setDoc, Timestamp } from 'firebase/firestore';
+import { doc, setDoc, Timestamp, deleteField } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useUserId } from '@/hooks/use-user-id';
 import { useUserProfile } from '@/hooks/use-user-profile';
@@ -308,18 +308,18 @@ function PaydaySettings() {
     if (!userId) return;
     setSaving(true);
     try {
-      await setDoc(
-        doc(db, `users/${userId}`),
-        {
-          preferences: {
-            ...profile?.preferences,
-            payDayType,
-            payDayFixed: payDayType === 'fixed' ? payDayFixed : undefined,
-          },
-          updatedAt: Timestamp.now(),
-        },
-        { merge: true }
-      );
+      const updateData: Record<string, unknown> = {
+        'preferences.payDayType': payDayType,
+        updatedAt: Timestamp.now(),
+      };
+
+      if (payDayType === 'fixed') {
+        updateData['preferences.payDayFixed'] = payDayFixed;
+      } else {
+        updateData['preferences.payDayFixed'] = deleteField();
+      }
+
+      await setDoc(doc(db, `users/${userId}`), updateData, { merge: true });
       toast('Payday settings updated', 'success');
     } catch (err) {
       console.error(err);
