@@ -47,7 +47,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     updatedAt: FieldValue.serverTimestamp(),
   };
 
-  // If income.receivedDate is provided, update cycle date range
+  // If income.receivedDate is provided, update cycle date range AND reassign items
   if (body.income?.receivedDate) {
     const receivedDate = new Date(body.income.receivedDate);
 
@@ -76,6 +76,77 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       ...body.income,
       receivedDate: Timestamp.fromDate(receivedDate),
     };
+
+    // Now reassign items based on payment date
+    // 1. Find all paid items where paidDate falls within this cycle's new date range
+    // 2. Update their cycleId to this cycle
+    // 3. Recalculate totals
+
+    const allItemsSnap = await db
+      .collection(`users/${userId}/cycleItems`)
+      .where('status', 'in', ['paid', 'partial'])
+      .get();
+
+    const itemsToMove: Array<{ id: string; data: FirebaseFirestore.DocumentData; fromCycleId: string }> = [];
+
+    for (const itemDoc of allItemsSnap.docs) {
+      const item = itemDoc.data();
+      if (!item.paidDate) continue;
+
+      const paidDate = item.paidDate.toDate ? item.paidDate.toDate() : new Date(item.paidDate);
+
+      // Check if this item's paidDate falls within our new date range
+      if (paidDate >= startDate && paidDate <= endDate) {
+        // This item should be in this cycle
+        if (item.cycleId !== id) {
+          itemsToMove.push({
+            id: itemDoc.id,
+            data: item,
+            fromCycleId: item.cycleId,
+          });
+        }
+      }
+    }
+
+    // Move items and update cycle totals
+    const cycleAdjustments = new Map<string, { totalPaid: number; paidCount: number }>();
+
+    for (const { id: itemId, data: item, fromCycleId } of itemsToMove) {
+      const paidAmount = item.totalPaidAmount ?? item.actualAmount ?? item.amount ?? 0;
+
+      // Update item's cycleId
+      await db.collection(`users/${userId}/cycleItems`).doc(itemId).update({
+        cycleId: id,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+
+      // Track adjustments for old cycle (decrease)
+      const oldAdj = cycleAdjustments.get(fromCycleId) ?? { totalPaid: 0, paidCount: 0 };
+      oldAdj.totalPaid -= paidAmount;
+      oldAdj.paidCount -= 1;
+      cycleAdjustments.set(fromCycleId, oldAdj);
+
+      // Track adjustments for new cycle (increase)
+      const newAdj = cycleAdjustments.get(id) ?? { totalPaid: 0, paidCount: 0 };
+      newAdj.totalPaid += paidAmount;
+      newAdj.paidCount += 1;
+      cycleAdjustments.set(id, newAdj);
+    }
+
+    // Apply cycle total adjustments
+    for (const [cycleId, adj] of cycleAdjustments) {
+      if (adj.totalPaid !== 0 || adj.paidCount !== 0) {
+        const cycleRef = db.collection(`users/${userId}/cycles`).doc(cycleId);
+        const cycleSnap = await cycleRef.get();
+        if (cycleSnap.exists) {
+          await cycleRef.update({
+            totalPaid: FieldValue.increment(adj.totalPaid),
+            paidCount: FieldValue.increment(adj.paidCount),
+            updatedAt: FieldValue.serverTimestamp(),
+          });
+        }
+      }
+    }
   }
 
   await ref.update(updateData);
