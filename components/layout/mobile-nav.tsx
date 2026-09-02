@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 const MOBILE_NAV_ITEMS = [
   { label: 'Now', href: '/', icon: '⊞' },
   { label: 'Plan', href: '/plan', icon: '⊟' },
-  { label: 'What If', href: '/what-if', icon: '🔮' },
+  { label: 'Projects', href: '/projects', icon: '🏗️' },
   { label: 'Receipts', href: '/receipts', icon: '▤' },
   { label: 'More', href: '/goals', icon: '⋯' },
 ];
