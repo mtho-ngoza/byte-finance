@@ -17,11 +17,12 @@ import { Modal, ModalActions } from '@/components/shared/modal';
 import { ProgressBar } from '@/components/shared/progress-bar';
 import { HealthScoreWidget } from '@/components/health-score/health-score-widget';
 import type { CycleItem, CycleItemStatus, Goal, Insight } from '@/types';
+import { getCycleDateRange, getCycleIdForDate } from '@/lib/payday-utils';
 
 export default function DashboardPage() {
   const { cycles, loading: cyclesLoading } = useCycles();
   const { activeGoals, loading: goalsLoading } = useGoals();
-  const { loading: profileLoading } = useUserProfile();
+  const { profile, loading: profileLoading } = useUserProfile();
   const { selectedYear, accountFilter, currentCycleId, setCurrentCycleId } = useAppStore();
   const { insights, dismiss: dismissInsight, snooze: snoozeInsight } = useInsights(currentCycleId ?? undefined);
   const [creatingCycle, setCreatingCycle] = useState(false);
@@ -31,13 +32,15 @@ export default function DashboardPage() {
     if (cyclesLoading || creatingCycle || profileLoading) return;
 
     const today = new Date();
-    const currentMonth = today.getMonth() + 1;
-    const currentYear = today.getFullYear();
+    const payDayType = profile?.preferences?.payDayType ?? 'last_working_day';
+    const payDayFixed = profile?.preferences?.payDayFixed;
 
-    // Cycle = calendar month (1st to last day), using UTC noon to avoid timezone issues
-    const expectedCycleId = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
-    const cycleStart = new Date(Date.UTC(currentYear, currentMonth - 1, 1, 12, 0, 0));
-    const cycleEnd = new Date(Date.UTC(currentYear, currentMonth, 0, 12, 0, 0));
+    // Determine which cycle today belongs to based on payday settings
+    const expectedCycleId = getCycleIdForDate(today, payDayType, payDayFixed);
+    const [cycleYear, cycleMonth] = expectedCycleId.split('-').map(Number);
+
+    // Get the date range for this cycle (payday to payday)
+    const { startDate, endDate } = getCycleDateRange(cycleYear, cycleMonth, payDayType, payDayFixed);
 
     // Check if this cycle exists
     const cycleExists = cycles.some((c) => c.id === expectedCycleId);
@@ -55,14 +58,14 @@ export default function DashboardPage() {
           });
         }
 
-        // Create new cycle
+        // Create new cycle with payday-based dates
         await fetch('/api/cycles', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             id: expectedCycleId,
-            startDate: cycleStart.toISOString(),
-            endDate: cycleEnd.toISOString(),
+            startDate: startDate.toISOString(),
+            endDate: endDate.toISOString(),
             status: 'active',
           }),
         });
@@ -72,7 +75,7 @@ export default function DashboardPage() {
         setCreatingCycle(false);
       }
     }
-  }, [cycles, cyclesLoading, creatingCycle, profileLoading]);
+  }, [cycles, cyclesLoading, creatingCycle, profileLoading, profile]);
 
   // Run auto-create check when profile and cycles are loaded
   useEffect(() => {

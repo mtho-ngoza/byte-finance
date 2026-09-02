@@ -33,6 +33,9 @@ export interface UserProfile {
     theme: 'dark' | 'light';
     notificationsEnabled: boolean;
     vatPercentage?: number; // e.g., 15 for 15% SA VAT. Optional - if not set, no VAT calc.
+    // Payday settings - determines cycle boundaries
+    payDayType?: 'last_working_day' | 'fixed'; // Default: 'last_working_day'
+    payDayFixed?: number; // Day of month (1-31), only used if payDayType is 'fixed'
   };
   createdAt: Timestamp;
   updatedAt: Timestamp;

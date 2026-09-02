@@ -284,6 +284,123 @@ function VatConfig() {
 }
 
 // ---------------------------------------------------------------------------
+// PaydaySettings
+// ---------------------------------------------------------------------------
+
+function PaydaySettings() {
+  const userId = useUserId();
+  const { profile, loading } = useUserProfile();
+  const [saving, setSaving] = useState(false);
+  const [payDayType, setPayDayType] = useState<'last_working_day' | 'fixed'>('last_working_day');
+  const [payDayFixed, setPayDayFixed] = useState<number>(25);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    if (profile?.preferences?.payDayType) setPayDayType(profile.preferences.payDayType);
+    if (profile?.preferences?.payDayFixed) setPayDayFixed(profile.preferences.payDayFixed);
+  }, [profile]);
+
+  const hasChanges =
+    payDayType !== (profile?.preferences?.payDayType ?? 'last_working_day') ||
+    (payDayType === 'fixed' && payDayFixed !== (profile?.preferences?.payDayFixed ?? 25));
+
+  async function handleSave() {
+    if (!userId) return;
+    setSaving(true);
+    try {
+      await setDoc(
+        doc(db, `users/${userId}`),
+        {
+          preferences: {
+            ...profile?.preferences,
+            payDayType,
+            payDayFixed: payDayType === 'fixed' ? payDayFixed : undefined,
+          },
+          updatedAt: Timestamp.now(),
+        },
+        { merge: true }
+      );
+      toast('Payday settings updated', 'success');
+    } catch (err) {
+      console.error(err);
+      toast('Failed to update payday settings', 'error');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) return <Skeleton height={120} className="w-full" />;
+
+  // Preview calculation
+  const now = new Date();
+  const previewMonth = now.toLocaleDateString('en-ZA', { month: 'long' });
+
+  return (
+    <div className="p-4 bg-surface border border-border rounded-lg space-y-4">
+      <div>
+        <label className="block text-xs text-text-secondary mb-3">When do you get paid?</label>
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            onClick={() => setPayDayType('last_working_day')}
+            className={`py-3 px-4 rounded-lg border text-sm font-medium transition-colors ${
+              payDayType === 'last_working_day'
+                ? 'border-primary bg-primary/10 text-primary'
+                : 'border-border text-text-secondary hover:border-primary/50'
+            }`}
+          >
+            Last working day
+          </button>
+          <button
+            onClick={() => setPayDayType('fixed')}
+            className={`py-3 px-4 rounded-lg border text-sm font-medium transition-colors ${
+              payDayType === 'fixed'
+                ? 'border-primary bg-primary/10 text-primary'
+                : 'border-border text-text-secondary hover:border-primary/50'
+            }`}
+          >
+            Fixed day
+          </button>
+        </div>
+      </div>
+
+      {payDayType === 'fixed' && (
+        <div>
+          <label className="block text-xs text-text-secondary mb-2">Day of month</label>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              value={payDayFixed}
+              onChange={(e) => setPayDayFixed(Math.min(31, Math.max(1, parseInt(e.target.value) || 1)))}
+              min={1}
+              max={31}
+              className="w-20 px-3 py-2 bg-background border border-border rounded-lg text-text-primary focus:outline-none focus:border-primary text-sm"
+            />
+            <span className="text-sm text-text-secondary">of each month</span>
+          </div>
+        </div>
+      )}
+
+      <div className="p-3 bg-background rounded-lg">
+        <p className="text-xs text-text-secondary">
+          <strong className="text-text-primary">How it works:</strong> Your {previewMonth} budget starts when you receive your{' '}
+          {new Date(now.getFullYear(), now.getMonth() - 1).toLocaleDateString('en-ZA', { month: 'long' })} paycheck and ends the day before your {previewMonth} paycheck.
+        </p>
+      </div>
+
+      {hasChanges && (
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="w-full py-2 bg-primary text-black font-medium rounded-lg text-sm disabled:opacity-50 hover:bg-primary/90 transition-colors"
+        >
+          {saving ? 'Saving...' : 'Save Changes'}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // ExportData
 // ---------------------------------------------------------------------------
 
@@ -346,6 +463,14 @@ export default function SettingsPage() {
           <p className="text-sm text-text-secondary mt-1">Your account display name.</p>
         </div>
         <ProfileSettings />
+      </section>
+
+      <section>
+        <div className="mb-4">
+          <h2 className="text-base font-semibold text-text-primary">Payday</h2>
+          <p className="text-sm text-text-secondary mt-1">Configure when you get paid to align your budget cycles.</p>
+        </div>
+        <PaydaySettings />
       </section>
 
       <section>
