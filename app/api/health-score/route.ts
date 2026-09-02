@@ -152,11 +152,13 @@ function calculateBudgetDiscipline(items: any[]): HealthScore['pillars']['budget
     return { score: 25, paidOnTimePercent: 100, totalItems: 0, paidOnTimeItems: 0 };
   }
 
-  // Count items paid on time
-  // "On time" = status is 'paid' AND (paidDate <= dueDate OR no dueDate set)
-  const paidOnTimeItems = activeItems.filter(item => {
-    if (item.status !== 'paid') return false;
-    if (!item.dueDate) return true; // No due date = counts as on time
+  // Separate fixed items (with due dates) from variable items
+  const fixedItems = activeItems.filter(i => i.dueDate && !i.isVariable);
+  const variableItems = activeItems.filter(i => !i.dueDate || i.isVariable);
+
+  // Fixed items: Check if paid on or before due date
+  const fixedOnTime = fixedItems.filter(item => {
+    if (item.status !== 'paid' && item.status !== 'partial') return false;
     if (!item.paidDate) return true; // Marked paid without date = assume on time
 
     const dueDate = item.dueDate?.toDate?.() ?? new Date(item.dueDate);
@@ -164,6 +166,12 @@ function calculateBudgetDiscipline(items: any[]): HealthScore['pillars']['budget
     return paidDate <= dueDate;
   }).length;
 
+  // Variable items: Just check if paid/partial (they're about budget control, not timing)
+  const variablePaid = variableItems.filter(item =>
+    item.status === 'paid' || item.status === 'partial'
+  ).length;
+
+  const paidOnTimeItems = fixedOnTime + variablePaid;
   const paidOnTimePercent = Math.round((paidOnTimeItems / totalItems) * 100);
   const score = Math.round((paidOnTimeItems / totalItems) * 25);
 
