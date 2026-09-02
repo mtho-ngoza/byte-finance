@@ -247,7 +247,12 @@ async function calculateStabilityBuffer(
     (g.type === 'savings' && g.priority === 'high')
   );
 
-  const emergencyFundBalance = emergencyGoal?.currentAmount ?? 0;
+  // Calculate balance from contributions (more accurate than currentAmount which may be stale)
+  const emergencyContributions = emergencyGoal?.contributions ?? [];
+  const emergencyFundBalance = emergencyContributions.reduce(
+    (sum: number, c: { amount?: number }) => sum + (c.amount ?? 0),
+    0
+  );
 
   // Calculate average monthly expenses from last 3 cycles
   const now = new Date();
