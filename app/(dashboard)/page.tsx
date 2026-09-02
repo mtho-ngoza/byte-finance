@@ -16,6 +16,7 @@ import { PaymentPrompt } from '@/components/shared/payment-prompt';
 import { Modal, ModalActions } from '@/components/shared/modal';
 import { ProgressBar } from '@/components/shared/progress-bar';
 import { HealthScoreWidget } from '@/components/health-score/health-score-widget';
+import { IncomeEntry } from '@/components/shared/income-entry';
 import type { CycleItem, CycleItemStatus, Goal, Insight } from '@/types';
 import { getCycleDateRange, getCycleIdForDate } from '@/lib/payday-utils';
 
@@ -150,6 +151,29 @@ export default function DashboardPage() {
       if (!res.ok) throw new Error('Delete failed');
     } catch (err) {
       console.error('Delete failed:', err);
+    }
+  };
+
+  // Save income handler
+  const saveIncome = async (income: { amount: number; vatAmount?: number; receivedDate: string }) => {
+    if (!currentCycle) return;
+    try {
+      const res = await fetch(`/api/cycles/${currentCycle.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          income: {
+            amount: income.amount,
+            vatAmount: income.vatAmount,
+            receivedDate: income.receivedDate,
+            verified: true,
+          },
+        }),
+      });
+      if (!res.ok) throw new Error('Failed to save income');
+    } catch (err) {
+      console.error('Save income failed:', err);
+      throw err;
     }
   };
 
@@ -325,6 +349,15 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
+
+      {/* Income Entry */}
+      {currentCycle && (
+        <IncomeEntry
+          cycleId={currentCycle.id}
+          currentIncome={currentCycle.income}
+          onSave={saveIncome}
+        />
+      )}
 
       {/* Goals Summary */}
       {activeGoals.length > 0 && (
