@@ -145,8 +145,11 @@ export function getPaydayForMonth(
  * Calculate cycle date range based on payday
  *
  * For "October Budget":
- * - Start: Payday of September (when you get paid to fund October)
- * - End: Day before payday of October (last day before next paycheck)
+ * - Start: Day after payday of September (payday + 1)
+ * - End: Payday of October (last day of this budget cycle)
+ *
+ * This means the cycle runs from the day AFTER you get paid
+ * until your next payday (inclusive).
  */
 export function getCycleDateRange(
   cycleYear: number,
@@ -154,15 +157,16 @@ export function getCycleDateRange(
   payDayType: 'last_working_day' | 'fixed' = 'last_working_day',
   payDayFixed?: number
 ): { startDate: Date; endDate: Date; payDay: Date } {
-  // Previous month's payday = start of this cycle
+  // Previous month's payday + 1 day = start of this cycle
   const prevMonth = cycleMonth === 1 ? 12 : cycleMonth - 1;
   const prevYear = cycleMonth === 1 ? cycleYear - 1 : cycleYear;
-  const startDate = getPaydayForMonth(prevYear, prevMonth, payDayType, payDayFixed);
+  const prevPayday = getPaydayForMonth(prevYear, prevMonth, payDayType, payDayFixed);
+  const startDate = new Date(prevPayday);
+  startDate.setDate(startDate.getDate() + 1);
 
-  // This month's payday - 1 day = end of this cycle
+  // This month's payday = end of this cycle (inclusive)
   const payDay = getPaydayForMonth(cycleYear, cycleMonth, payDayType, payDayFixed);
   const endDate = new Date(payDay);
-  endDate.setDate(endDate.getDate() - 1);
 
   return { startDate, endDate, payDay };
 }
@@ -185,6 +189,10 @@ export function formatCycleDateRange(startDate: Date, endDate: Date): string {
 
 /**
  * Get cycle ID from a date (which cycle does this date belong to?)
+ *
+ * Cycles run from payday+1 to next payday (inclusive).
+ * So on payday day, you're still in the current cycle.
+ * Day after payday starts the next cycle.
  */
 export function getCycleIdForDate(
   date: Date,
@@ -197,9 +205,13 @@ export function getCycleIdForDate(
   // Get this month's payday
   const thisMonthPayday = getPaydayForMonth(year, month, payDayType, payDayFixed);
 
-  // If date is before this month's payday, it belongs to this month's cycle
-  // If date is on or after payday, it belongs to next month's cycle
-  if (date < thisMonthPayday) {
+  // Compare dates only (ignore time)
+  const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const paydayOnly = new Date(thisMonthPayday.getFullYear(), thisMonthPayday.getMonth(), thisMonthPayday.getDate());
+
+  // If date is on or before this month's payday, it belongs to this month's cycle
+  // If date is after payday, it belongs to next month's cycle
+  if (dateOnly <= paydayOnly) {
     return `${year}-${String(month).padStart(2, '0')}`;
   } else {
     const nextMonth = month === 12 ? 1 : month + 1;

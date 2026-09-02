@@ -63,10 +63,12 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     const [cycleYear, cycleMonth] = id.split('-').map(Number);
     console.log('[Cycle Update] Parsed cycle:', { cycleYear, cycleMonth, id });
 
-    // Start date = income received date (payday of previous month)
-    const startDate = receivedDate;
+    // Start date = day after income received date (payday + 1)
+    const startDate = new Date(receivedDate);
+    startDate.setDate(startDate.getDate() + 1);
 
-    // End date = day before NEXT cycle's income date (if set) OR this month's payday
+    // End date = day before NEXT cycle's income date (if set) OR this month's payday (inclusive)
+    // Cycles run from payday+1 to next payday (inclusive)
     // Next cycle ID
     const nextMonth = cycleMonth === 12 ? 1 : cycleMonth + 1;
     const nextYear = cycleMonth === 12 ? cycleYear + 1 : cycleYear;
@@ -81,7 +83,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       const nextCycleData = nextCycleSnap.data();
       console.log('[Cycle Update] Next cycle exists:', { nextCycleId, hasIncome: !!nextCycleData?.income?.receivedDate });
       if (nextCycleData?.income?.receivedDate) {
-        // Next cycle has income date - end this cycle day before that
+        // Next cycle has income date - end this cycle day before that (so no overlap)
         const nextIncomeDate = nextCycleData.income.receivedDate.toDate
           ? nextCycleData.income.receivedDate.toDate()
           : new Date(nextCycleData.income.receivedDate);
@@ -89,18 +91,16 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         endDate.setDate(endDate.getDate() - 1);
         console.log('[Cycle Update] Using next cycle income - 1:', { nextIncomeDate, endDate });
       } else {
-        // Next cycle exists but no income - use this month's payday
+        // Next cycle exists but no income - use this month's payday (inclusive)
         const thisMonthPayday = getPaydayForMonth(cycleYear, cycleMonth, payDayType, payDayFixed);
         console.log('[Cycle Update] No next income, using this month payday:', { thisMonthPayday, payDayType, payDayFixed });
         endDate = new Date(thisMonthPayday);
-        endDate.setDate(endDate.getDate() - 1);
       }
     } else {
-      // No next cycle - use this month's payday estimate
+      // No next cycle - use this month's payday (inclusive)
       const thisMonthPayday = getPaydayForMonth(cycleYear, cycleMonth, payDayType, payDayFixed);
       console.log('[Cycle Update] No next cycle, using this month payday:', { thisMonthPayday, payDayType, payDayFixed });
       endDate = new Date(thisMonthPayday);
-      endDate.setDate(endDate.getDate() - 1);
     }
 
     console.log('[Cycle Update] Final dates:', { startDate: startDate.toISOString(), endDate: endDate.toISOString() });
@@ -114,7 +114,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       receivedDate: Timestamp.fromDate(receivedDate),
     };
 
-    // Update PREVIOUS cycle's end date to align (this income date - 1)
+    // Update PREVIOUS cycle's end date to align with this income date (payday = end of prev cycle)
     const prevMonth = cycleMonth === 1 ? 12 : cycleMonth - 1;
     const prevYear = cycleMonth === 1 ? cycleYear - 1 : cycleYear;
     const prevCycleId = `${prevYear}-${String(prevMonth).padStart(2, '0')}`;
@@ -123,10 +123,9 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     const prevCycleSnap = await prevCycleRef.get();
 
     if (prevCycleSnap.exists) {
-      const prevEndDate = new Date(receivedDate);
-      prevEndDate.setDate(prevEndDate.getDate() - 1);
+      // Previous cycle ends ON the income date (payday)
       await prevCycleRef.update({
-        endDate: Timestamp.fromDate(prevEndDate),
+        endDate: Timestamp.fromDate(receivedDate),
         updatedAt: FieldValue.serverTimestamp(),
       });
     }
