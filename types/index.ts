@@ -479,3 +479,55 @@ export interface HealthScoreTip {
   message: string;
   priority: 'high' | 'medium' | 'low';
 }
+
+/**
+ * What-If Calculator Types
+ */
+export type WhatIfScenarioType =
+  | 'extra_savings'
+  | 'one_time_boost'
+  | 'debt_strategy'
+  | 'extra_debt_payment'
+  | 'emergency_buffer';
+
+export interface WhatIfScenario {
+  type: WhatIfScenarioType;
+  input: Record<string, number | string>;
+  result: WhatIfResult;
+}
+
+export interface WhatIfResult {
+  currentTimeline: ProjectionPoint[];
+  scenarioTimeline: ProjectionPoint[];
+  summary: {
+    timeSaved?: number;           // months
+    interestSaved?: number;       // cents
+    newCompletionDate?: string;   // ISO date string
+    monthlyRequired?: number;     // cents
+    currentCompletionDate?: string;
+  };
+}
+
+export interface ProjectionPoint {
+  month: string;           // "2026-05"
+  balance: number;         // cents
+  interest?: number;       // cents (for debt)
+  cumulative: number;      // total contributed/paid so far
+}
+
+export interface DebtStrategyComparison {
+  snowball: {
+    totalInterest: number;     // cents
+    payoffMonths: number;
+    payoffDate: string;        // ISO date string
+    timeline: ProjectionPoint[];
+  };
+  avalanche: {
+    totalInterest: number;     // cents
+    payoffMonths: number;
+    payoffDate: string;        // ISO date string
+    timeline: ProjectionPoint[];
+  };
+  interestDifference: number;  // avalanche saves this much
+  timeDifference: number;      // months difference
+}
