@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   collection,
   query,
@@ -16,7 +16,7 @@ import {
 import { db } from '@/lib/firebase';
 import { useUserId } from './use-user-id';
 import { useAppStore } from '@/stores/app-store';
-import type { CycleItem, CycleItemStatus, Category } from '@/types';
+import type { CycleItem, CycleItemStatus, Category, Cycle } from '@/types';
 
 interface UseCycleItemsResult {
   items: CycleItem[];
@@ -36,9 +36,10 @@ interface UseCycleItemsResult {
   editPayment: (itemId: string, paymentId: string, amount: number, note?: string, date?: string) => Promise<void>;
 }
 
-export function useCycleItems(cycleId: string | null): UseCycleItemsResult {
+export function useCycleItems(cycleId: string | null, cycle?: Cycle | null): UseCycleItemsResult {
   const userId = useUserId();
   const [rawItems, setRawItems] = useState<CycleItem[]>([]);
+  const [allRecentItems, setAllRecentItems] = useState<CycleItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   const optimisticItems = useAppStore((s) => s.optimisticCycleItems);
@@ -46,6 +47,7 @@ export function useCycleItems(cycleId: string | null): UseCycleItemsResult {
   const removeOptimisticItem = useAppStore((s) => s.removeOptimisticCycleItem);
   const accountFilter = useAppStore((s) => s.accountFilter);
 
+  // Fetch items by cycleId (planned items)
   useEffect(() => {
     if (!userId || !cycleId) {
       setRawItems([]);
@@ -68,8 +70,70 @@ export function useCycleItems(cycleId: string | null): UseCycleItemsResult {
     return unsubscribe;
   }, [userId, cycleId]);
 
+  // Also fetch recent paid items (to catch items paid within this cycle's date range but spawned elsewhere)
+  useEffect(() => {
+    if (!userId || !cycle?.startDate) {
+      setAllRecentItems([]);
+      return;
+    }
+
+    // Get start date from cycle
+    const startDate = cycle.startDate.toDate ? cycle.startDate.toDate() : new Date(cycle.startDate as unknown as string);
+
+    const q = query(
+      collection(db, `users/${userId}/cycleItems`),
+      where('paidDate', '>=', Timestamp.fromDate(startDate))
+    );
+
+    const unsubscribe = onSnapshot(q, (snap) => {
+      const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as CycleItem);
+      setAllRecentItems(docs);
+    });
+
+    return unsubscribe;
+  }, [userId, cycle?.startDate]);
+
+  // Combine and filter items based on date range
+  const filteredItems = useMemo(() => {
+    if (!cycle?.startDate || !cycle?.endDate) {
+      return rawItems; // Fallback to cycleId-based filtering
+    }
+
+    const startDate = cycle.startDate.toDate ? cycle.startDate.toDate() : new Date(cycle.startDate as unknown as string);
+    const endDate = cycle.endDate.toDate ? cycle.endDate.toDate() : new Date(cycle.endDate as unknown as string);
+
+    // Collect all unique items
+    const itemMap = new Map<string, CycleItem>();
+
+    // Add unpaid items from this cycle (planned items)
+    for (const item of rawItems) {
+      if (item.status === 'upcoming' || item.status === 'due') {
+        itemMap.set(item.id, item);
+      }
+    }
+
+    // Add paid/partial items that fall within the date range
+    for (const item of [...rawItems, ...allRecentItems]) {
+      if ((item.status === 'paid' || item.status === 'partial') && item.paidDate) {
+        const paidDate = item.paidDate.toDate ? item.paidDate.toDate() : new Date(item.paidDate as unknown as string);
+        if (paidDate >= startDate && paidDate <= endDate) {
+          itemMap.set(item.id, item);
+        }
+      }
+    }
+
+    // Add skipped items from this cycle
+    for (const item of rawItems) {
+      if (item.status === 'skipped') {
+        itemMap.set(item.id, item);
+      }
+    }
+
+    return Array.from(itemMap.values()).sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+  }, [rawItems, allRecentItems, cycle?.startDate, cycle?.endDate]);
+
   // Merge optimistic updates
-  const items = rawItems
+  const items = filteredItems
     .map((item) => optimisticItems.get(item.id) ?? item)
     .filter((item) => {
       if (accountFilter === 'all') return true;

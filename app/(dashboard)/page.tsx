@@ -18,7 +18,7 @@ import { ProgressBar } from '@/components/shared/progress-bar';
 import { HealthScoreWidget } from '@/components/health-score/health-score-widget';
 import { IncomeEntry } from '@/components/shared/income-entry';
 import type { CycleItem, CycleItemStatus, Goal, Insight } from '@/types';
-import { getCycleDateRange, getCycleIdForDate } from '@/lib/payday-utils';
+import { getCycleDateRange, getCycleIdForDate, formatCycleDateRange } from '@/lib/payday-utils';
 
 export default function DashboardPage() {
   const { cycles, loading: cyclesLoading } = useCycles();
@@ -142,7 +142,7 @@ export default function DashboardPage() {
     addPayment,
     deletePayment,
     editPayment,
-  } = useCycleItems(currentCycle?.id ?? null);
+  } = useCycleItems(currentCycle?.id ?? null, currentCycle);
 
   // Delete item handler
   const deleteItem = async (itemId: string) => {
@@ -281,6 +281,14 @@ export default function DashboardPage() {
               >
                 {formatCycleId(currentCycle.id)}
               </Link>
+              {currentCycle.startDate && currentCycle.endDate && (
+                <p className="text-xs text-text-secondary">
+                  {formatCycleDateRange(
+                    currentCycle.startDate.toDate ? currentCycle.startDate.toDate() : new Date(currentCycle.startDate as unknown as string),
+                    currentCycle.endDate.toDate ? currentCycle.endDate.toDate() : new Date(currentCycle.endDate as unknown as string)
+                  )}
+                </p>
+              )}
             </div>
             {/* Next button */}
             <button
