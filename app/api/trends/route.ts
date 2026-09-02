@@ -61,8 +61,15 @@ export async function GET(request: NextRequest) {
     cycleIds.push(cycleId);
   }
 
-  // Fetch all cycle items for these cycles
-  const cycleItemsSnap = await db
+  // Fetch all cycle items that might have payments in our date range
+  // We need to look at items from a wider range since payments can be backdated
+  const allCycleItemsSnap = await db
+    .collection(`users/${userId}/cycleItems`)
+    .where('status', 'in', ['paid', 'partial'])
+    .get();
+
+  // Also fetch committed amounts by cycleId for "total committed"
+  const committedItemsSnap = await db
     .collection(`users/${userId}/cycleItems`)
     .where('cycleId', 'in', cycleIds)
     .get();
@@ -86,19 +93,52 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // Aggregate data
-  for (const doc of cycleItemsSnap.docs) {
+  // Add committed amounts by cycleId
+  for (const doc of committedItemsSnap.docs) {
     const item = doc.data();
     const cycleId = item.cycleId;
-    const category = item.category as Category;
-    const amount = item.totalPaidAmount ?? item.actualAmount ?? item.amount ?? 0;
-    const isPaid = item.status === 'paid' || item.status === 'partial';
-
     if (monthlyData[cycleId]) {
       monthlyData[cycleId].total += item.amount ?? 0;
-      if (isPaid) {
-        monthlyData[cycleId].paid += amount;
-        monthlyData[cycleId].categories[category] += amount;
+    }
+  }
+
+  // Helper to get cycle ID from a date
+  const getCycleIdFromDate = (date: Date): string => {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+  };
+
+  // Aggregate PAID amounts by actual payment date, not cycleId
+  for (const doc of allCycleItemsSnap.docs) {
+    const item = doc.data();
+    const category = item.category as Category;
+    const payments = item.payments ?? [];
+
+    // For items with individual payments, attribute each payment to its date's cycle
+    if (payments.length > 0) {
+      for (const payment of payments) {
+        const paymentDate = payment.date?.toDate?.() ?? new Date(payment.date);
+        const paymentCycleId = getCycleIdFromDate(paymentDate);
+
+        if (monthlyData[paymentCycleId]) {
+          monthlyData[paymentCycleId].paid += payment.amount ?? 0;
+          monthlyData[paymentCycleId].categories[category] += payment.amount ?? 0;
+        }
+      }
+    } else {
+      // For items without payment array, use paidDate or cycleId
+      const paidDate = item.paidDate?.toDate?.() ?? (item.paidDate ? new Date(item.paidDate) : null);
+      const amount = item.totalPaidAmount ?? item.actualAmount ?? item.amount ?? 0;
+
+      if (paidDate) {
+        const paidCycleId = getCycleIdFromDate(paidDate);
+        if (monthlyData[paidCycleId]) {
+          monthlyData[paidCycleId].paid += amount;
+          monthlyData[paidCycleId].categories[category] += amount;
+        }
+      } else if (monthlyData[item.cycleId]) {
+        // Fallback to cycleId if no date info
+        monthlyData[item.cycleId].paid += amount;
+        monthlyData[item.cycleId].categories[category] += amount;
       }
     }
   }

@@ -93,6 +93,26 @@ export function useCycleItems(cycleId: string | null, cycle?: Cycle | null): Use
     return unsubscribe;
   }, [userId, cycle?.startDate]);
 
+  // Helper to get earliest payment date from an item
+  const getEarliestPaymentDate = (item: CycleItem): Date | null => {
+    // First check paidDate field
+    if (item.paidDate) {
+      return item.paidDate.toDate ? item.paidDate.toDate() : new Date(item.paidDate as unknown as string);
+    }
+    // Fall back to earliest date in payments array
+    if (item.payments && item.payments.length > 0) {
+      let earliest: Date | null = null;
+      for (const p of item.payments) {
+        const pDate = p.date?.toDate ? p.date.toDate() : new Date(p.date as unknown as string);
+        if (!earliest || pDate < earliest) {
+          earliest = pDate;
+        }
+      }
+      return earliest;
+    }
+    return null;
+  };
+
   // Combine and filter items based on date range
   const filteredItems = useMemo(() => {
     if (!cycle?.startDate || !cycle?.endDate) {
@@ -113,10 +133,11 @@ export function useCycleItems(cycleId: string | null, cycle?: Cycle | null): Use
     }
 
     // Add paid/partial items that fall within the date range
+    // Check both paidDate AND individual payment dates
     for (const item of [...rawItems, ...allRecentItems]) {
-      if ((item.status === 'paid' || item.status === 'partial') && item.paidDate) {
-        const paidDate = item.paidDate.toDate ? item.paidDate.toDate() : new Date(item.paidDate as unknown as string);
-        if (paidDate >= startDate && paidDate <= endDate) {
+      if (item.status === 'paid' || item.status === 'partial') {
+        const paymentDate = getEarliestPaymentDate(item);
+        if (paymentDate && paymentDate >= startDate && paymentDate <= endDate) {
           itemMap.set(item.id, item);
         }
       }

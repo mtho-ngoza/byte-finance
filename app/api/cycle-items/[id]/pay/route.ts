@@ -60,11 +60,16 @@ export async function POST(
   const wasNotPaid = item.status !== 'paid';
   const nowPaid = newStatus === 'paid';
 
+  // paidDate should be set on FIRST payment (not just when fully paid)
+  // This allows proper date-based filtering for partial items
+  const isFirstPayment = !item.payments || item.payments.length === 0;
+
   await ref.update({
     payments: FieldValue.arrayUnion(payment),
     totalPaidAmount: FieldValue.increment(amount),
     status: newStatus,
-    paidDate: nowPaid ? paymentDate : null,
+    // Set paidDate on first payment, or use existing, or update if now fully paid
+    paidDate: isFirstPayment ? paymentDate : (item.paidDate ?? paymentDate),
     updatedAt: now,
   });
 
