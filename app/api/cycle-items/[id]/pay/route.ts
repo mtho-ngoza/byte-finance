@@ -79,54 +79,79 @@ export async function POST(
       const receiptRef = db.collection(`users/${userId}/receipts`).doc(receiptId);
 
       // Use set with merge to handle race condition where receipt may not be fully created yet
-      // This will update existing fields or create the document if it doesn't exist
-      const receiptUpdate: any = {
+      const receiptUpdate: Record<string, unknown> = {
         cycleItemId: id,
         cycleId: item.cycleId,
         updatedAt: now,
       };
 
-      // Try to get existing receipt data to check if we should populate amount/vendor
-      try {
-        const receiptSnap = await receiptRef.get();
-        if (receiptSnap.exists) {
-          const receipt = receiptSnap.data()!;
+      // Try to get existing receipt data
+      const receiptSnap = await receiptRef.get();
+      if (receiptSnap.exists) {
+        const receipt = receiptSnap.data()!;
 
-          // Check if receipt is already linked to a different cycle item
-          if (receipt.cycleItemId && receipt.cycleItemId !== id) {
-            console.warn(`Receipt ${receiptId} already linked to ${receipt.cycleItemId}`);
-            return; // Skip linking
-          }
-
+        // Check if receipt is already linked to a different cycle item
+        if (receipt.cycleItemId && receipt.cycleItemId !== id) {
+          console.warn(`Receipt ${receiptId} already linked to ${receipt.cycleItemId}`);
+        } else {
           // Auto-populate amount from payment if not already set
-          // Note: We DON'T auto-populate vendor from cycle item label
-          // (label is "Entertainment", not "Netflix" - user must enter vendor manually)
           if (!receipt.amountInCents) {
             receiptUpdate.amountInCents = amount;
           }
 
-          // Update needsAttention flag based on whether we now have amount and vendor
-          const willHaveAmount = receipt.amountInCents || amount;
-          const willHaveVendor = !!receipt.vendor; // Only if vendor already set
-          receiptUpdate.needsAttention = !(willHaveAmount && willHaveVendor);
-        } else {
-          // Receipt doesn't exist yet (race condition) - set amount only
-          receiptUpdate.amountInCents = amount;
-          receiptUpdate.needsAttention = true; // Missing vendor
-        }
-      } catch (getError) {
-        // If get fails, still try to update with payment data
-        console.warn('Receipt get failed, using payment data:', getError);
-        receiptUpdate.amountInCents = amount;
-        receiptUpdate.needsAttention = true; // Missing vendor
-      }
+          // If vendor is missing, try to extract it via Gemini Vision
+          if (!receipt.vendor) {
+            try {
+              const extractRes = await fetch(
+                `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/receipts/extract`,
+                {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    // Forward auth header
+                    ...(request.headers.get('authorization')
+                      ? { 'Authorization': request.headers.get('authorization')! }
+                      : {}),
+                    ...(request.headers.get('cookie')
+                      ? { 'Cookie': request.headers.get('cookie')! }
+                      : {}),
+                  },
+                  body: JSON.stringify({ receiptId }),
+                }
+              );
 
-      // Use set with merge to update or create
-      await receiptRef.set(receiptUpdate, { merge: true });
+              if (extractRes.ok) {
+                const extracted = await extractRes.json();
+                if (extracted.vendor) {
+                  receiptUpdate.vendor = extracted.vendor;
+                  console.log(`Auto-extracted vendor for receipt ${receiptId}: ${extracted.vendor}`);
+                }
+                // Also use extracted amount if we don't have one yet
+                if (!receipt.amountInCents && !receiptUpdate.amountInCents && extracted.amountInCents) {
+                  receiptUpdate.amountInCents = extracted.amountInCents;
+                }
+              }
+            } catch (extractError) {
+              console.warn('Failed to auto-extract receipt data:', extractError);
+              // Continue without extraction - user can manually enter
+            }
+          }
+
+          // Update needsAttention flag
+          const willHaveAmount = receipt.amountInCents || receiptUpdate.amountInCents;
+          const willHaveVendor = receipt.vendor || receiptUpdate.vendor;
+          receiptUpdate.needsAttention = !(willHaveAmount && willHaveVendor);
+
+          await receiptRef.set(receiptUpdate, { merge: true });
+        }
+      } else {
+        // Receipt doesn't exist yet - set what we have
+        receiptUpdate.amountInCents = amount;
+        receiptUpdate.needsAttention = true;
+        await receiptRef.set(receiptUpdate, { merge: true });
+      }
     } catch (receiptError) {
-      // Log error but don't fail the payment
       console.error('Failed to link receipt:', receiptError);
-      // Continue with payment even if receipt linking fails
     }
   }
 
