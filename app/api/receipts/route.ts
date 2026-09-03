@@ -16,35 +16,55 @@ export async function GET(request: NextRequest) {
   const needsAttention = searchParams.get('needsAttention');
 
   const db = getAdminDb();
-  let query = db
-    .collection(`users/${userId}/receipts`)
-    .orderBy('capturedAt', 'desc');
 
-  if (needsAttention === 'true') {
-    query = db
-      .collection(`users/${userId}/receipts`)
-      .where('needsAttention', '==', true)
-      .orderBy('capturedAt', 'desc');
+  try {
+    let snap;
+
+    if (needsAttention === 'true') {
+      // Query without orderBy to avoid composite index requirement
+      // Sort in memory instead
+      snap = await db
+        .collection(`users/${userId}/receipts`)
+        .where('needsAttention', '==', true)
+        .limit(500)
+        .get();
+    } else {
+      snap = await db
+        .collection(`users/${userId}/receipts`)
+        .orderBy('capturedAt', 'desc')
+        .limit(500)
+        .get();
+    }
+
+    const receipts = snap.docs
+      .map((doc) => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          cycleItemId: data.cycleItemId ?? null,
+          cycleId: data.cycleId ?? null,
+          capturedAt: data.capturedAt?.toDate?.()?.toISOString() ?? null,
+          createdAt: data.createdAt?.toDate?.()?.toISOString() ?? null,
+          updatedAt: data.updatedAt?.toDate?.()?.toISOString() ?? null,
+        };
+      })
+      // Sort by capturedAt descending in memory
+      .sort((a, b) => {
+        if (!a.capturedAt && !b.capturedAt) return 0;
+        if (!a.capturedAt) return 1;
+        if (!b.capturedAt) return -1;
+        return new Date(b.capturedAt).getTime() - new Date(a.capturedAt).getTime();
+      });
+
+    return NextResponse.json({ receipts });
+  } catch (error) {
+    console.error('Error fetching receipts:', error);
+    return NextResponse.json(
+      { error: 'Failed to fetch receipts', details: String(error) },
+      { status: 500 }
+    );
   }
-
-  // TODO: Implement cursor-based pagination for large receipt lists
-  const snap = await query.limit(500).get();
-
-  const receipts = snap.docs.map((doc) => {
-    const data = doc.data();
-    return {
-      id: doc.id,
-      ...data,
-      // Explicitly include linking fields (ensure they're always present)
-      cycleItemId: data.cycleItemId ?? null,
-      cycleId: data.cycleId ?? null,
-      capturedAt: data.capturedAt?.toDate?.()?.toISOString() ?? null,
-      createdAt: data.createdAt?.toDate?.()?.toISOString() ?? null,
-      updatedAt: data.updatedAt?.toDate?.()?.toISOString() ?? null,
-    };
-  });
-
-  return NextResponse.json({ receipts });
 }
 
 /**

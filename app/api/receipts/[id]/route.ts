@@ -83,9 +83,11 @@ export async function PATCH(
   }
 
   // Recompute needsAttention
+  // Linked receipts (with cycleItemId) have context from the payment, so vendor is optional
   const finalAmount = amountInCents !== undefined ? amountInCents : currentData.amountInCents;
   const finalVendor = vendor !== undefined ? vendor : currentData.vendor;
-  updates.needsAttention = !finalAmount || !finalVendor;
+  const finalCycleItemId = cycleItemId !== undefined ? cycleItemId : currentData.cycleItemId;
+  updates.needsAttention = !finalAmount || (!finalVendor && !finalCycleItemId);
 
   await docRef.update(updates);
 

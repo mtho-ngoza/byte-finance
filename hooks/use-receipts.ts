@@ -45,10 +45,14 @@ export function useReceipts() {
     return () => unsubscribe();
   }, [userId]);
 
-  // Receipts that need attention (missing amount or vendor)
-  // Compute based on actual values, not the stored flag (which may be stale)
-  const needsAttention = receipts.filter((r) => !r.amountInCents || !r.vendor);
-  const complete = receipts.filter((r) => r.amountInCents && r.vendor);
+  // Receipts that need attention:
+  // - Missing amount, OR
+  // - Missing vendor AND not linked to a payment (unlinked receipts without vendor need attention)
+  // Linked receipts have context from the payment, so vendor is optional
+  const needsAttention = receipts.filter((r) =>
+    !r.amountInCents || (!r.vendor && !r.cycleItemId)
+  );
+  const complete = receipts.filter((r) => r.amountInCents && (r.vendor || r.cycleItemId));
 
   /**
    * Create a new receipt

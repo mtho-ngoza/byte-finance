@@ -1,6 +1,14 @@
 {
   "indexes": [
     {
+      "collectionGroup": "receipts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "needsAttention", "order": "ASCENDING" },
+        { "fieldPath": "capturedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "cycleItems",
       "queryScope": "COLLECTION",
       "fields": [

@@ -66,7 +66,7 @@ function groupByYearAndMonth(receipts: Receipt[]): YearGroup[] {
       const monthReceipts = monthMap.get(key)!;
       const label = new Date(year, monthNum - 1).toLocaleDateString('en-ZA', { month: 'long' });
       const totalAmount = monthReceipts.reduce((sum, r) => sum + (r.amountInCents || 0), 0);
-      const needsAttentionCount = monthReceipts.filter((r) => !r.amountInCents || !r.vendor).length;
+      const needsAttentionCount = monthReceipts.filter((r) => !r.amountInCents || (!r.vendor && !r.cycleItemId)).length;
 
       return { key, month: monthNum, label, receipts: monthReceipts, totalAmount, needsAttentionCount };
     });
@@ -461,7 +461,8 @@ function ReceiptCard({ receipt, compact }: ReceiptCardProps) {
     ? new Date(typeof receipt.capturedAt === 'string' ? receipt.capturedAt : receipt.capturedAt.toDate()).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })
     : '';
 
-  const needsAttention = !receipt.amountInCents || !receipt.vendor;
+  // Needs attention if missing amount OR missing vendor when not linked to a payment
+  const needsAttention = !receipt.amountInCents || (!receipt.vendor && !receipt.cycleItemId);
 
   if (compact) {
     return (
