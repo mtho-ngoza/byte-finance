@@ -50,13 +50,37 @@ export async function POST(request: NextRequest) {
     actualAmount?: number;
   }));
 
-  // Build date ranges for each cycle
+  // Build date ranges for each cycle FROM THE STORED CYCLE DOCUMENT (not calculated)
+  // This ensures sync-totals uses the same dates as useCycleItems
   const cycleDateRanges = new Map<string, { startDate: Date; endDate: Date }>();
   for (const doc of cyclesSnap.docs) {
-    const [yearStr, monthStr] = doc.id.split('-');
-    const year = parseInt(yearStr, 10);
-    const month = parseInt(monthStr, 10);
-    const { startDate, endDate } = getCycleDateRange(year, month, payDayType, payDayFixed);
+    const cycle = doc.data();
+
+    // Get dates from cycle document
+    let startDate: Date;
+    let endDate: Date;
+
+    if (cycle.startDate) {
+      startDate = cycle.startDate.toDate?.() ?? new Date(cycle.startDate);
+    } else {
+      // Fallback to calculated if not stored
+      const [yearStr, monthStr] = doc.id.split('-');
+      const { startDate: calcStart } = getCycleDateRange(parseInt(yearStr), parseInt(monthStr), payDayType, payDayFixed);
+      startDate = calcStart;
+    }
+
+    if (cycle.endDate) {
+      endDate = cycle.endDate.toDate?.() ?? new Date(cycle.endDate);
+    } else {
+      const [yearStr, monthStr] = doc.id.split('-');
+      const { endDate: calcEnd } = getCycleDateRange(parseInt(yearStr), parseInt(monthStr), payDayType, payDayFixed);
+      endDate = calcEnd;
+    }
+
+    // Normalize to full days
+    startDate.setHours(0, 0, 0, 0);
+    endDate.setHours(23, 59, 59, 999);
+
     cycleDateRanges.set(doc.id, { startDate, endDate });
   }
 
