@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/auth';
 import { getAdminDb } from '@/lib/firebase-admin';
-import { getCycleIdForDate } from '@/lib/payday-utils';
+import { getCycleDateRange } from '@/lib/payday-utils';
 import type { Category } from '@/types';
 
 const CATEGORIES: Category[] = [
@@ -68,18 +68,83 @@ export async function GET(request: NextRequest) {
     cycleIds.push(cycleId);
   }
 
-  // Fetch all cycle items that might have payments in our date range
-  // We need to look at items from a wider range since payments can be backdated
+  // Fetch cycles to get stored date ranges
+  const cyclesSnap = await db
+    .collection(`users/${userId}/cycles`)
+    .where('__name__', 'in', cycleIds)
+    .get();
+
+  const cyclesMap = new Map<string, { startDate: Date; endDate: Date }>();
+  for (const doc of cyclesSnap.docs) {
+    const cycle = doc.data();
+    const [yearStr, monthStr] = doc.id.split('-');
+    const year = parseInt(yearStr, 10);
+    const month = parseInt(monthStr, 10);
+
+    let startDate: Date;
+    let endDate: Date;
+
+    if (cycle.startDate) {
+      startDate = cycle.startDate.toDate?.() ?? new Date(cycle.startDate);
+    } else {
+      const { startDate: calcStart } = getCycleDateRange(year, month, payDayType, payDayFixed);
+      startDate = calcStart;
+    }
+
+    if (cycle.endDate) {
+      endDate = cycle.endDate.toDate?.() ?? new Date(cycle.endDate);
+    } else {
+      const { endDate: calcEnd } = getCycleDateRange(year, month, payDayType, payDayFixed);
+      endDate = calcEnd;
+    }
+
+    startDate.setHours(0, 0, 0, 0);
+    endDate.setHours(23, 59, 59, 999);
+
+    cyclesMap.set(doc.id, { startDate, endDate });
+  }
+
+  // For cycles without documents, calculate dates
+  for (const cycleId of cycleIds) {
+    if (!cyclesMap.has(cycleId)) {
+      const [yearStr, monthStr] = cycleId.split('-');
+      const { startDate, endDate } = getCycleDateRange(
+        parseInt(yearStr, 10),
+        parseInt(monthStr, 10),
+        payDayType,
+        payDayFixed
+      );
+      startDate.setHours(0, 0, 0, 0);
+      endDate.setHours(23, 59, 59, 999);
+      cyclesMap.set(cycleId, { startDate, endDate });
+    }
+  }
+
+  // Fetch all paid/partial items
   const allCycleItemsSnap = await db
     .collection(`users/${userId}/cycleItems`)
     .where('status', 'in', ['paid', 'partial'])
     .get();
 
-  // Also fetch committed amounts by cycleId for "total committed"
-  const committedItemsSnap = await db
-    .collection(`users/${userId}/cycleItems`)
-    .where('cycleId', 'in', cycleIds)
-    .get();
+  // Helper to get earliest payment date
+  const getEarliestPaymentDate = (item: Record<string, unknown>): Date | null => {
+    if (item.paidDate) {
+      const pd = item.paidDate as { toDate?: () => Date };
+      return pd.toDate?.() ?? new Date(item.paidDate as string);
+    }
+    const payments = (item.payments ?? []) as Array<{ date?: { toDate?: () => Date } | string }>;
+    if (payments.length > 0) {
+      let earliest: Date | null = null;
+      for (const p of payments) {
+        const pDate = p.date && typeof p.date === 'object' && 'toDate' in p.date
+          ? p.date.toDate?.() ?? new Date()
+          : new Date(p.date as string);
+        if (!earliest || pDate < earliest) earliest = pDate;
+      }
+      return earliest;
+    }
+    return null;
+  };
 
   // Build monthly totals and category breakdowns
   const monthlyData: Record<string, {
@@ -100,52 +165,44 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // Add committed amounts by cycleId
-  for (const doc of committedItemsSnap.docs) {
-    const item = doc.data();
-    const cycleId = item.cycleId;
-    if (monthlyData[cycleId]) {
-      monthlyData[cycleId].total += item.amount ?? 0;
-    }
-  }
+  // Calculate paid amounts using same logic as useCycleItems/sync-totals
+  for (const cycleId of cycleIds) {
+    const dateRange = cyclesMap.get(cycleId);
+    if (!dateRange) continue;
 
-  // Helper to get cycle ID from a date using payday logic
-  const getCycleIdFromPaymentDate = (date: Date): string => {
-    return getCycleIdForDate(date, payDayType, payDayFixed);
-  };
+    const { startDate, endDate } = dateRange;
 
-  // Aggregate PAID amounts by actual payment date, not cycleId
-  for (const doc of allCycleItemsSnap.docs) {
-    const item = doc.data();
-    const category = item.category as Category;
-    const payments = item.payments ?? [];
+    for (const doc of allCycleItemsSnap.docs) {
+      const item = doc.data();
+      const category = (item.category as Category) || 'other';
 
-    // For items with individual payments, attribute each payment to its date's cycle
-    if (payments.length > 0) {
-      for (const payment of payments) {
-        const paymentDate = payment.date?.toDate?.() ?? new Date(payment.date);
-        const paymentCycleId = getCycleIdFromPaymentDate(paymentDate);
-
-        if (monthlyData[paymentCycleId]) {
-          monthlyData[paymentCycleId].paid += payment.amount ?? 0;
-          monthlyData[paymentCycleId].categories[category] += payment.amount ?? 0;
-        }
+      // Check if item belongs to this cycle (earliest payment in range)
+      const earliestPayment = getEarliestPaymentDate(item);
+      if (!earliestPayment || earliestPayment < startDate || earliestPayment > endDate) {
+        continue;
       }
-    } else {
-      // For items without payment array, use paidDate or cycleId
-      const paidDate = item.paidDate?.toDate?.() ?? (item.paidDate ? new Date(item.paidDate) : null);
-      const amount = item.totalPaidAmount ?? item.actualAmount ?? item.amount ?? 0;
 
-      if (paidDate) {
-        const paidCycleId = getCycleIdFromPaymentDate(paidDate);
-        if (monthlyData[paidCycleId]) {
-          monthlyData[paidCycleId].paid += amount;
-          monthlyData[paidCycleId].categories[category] += amount;
+      // Add to committed total (items that belong to this cycle)
+      monthlyData[cycleId].total += (item.amount as number) ?? 0;
+
+      const payments = (item.payments ?? []) as Array<{ date?: { toDate?: () => Date } | string; amount?: number }>;
+
+      if (payments.length > 0) {
+        // Sum only payments within this cycle's date range
+        for (const p of payments) {
+          const pDate = p.date && typeof p.date === 'object' && 'toDate' in p.date
+            ? p.date.toDate?.() ?? new Date()
+            : new Date(p.date as string);
+          if (pDate >= startDate && pDate <= endDate) {
+            monthlyData[cycleId].paid += p.amount ?? 0;
+            monthlyData[cycleId].categories[category] += p.amount ?? 0;
+          }
         }
-      } else if (monthlyData[item.cycleId]) {
-        // Fallback to cycleId if no date info
-        monthlyData[item.cycleId].paid += amount;
-        monthlyData[item.cycleId].categories[category] += amount;
+      } else {
+        // No payments array - use totalPaidAmount
+        const amount = (item.totalPaidAmount as number) ?? (item.actualAmount as number) ?? (item.amount as number) ?? 0;
+        monthlyData[cycleId].paid += amount;
+        monthlyData[cycleId].categories[category] += amount;
       }
     }
   }
