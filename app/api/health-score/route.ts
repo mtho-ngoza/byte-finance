@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/auth';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
+import { getCycleDateRange } from '@/lib/payday-utils';
 import type { HealthScore, HealthScoreTip } from '@/types';
 
 // Tip templates for each pillar
@@ -61,6 +62,18 @@ export async function POST(request: NextRequest) {
 
   const db = getAdminDb();
 
+  // Get user's payday settings
+  const userDoc = await db.collection('users').doc(userId).get();
+  const userData = userDoc.data();
+  const payDayType = userData?.preferences?.payDayType ?? 'last_working_day';
+  const payDayFixed = userData?.preferences?.payDayFixed;
+
+  // Parse cycleId and get date range
+  const [yearStr, monthStr] = cycleId.split('-');
+  const year = parseInt(yearStr, 10);
+  const month = parseInt(monthStr, 10);
+  const { startDate, endDate } = getCycleDateRange(year, month, payDayType, payDayFixed);
+
   // Fetch all required data in parallel
   const [cycleSnap, itemsSnap, goalsSnap, previousScoreSnap] = await Promise.all([
     db.collection(`users/${userId}/cycles`).doc(cycleId).get(),
@@ -80,11 +93,11 @@ export async function POST(request: NextRequest) {
   // Calculate Budget Discipline (25 pts)
   const budgetDiscipline = calculateBudgetDiscipline(items);
 
-  // Calculate Savings Rate (25 pts)
-  const savingsRate = calculateSavingsRate(cycle, goals, cycleId);
+  // Calculate Savings Rate (25 pts) - use date range for contribution filtering
+  const savingsRate = calculateSavingsRate(cycle, goals, startDate, endDate);
 
-  // Calculate Goal Momentum (25 pts)
-  const goalMomentum = calculateGoalMomentum(goals, cycleId);
+  // Calculate Goal Momentum (25 pts) - use date range for contribution filtering
+  const goalMomentum = calculateGoalMomentum(goals, startDate, endDate);
 
   // Calculate Stability Buffer (25 pts)
   const stabilityBuffer = await calculateStabilityBuffer(db, userId, goals, items);
@@ -180,7 +193,7 @@ function calculateBudgetDiscipline(items: any[]): HealthScore['pillars']['budget
 
 // Calculate Savings Rate score
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function calculateSavingsRate(cycle: any, goals: any[], cycleId: string): HealthScore['pillars']['savingsRate'] {
+function calculateSavingsRate(cycle: any, goals: any[], startDate: Date, endDate: Date): HealthScore['pillars']['savingsRate'] {
   const income = cycle?.income?.amount ?? 0;
   const vatAmount = cycle?.income?.vatAmount ?? 0;
   const netIncome = income - vatAmount;
@@ -189,12 +202,13 @@ function calculateSavingsRate(cycle: any, goals: any[], cycleId: string): Health
     return { score: 0, rate: 0, incomeAmount: 0, savingsAmount: 0 };
   }
 
-  // Sum contributions to goals in this cycle
+  // Sum contributions to goals made within this cycle's date range
   let savingsAmount = 0;
   for (const goal of goals) {
     const contributions = goal.contributions ?? [];
     for (const c of contributions) {
-      if (c.cycleId === cycleId) {
+      const contributionDate = c.date?.toDate?.() ?? new Date(c.date);
+      if (contributionDate >= startDate && contributionDate <= endDate) {
         savingsAmount += c.amount ?? 0;
       }
     }
@@ -209,7 +223,7 @@ function calculateSavingsRate(cycle: any, goals: any[], cycleId: string): Health
 
 // Calculate Goal Momentum score
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function calculateGoalMomentum(goals: any[], cycleId: string): HealthScore['pillars']['goalMomentum'] {
+function calculateGoalMomentum(goals: any[], startDate: Date, endDate: Date): HealthScore['pillars']['goalMomentum'] {
   const totalGoals = goals.length;
 
   if (totalGoals === 0) {
@@ -220,12 +234,13 @@ function calculateGoalMomentum(goals: any[], cycleId: string): HealthScore['pill
   const onTrackGoals = goals.filter(g => g.isOnTrack === true).length;
   const onTrackPercent = Math.round((onTrackGoals / totalGoals) * 100);
 
-  // Count contributions in this cycle
+  // Count contributions made within this cycle's date range
   let recentContributions = 0;
   for (const goal of goals) {
     const contributions = goal.contributions ?? [];
     for (const c of contributions) {
-      if (c.cycleId === cycleId) {
+      const contributionDate = c.date?.toDate?.() ?? new Date(c.date);
+      if (contributionDate >= startDate && contributionDate <= endDate) {
         recentContributions++;
       }
     }

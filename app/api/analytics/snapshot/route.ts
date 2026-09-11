@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/auth';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
+import { getCycleIdForDate, getCycleDateRange } from '@/lib/payday-utils';
 import type { Category } from '@/types';
 
 const ALL_CATEGORIES: Category[] = [
@@ -67,6 +68,12 @@ export async function POST(request: NextRequest) {
 
   const db = getAdminDb();
 
+  // Get user's payday settings
+  const userDoc = await db.collection('users').doc(userId).get();
+  const userData = userDoc.data();
+  const payDayType = userData?.preferences?.payDayType ?? 'last_working_day';
+  const payDayFixed = userData?.preferences?.payDayFixed;
+
   // Get cycle data
   const cycleRef = db.doc(`users/${userId}/cycles/${cycleId}`);
   const cycleDoc = await cycleRef.get();
@@ -77,40 +84,69 @@ export async function POST(request: NextRequest) {
 
   const cycle = cycleDoc.data()!;
 
-  // Get all cycle items for this cycle
+  // Parse year/month from cycleId
+  const [yearStr, monthStr] = cycleId.split('-');
+  const year = parseInt(yearStr, 10);
+  const month = parseInt(monthStr, 10);
+
+  // Get cycle date range for payment filtering
+  const { startDate, endDate } = getCycleDateRange(year, month, payDayType, payDayFixed);
+
+  // Get all cycle items for this cycle (for committed amounts)
   const itemsSnap = await db
     .collection(`users/${userId}/cycleItems`)
     .where('cycleId', '==', cycleId)
     .get();
 
-  const items = itemsSnap.docs.map((d) => d.data() as {
-    label: string;
-    amount: number;
-    category: Category;
-    status: string;
-  });
+  // Get all paid items to check payment dates
+  const paidItemsSnap = await db
+    .collection(`users/${userId}/cycleItems`)
+    .where('status', 'in', ['paid', 'partial'])
+    .get();
 
-  // Calculate totals
-  const totalCommitted = items.reduce((sum, item) => sum + item.amount, 0);
-  const totalPaid = items
-    .filter((item) => item.status === 'paid')
-    .reduce((sum, item) => sum + item.amount, 0);
+  // Calculate committed from items planned for this cycle
+  const committedItems = itemsSnap.docs.map((d) => d.data());
+  const totalCommitted = committedItems.reduce((sum, item) => sum + (item.amount ?? 0), 0);
 
-  // Calculate category breakdown (only paid items)
+  // Calculate paid based on payment dates within this cycle's range
+  let totalPaid = 0;
   const categoryBreakdown: Record<Category, number> = {} as Record<Category, number>;
   ALL_CATEGORIES.forEach((cat) => {
     categoryBreakdown[cat] = 0;
   });
 
-  items
-    .filter((item) => item.status === 'paid')
-    .forEach((item) => {
-      categoryBreakdown[item.category] = (categoryBreakdown[item.category] || 0) + item.amount;
-    });
+  const paidInCycle: Array<{ label: string; amount: number; category: Category }> = [];
 
-  // Get top 5 items by amount (paid only)
-  const topItems = items
-    .filter((item) => item.status === 'paid')
+  for (const doc of paidItemsSnap.docs) {
+    const item = doc.data();
+    const category = (item.category as Category) || 'other';
+    const payments = item.payments ?? [];
+
+    if (payments.length > 0) {
+      // Sum payments that fall within this cycle's date range
+      for (const payment of payments) {
+        const paymentDate = payment.date?.toDate?.() ?? new Date(payment.date);
+        if (paymentDate >= startDate && paymentDate <= endDate) {
+          const amount = payment.amount ?? 0;
+          totalPaid += amount;
+          categoryBreakdown[category] += amount;
+          paidInCycle.push({ label: item.label, amount, category });
+        }
+      }
+    } else if (item.paidDate) {
+      // For items without payments array, use paidDate
+      const paidDate = item.paidDate.toDate?.() ?? new Date(item.paidDate);
+      if (paidDate >= startDate && paidDate <= endDate) {
+        const amount = item.totalPaidAmount ?? item.actualAmount ?? item.amount ?? 0;
+        totalPaid += amount;
+        categoryBreakdown[category] += amount;
+        paidInCycle.push({ label: item.label, amount, category });
+      }
+    }
+  }
+
+  // Get top 5 items by amount (from payments in this cycle)
+  const topItems = paidInCycle
     .sort((a, b) => b.amount - a.amount)
     .slice(0, 5)
     .map((item) => ({ label: item.label, amount: item.amount }));
@@ -132,11 +168,6 @@ export async function POST(request: NextRequest) {
     const totalCurrent = goals.reduce((sum, g) => sum + g.currentAmount, 0);
     goalsProgress = totalTarget > 0 ? Math.round((totalCurrent / totalTarget) * 100) : 0;
   }
-
-  // Parse year/month from cycleId
-  const [yearStr, monthStr] = cycleId.split('-');
-  const year = parseInt(yearStr, 10);
-  const month = parseInt(monthStr, 10);
 
   // Build snapshot
   const snapshotData = {

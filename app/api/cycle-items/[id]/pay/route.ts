@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/auth';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
+import { getCycleIdForDate } from '@/lib/payday-utils';
 
 /**
  * POST /api/cycle-items/[id]/pay
@@ -31,6 +32,16 @@ export async function POST(
   }
 
   const db = getAdminDb();
+
+  // Get user's payday settings for correct cycle attribution
+  const userDoc = await db.collection('users').doc(userId).get();
+  const userData = userDoc.data();
+  const payDayType = userData?.preferences?.payDayType ?? 'last_working_day';
+  const payDayFixed = userData?.preferences?.payDayFixed;
+
+  // Determine which cycle this payment belongs to based on payment date
+  const paymentCycleId = getCycleIdForDate(paymentDate, payDayType, payDayFixed);
+
   const ref = db.collection(`users/${userId}/cycleItems`).doc(id);
   const doc = await ref.get();
 
@@ -137,7 +148,7 @@ export async function POST(
         id: `${id}-${paymentId}`,
         date: paymentDate,
         amount,
-        cycleId: item.cycleId,
+        cycleId: paymentCycleId, // Use payment date's cycle, not item's cycle
         cycleItemId: id,
         note: note ?? null,
       }),

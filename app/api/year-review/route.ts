@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/auth';
 import { getAdminDb } from '@/lib/firebase-admin';
+import { getCycleIdForDate } from '@/lib/payday-utils';
 import type { Category } from '@/types';
 
 /**
@@ -18,8 +19,14 @@ export async function GET(request: NextRequest) {
 
   const db = getAdminDb();
 
+  // Get user's payday settings
+  const userDoc = await db.collection('users').doc(userId).get();
+  const userData = userDoc.data();
+  const payDayType = userData?.preferences?.payDayType ?? 'last_working_day';
+  const payDayFixed = userData?.preferences?.payDayFixed;
+
   // Fetch all data in parallel
-  const [cyclesSnap, goalsSnap, wishlistSnap, cycleItemsSnap, receiptsSnap] = await Promise.all([
+  const [cyclesSnap, goalsSnap, wishlistSnap, cycleItemsSnap, receiptsSnap, allPaidItemsSnap] = await Promise.all([
     // Cycles for the year (id format: "2026-01" to "2026-12")
     db.collection(`users/${userId}/cycles`)
       .where('__name__', '>=', `${year}-01`)
@@ -39,14 +46,63 @@ export async function GET(request: NextRequest) {
       .where('capturedAt', '>=', new Date(`${year}-01-01`))
       .where('capturedAt', '<', new Date(`${year + 1}-01-01`))
       .get(),
+    // All paid items for accurate payment date attribution
+    db.collection(`users/${userId}/cycleItems`)
+      .where('status', 'in', ['paid', 'partial'])
+      .get(),
   ]);
 
-  // Process cycles
+  // Process cycles for committed amounts and income
   const cycles = cyclesSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-  const totalSpent = cycles.reduce((sum, c: any) => sum + (c.totalPaid || 0), 0);
   const totalCommitted = cycles.reduce((sum, c: any) => sum + (c.totalCommitted || 0), 0);
   const totalIncome = cycles.reduce((sum, c: any) => sum + (c.income?.amount || 0), 0);
   const totalVat = cycles.reduce((sum, c: any) => sum + (c.income?.vatAmount || 0), 0);
+
+  // Build monthly spending from actual payment dates using payday logic
+  const monthlySpending: Record<string, number> = {};
+  const categoryTotals: Record<Category, number> = {
+    housing: 0, transport: 0, family: 0, utilities: 0, health: 0,
+    education: 0, savings: 0, lifestyle: 0, business: 0, other: 0,
+  };
+
+  // Initialize all months
+  for (let i = 1; i <= 12; i++) {
+    const monthId = `${year}-${String(i).padStart(2, '0')}`;
+    monthlySpending[monthId] = 0;
+  }
+
+  // Process all paid items and attribute to correct cycle based on payment date
+  for (const doc of allPaidItemsSnap.docs) {
+    const item = doc.data();
+    const category = (item.category as Category) || 'other';
+    const payments = item.payments ?? [];
+
+    if (payments.length > 0) {
+      for (const payment of payments) {
+        const paymentDate = payment.date?.toDate?.() ?? new Date(payment.date);
+        const cycleId = getCycleIdForDate(paymentDate, payDayType, payDayFixed);
+        const amount = payment.amount ?? 0;
+
+        // Only count if it's in the target year
+        if (cycleId.startsWith(`${year}-`)) {
+          monthlySpending[cycleId] = (monthlySpending[cycleId] ?? 0) + amount;
+          categoryTotals[category] += amount;
+        }
+      }
+    } else if (item.paidDate) {
+      const paidDate = item.paidDate.toDate?.() ?? new Date(item.paidDate);
+      const cycleId = getCycleIdForDate(paidDate, payDayType, payDayFixed);
+      const amount = item.totalPaidAmount ?? item.actualAmount ?? item.amount ?? 0;
+
+      if (cycleId.startsWith(`${year}-`)) {
+        monthlySpending[cycleId] = (monthlySpending[cycleId] ?? 0) + amount;
+        categoryTotals[category] += amount;
+      }
+    }
+  }
+
+  // Calculate total spent from monthly spending
+  const totalSpent = Object.values(monthlySpending).reduce((sum, val) => sum + val, 0);
 
   // Monthly breakdown
   const monthlyData = Array.from({ length: 12 }, (_, i) => {
@@ -54,25 +110,10 @@ export async function GET(request: NextRequest) {
     const cycle = cycles.find((c: any) => c.id === monthId) as any;
     return {
       month: i + 1,
-      spent: cycle?.totalPaid || 0,
+      spent: monthlySpending[monthId] ?? 0,
       committed: cycle?.totalCommitted || 0,
       income: cycle?.income?.amount || 0,
     };
-  });
-
-  // Category breakdown from cycle items
-  const categoryTotals: Record<Category, number> = {
-    housing: 0, transport: 0, family: 0, utilities: 0, health: 0,
-    education: 0, savings: 0, lifestyle: 0, business: 0, other: 0,
-  };
-
-  cycleItemsSnap.docs.forEach((doc) => {
-    const item = doc.data();
-    if (item.status === 'paid' || item.status === 'partial') {
-      const amount = item.totalPaidAmount || item.actualAmount || item.amount || 0;
-      const category = (item.category as Category) || 'other';
-      categoryTotals[category] += amount;
-    }
   });
 
   // Top categories sorted by amount
