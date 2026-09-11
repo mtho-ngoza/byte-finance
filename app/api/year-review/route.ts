@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/auth';
 import { getAdminDb } from '@/lib/firebase-admin';
-import { getCycleIdForDate } from '@/lib/payday-utils';
+import { getCycleDateRange } from '@/lib/payday-utils';
 import type { Category } from '@/types';
 
 /**
@@ -58,7 +58,35 @@ export async function GET(request: NextRequest) {
   const totalIncome = cycles.reduce((sum, c: any) => sum + (c.income?.amount || 0), 0);
   const totalVat = cycles.reduce((sum, c: any) => sum + (c.income?.vatAmount || 0), 0);
 
-  // Build monthly spending from actual payment dates using payday logic
+  // Helper to get earliest payment date from an item
+  const getEarliestPaymentDate = (item: Record<string, unknown>): Date | null => {
+    if (item.paidDate) {
+      const pd = item.paidDate as { toDate?: () => Date };
+      return pd.toDate?.() ?? new Date(item.paidDate as string);
+    }
+    const payments = (item.payments ?? []) as Array<{ date?: { toDate?: () => Date } | string }>;
+    if (payments.length > 0) {
+      let earliest: Date | null = null;
+      for (const p of payments) {
+        const pDate = p.date && typeof p.date === 'object' && 'toDate' in p.date
+          ? p.date.toDate?.() ?? new Date()
+          : new Date(p.date as string);
+        if (!earliest || pDate < earliest) earliest = pDate;
+      }
+      return earliest;
+    }
+    return null;
+  };
+
+  // Build date ranges for each month of the year
+  const monthDateRanges: Array<{ month: number; monthId: string; startDate: Date; endDate: Date }> = [];
+  for (let i = 1; i <= 12; i++) {
+    const monthId = `${year}-${String(i).padStart(2, '0')}`;
+    const { startDate, endDate } = getCycleDateRange(year, i, payDayType, payDayFixed);
+    monthDateRanges.push({ month: i, monthId, startDate, endDate });
+  }
+
+  // Build monthly spending using same logic as useCycleItems/sync-totals
   const monthlySpending: Record<string, number> = {};
   const categoryTotals: Record<Category, number> = {
     housing: 0, transport: 0, family: 0, utilities: 0, health: 0,
@@ -66,45 +94,41 @@ export async function GET(request: NextRequest) {
   };
 
   // Initialize all months
-  for (let i = 1; i <= 12; i++) {
-    const monthId = `${year}-${String(i).padStart(2, '0')}`;
+  for (const { monthId } of monthDateRanges) {
     monthlySpending[monthId] = 0;
   }
 
-  // Process all paid items and attribute to correct cycle based on payment date
-  for (const doc of allPaidItemsSnap.docs) {
-    const item = doc.data();
-    const category = (item.category as Category) || 'other';
-    const payments = item.payments ?? [];
+  // For each month, find items where earliest payment falls within range
+  // and sum only payments within that range
+  for (const { monthId, startDate, endDate } of monthDateRanges) {
+    for (const doc of allPaidItemsSnap.docs) {
+      const item = doc.data();
+      const category = (item.category as Category) || 'other';
 
-    if (payments.length > 0) {
-      for (const payment of payments) {
-        const paymentDate = payment.date?.toDate?.() ?? new Date(payment.date);
-        const cycleId = getCycleIdForDate(paymentDate, payDayType, payDayFixed);
-        const amount = payment.amount ?? 0;
+      // Check if item belongs to this month (earliest payment in range)
+      const earliestPayment = getEarliestPaymentDate(item);
+      if (!earliestPayment || earliestPayment < startDate || earliestPayment > endDate) {
+        continue;
+      }
 
-        // Only count if it's in the target year
-        if (cycleId.startsWith(`${year}-`)) {
-          monthlySpending[cycleId] = (monthlySpending[cycleId] ?? 0) + amount;
-          categoryTotals[category] += amount;
+      const payments = (item.payments ?? []) as Array<{ date?: { toDate?: () => Date } | string; amount?: number }>;
+
+      if (payments.length > 0) {
+        // Sum only payments within this month's date range
+        for (const p of payments) {
+          const pDate = p.date && typeof p.date === 'object' && 'toDate' in p.date
+            ? p.date.toDate?.() ?? new Date()
+            : new Date(p.date as string);
+          if (pDate >= startDate && pDate <= endDate) {
+            const amount = p.amount ?? 0;
+            monthlySpending[monthId] += amount;
+            categoryTotals[category] += amount;
+          }
         }
-      }
-    } else if (item.paidDate) {
-      const paidDate = item.paidDate.toDate?.() ?? new Date(item.paidDate);
-      const cycleId = getCycleIdForDate(paidDate, payDayType, payDayFixed);
-      const amount = item.totalPaidAmount ?? item.actualAmount ?? item.amount ?? 0;
-
-      if (cycleId.startsWith(`${year}-`)) {
-        monthlySpending[cycleId] = (monthlySpending[cycleId] ?? 0) + amount;
-        categoryTotals[category] += amount;
-      }
-    } else {
-      // Fallback: use item's cycleId if no payment date info available
-      const cycleId = item.cycleId;
-      const amount = item.totalPaidAmount ?? item.actualAmount ?? item.amount ?? 0;
-
-      if (cycleId && cycleId.startsWith(`${year}-`)) {
-        monthlySpending[cycleId] = (monthlySpending[cycleId] ?? 0) + amount;
+      } else {
+        // No payments array - use totalPaidAmount
+        const amount = (item.totalPaidAmount as number) ?? (item.actualAmount as number) ?? (item.amount as number) ?? 0;
+        monthlySpending[monthId] += amount;
         categoryTotals[category] += amount;
       }
     }

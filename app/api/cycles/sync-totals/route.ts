@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/auth';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
-import { getCycleIdForDate, getCycleDateRange } from '@/lib/payday-utils';
+import { getCycleDateRange } from '@/lib/payday-utils';
 
 interface CycleTotals {
   totalCommitted: number;
@@ -14,9 +14,12 @@ interface CycleTotals {
 /**
  * POST /api/cycles/sync-totals
  *
- * Recalculates ALL cycle totals based on:
- * - totalCommitted, itemCount: from items PLANNED for this cycle (by cycleId)
- * - totalPaid, paidCount: from payments MADE within this cycle's date range
+ * Recalculates cycle totals using the SAME logic as useCycleItems hook:
+ * - Unpaid items (upcoming/due): by cycleId
+ * - Paid/partial items: by earliest payment date within cycle's date range
+ * - Skipped items: by cycleId (not counted in totals)
+ *
+ * This ensures history page matches cycle detail page exactly.
  */
 export async function POST(request: NextRequest) {
   const auth = await withAuth(request);
@@ -34,34 +37,10 @@ export async function POST(request: NextRequest) {
   // Get all cycles
   const cyclesSnap = await db.collection(`users/${userId}/cycles`).get();
 
-  // Get ALL cycle items (not just paid/partial)
+  // Get ALL cycle items
   const allItemsSnap = await db.collection(`users/${userId}/cycleItems`).get();
+  const allItems = allItemsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
-  // Build a map of cycle -> totals
-  const cycleTotals = new Map<string, CycleTotals>();
-
-  // Initialize all cycles
-  for (const doc of cyclesSnap.docs) {
-    cycleTotals.set(doc.id, { totalCommitted: 0, itemCount: 0, totalPaid: 0, paidCount: 0 });
-  }
-
-  // First pass: Calculate committed totals from items PLANNED for each cycle
-  for (const doc of allItemsSnap.docs) {
-    const item = doc.data();
-    const cycleId = item.cycleId;
-
-    if (!cycleId || !cycleTotals.has(cycleId)) continue;
-
-    // Skip skipped items from committed totals
-    if (item.status === 'skipped') continue;
-
-    const current = cycleTotals.get(cycleId)!;
-    current.totalCommitted += item.amount ?? 0;
-    current.itemCount += 1;
-    cycleTotals.set(cycleId, current);
-  }
-
-  // Second pass: Calculate paid totals from payments MADE within each cycle's date range
   // Build date ranges for each cycle
   const cycleDateRanges = new Map<string, { startDate: Date; endDate: Date }>();
   for (const doc of cyclesSnap.docs) {
@@ -72,82 +51,111 @@ export async function POST(request: NextRequest) {
     cycleDateRanges.set(doc.id, { startDate, endDate });
   }
 
-  // Track which items have been counted as "paid" for each cycle (to avoid double-counting)
-  const paidItemsPerCycle = new Map<string, Set<string>>();
-  for (const cycleId of cycleTotals.keys()) {
-    paidItemsPerCycle.set(cycleId, new Set());
-  }
-
-  for (const doc of allItemsSnap.docs) {
-    const item = doc.data();
-    if (item.status !== 'paid' && item.status !== 'partial') continue;
-
-    const payments = item.payments ?? [];
-
+  // Helper to get earliest payment date from an item
+  const getEarliestPaymentDate = (item: Record<string, unknown>): Date | null => {
+    if (item.paidDate) {
+      const pd = item.paidDate as { toDate?: () => Date };
+      return pd.toDate?.() ?? new Date(item.paidDate as string);
+    }
+    const payments = (item.payments ?? []) as Array<{ date?: { toDate?: () => Date } | string }>;
     if (payments.length > 0) {
-      // Sum each payment to the cycle it belongs to
-      for (const payment of payments) {
-        const paymentDate = payment.date?.toDate?.() ?? new Date(payment.date);
-        const cycleId = getCycleIdForDate(paymentDate, payDayType, payDayFixed);
-
-        if (cycleTotals.has(cycleId)) {
-          const current = cycleTotals.get(cycleId)!;
-          current.totalPaid += payment.amount ?? 0;
-          cycleTotals.set(cycleId, current);
-        }
+      let earliest: Date | null = null;
+      for (const p of payments) {
+        const pDate = p.date && typeof p.date === 'object' && 'toDate' in p.date
+          ? p.date.toDate?.() ?? new Date()
+          : new Date(p.date as string);
+        if (!earliest || pDate < earliest) earliest = pDate;
       }
+      return earliest;
+    }
+    return null;
+  };
 
-      // Count item as "paid" in cycle where first payment was made (if fully paid)
-      if (item.status === 'paid') {
-        let earliestDate: Date | null = null;
-        for (const p of payments) {
-          const pDate = p.date?.toDate?.() ?? new Date(p.date);
-          if (!earliestDate || pDate < earliestDate) earliestDate = pDate;
-        }
-        if (earliestDate) {
-          const cycleId = getCycleIdForDate(earliestDate, payDayType, payDayFixed);
-          if (cycleTotals.has(cycleId)) {
-            const paidItems = paidItemsPerCycle.get(cycleId)!;
-            if (!paidItems.has(doc.id)) {
-              const current = cycleTotals.get(cycleId)!;
-              current.paidCount += 1;
-              cycleTotals.set(cycleId, current);
-              paidItems.add(doc.id);
-            }
-          }
-        }
-      }
-    } else {
-      // Item without payments array - use paidDate or fallback to cycleId
-      const paidDate = item.paidDate?.toDate?.() ?? (item.paidDate ? new Date(item.paidDate) : null);
-      const amount = item.totalPaidAmount ?? item.actualAmount ?? item.amount ?? 0;
+  // Calculate totals for each cycle using same logic as useCycleItems
+  const cycleTotals = new Map<string, CycleTotals>();
 
-      let cycleId: string;
-      if (paidDate) {
-        cycleId = getCycleIdForDate(paidDate, payDayType, payDayFixed);
-      } else {
-        cycleId = item.cycleId; // Fallback
-      }
+  for (const doc of cyclesSnap.docs) {
+    const cycleId = doc.id;
+    const dateRange = cycleDateRanges.get(cycleId);
+    if (!dateRange) continue;
 
-      if (cycleTotals.has(cycleId)) {
-        const current = cycleTotals.get(cycleId)!;
-        current.totalPaid += amount;
-        if (item.status === 'paid') {
-          const paidItems = paidItemsPerCycle.get(cycleId)!;
-          if (!paidItems.has(doc.id)) {
-            current.paidCount += 1;
-            paidItems.add(doc.id);
-          }
-        }
-        cycleTotals.set(cycleId, current);
+    const { startDate, endDate } = dateRange;
+    const itemsInCycle = new Set<string>();
+
+    // 1. Add unpaid items (upcoming/due) from this cycle by cycleId
+    for (const item of allItems) {
+      if (item.cycleId === cycleId && (item.status === 'upcoming' || item.status === 'due')) {
+        itemsInCycle.add(item.id);
       }
     }
+
+    // 2. Add paid/partial items where earliest payment falls within date range
+    for (const item of allItems) {
+      if (item.status === 'paid' || item.status === 'partial') {
+        const paymentDate = getEarliestPaymentDate(item);
+        if (paymentDate && paymentDate >= startDate && paymentDate <= endDate) {
+          itemsInCycle.add(item.id);
+        }
+      }
+    }
+
+    // 3. Add skipped items from this cycle by cycleId (but don't count in totals)
+    const skippedInCycle = new Set<string>();
+    for (const item of allItems) {
+      if (item.cycleId === cycleId && item.status === 'skipped') {
+        skippedInCycle.add(item.id);
+      }
+    }
+
+    // Calculate totals from items in this cycle
+    let totalCommitted = 0;
+    let itemCount = 0;
+    let totalPaid = 0;
+    let paidCount = 0;
+
+    for (const item of allItems) {
+      if (!itemsInCycle.has(item.id)) continue;
+
+      // Count toward committed (non-skipped items)
+      totalCommitted += (item.amount as number) ?? 0;
+      itemCount += 1;
+
+      // Calculate paid amount (only payments within this cycle's date range)
+      if (item.status === 'paid' || item.status === 'partial') {
+        const payments = (item.payments ?? []) as Array<{ date?: { toDate?: () => Date } | string; amount?: number }>;
+
+        if (payments.length > 0) {
+          // Sum only payments within date range
+          for (const p of payments) {
+            const pDate = p.date && typeof p.date === 'object' && 'toDate' in p.date
+              ? p.date.toDate?.() ?? new Date()
+              : new Date(p.date as string);
+            if (pDate >= startDate && pDate <= endDate) {
+              totalPaid += p.amount ?? 0;
+            }
+          }
+        } else {
+          // No payments array - use totalPaidAmount if item belongs to this cycle
+          const paidDate = getEarliestPaymentDate(item);
+          if (paidDate && paidDate >= startDate && paidDate <= endDate) {
+            totalPaid += (item.totalPaidAmount as number) ?? (item.actualAmount as number) ?? (item.amount as number) ?? 0;
+          }
+        }
+
+        // Count as paid item if fully paid
+        if (item.status === 'paid') {
+          paidCount += 1;
+        }
+      }
+    }
+
+    cycleTotals.set(cycleId, { totalCommitted, itemCount, totalPaid, paidCount });
   }
 
   // Update cycles with corrected totals
   const updates: Array<{
     cycleId: string;
-    old: { totalCommitted: number; itemCount: number; totalPaid: number; paidCount: number };
+    old: CycleTotals;
     new: CycleTotals;
   }> = [];
 
@@ -156,14 +164,13 @@ export async function POST(request: NextRequest) {
     const newTotals = cycleTotals.get(doc.id);
 
     if (newTotals) {
-      const oldTotals = {
+      const oldTotals: CycleTotals = {
         totalCommitted: cycle.totalCommitted ?? 0,
         itemCount: cycle.itemCount ?? 0,
         totalPaid: cycle.totalPaid ?? 0,
         paidCount: cycle.paidCount ?? 0,
       };
 
-      // Check if any value changed
       const changed =
         oldTotals.totalCommitted !== newTotals.totalCommitted ||
         oldTotals.itemCount !== newTotals.itemCount ||
