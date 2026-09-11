@@ -9,7 +9,17 @@
     "start": "next start",
     "test": "vitest --run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:coverage": "vitest --run --coverage",
+    "test:e2e": "playwright test",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "lib/**/*.ts": [
+      "vitest related --run"
+    ],
+    "app/api/**/*.ts": [
+      "vitest related --run"
+    ]
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -39,7 +49,9 @@
     "@vitejs/plugin-react": "^6.0.1",
     "@vitest/coverage-v8": "^4.1.4",
     "fast-check": "^4.6.0",
+    "husky": "^9.1.7",
     "jsdom": "^29.0.2",
+    "lint-staged": "^16.4.0",
     "playwright": "^1.59.1",
     "tailwindcss": "^4",
     "typescript": "^5",

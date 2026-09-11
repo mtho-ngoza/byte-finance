@@ -41,7 +41,7 @@ describe('Goal Contributions Integration Tests', () => {
       });
 
       mockDb._setDoc(`users/${TEST_USER_ID}/cycleItems`, 'item-1', {
-        cycleId: 'cycle-2024-01',
+        cycleId: '2024-01',
         label: 'Savings',
         amount: 100000, // R1,000
         status: 'upcoming',
@@ -49,7 +49,7 @@ describe('Goal Contributions Integration Tests', () => {
         isVariable: false,
       });
 
-      mockDb._setDoc(`users/${TEST_USER_ID}/cycles`, 'cycle-2024-01', {
+      mockDb._setDoc(`users/${TEST_USER_ID}/cycles`, '2024-01', {
         totalPaid: 0,
         paidCount: 0,
       });
@@ -73,7 +73,7 @@ describe('Goal Contributions Integration Tests', () => {
       expect(goal?.contributions[0]).toMatchObject({
         amount: 100000,
         cycleItemId: 'item-1',
-        cycleId: 'cycle-2024-01',
+        cycleId: '2024-01',
       });
     });
 
@@ -83,7 +83,7 @@ describe('Goal Contributions Integration Tests', () => {
         id: 'item-1-pay-123',
         amount: 50000,
         cycleItemId: 'item-1',
-        cycleId: 'cycle-2024-01',
+        cycleId: '2024-01',
         date: new Date('2024-01-15'),
       };
 
@@ -95,7 +95,7 @@ describe('Goal Contributions Integration Tests', () => {
       });
 
       mockDb._setDoc(`users/${TEST_USER_ID}/cycleItems`, 'item-1', {
-        cycleId: 'cycle-2024-01',
+        cycleId: '2024-01',
         label: 'Savings',
         amount: 100000,
         status: 'partial',
@@ -104,7 +104,7 @@ describe('Goal Contributions Integration Tests', () => {
         payments: [{ id: 'pay-123', amount: 50000, date: new Date('2024-01-15') }],
       });
 
-      mockDb._setDoc(`users/${TEST_USER_ID}/cycles`, 'cycle-2024-01', {
+      mockDb._setDoc(`users/${TEST_USER_ID}/cycles`, '2024-01', {
         totalPaid: 50000,
       });
 
@@ -131,7 +131,7 @@ describe('Goal Contributions Integration Tests', () => {
         id: 'item-1-pay-123',
         amount: 50000,
         cycleItemId: 'item-1',
-        cycleId: 'cycle-2024-01',
+        cycleId: '2024-01',
         date: new Date('2024-01-15'),
       };
 
@@ -143,7 +143,7 @@ describe('Goal Contributions Integration Tests', () => {
       });
 
       mockDb._setDoc(`users/${TEST_USER_ID}/cycleItems`, 'item-1', {
-        cycleId: 'cycle-2024-01',
+        cycleId: '2024-01',
         label: 'Savings',
         amount: 100000,
         status: 'partial',
@@ -152,7 +152,7 @@ describe('Goal Contributions Integration Tests', () => {
         payments: [{ id: 'pay-123', amount: 50000, date: new Date('2024-01-15') }],
       });
 
-      mockDb._setDoc(`users/${TEST_USER_ID}/cycles`, 'cycle-2024-01', {
+      mockDb._setDoc(`users/${TEST_USER_ID}/cycles`, '2024-01', {
         totalPaid: 50000,
       });
 
@@ -173,9 +173,9 @@ describe('Goal Contributions Integration Tests', () => {
     it('should remove all contributions when unpaying a cycle item', async () => {
       // Setup: Create a goal with multiple contributions from same item
       const contributions = [
-        { id: 'item-1-pay-1', amount: 25000, cycleItemId: 'item-1', cycleId: 'cycle-2024-01' },
-        { id: 'item-1-pay-2', amount: 25000, cycleItemId: 'item-1', cycleId: 'cycle-2024-01' },
-        { id: 'item-2-pay-1', amount: 50000, cycleItemId: 'item-2', cycleId: 'cycle-2024-01' }, // Different item
+        { id: 'item-1-pay-1', amount: 25000, cycleItemId: 'item-1', cycleId: '2024-01' },
+        { id: 'item-1-pay-2', amount: 25000, cycleItemId: 'item-1', cycleId: '2024-01' },
+        { id: 'item-2-pay-1', amount: 50000, cycleItemId: 'item-2', cycleId: '2024-01' }, // Different item
       ];
 
       mockDb._setDoc(`users/${TEST_USER_ID}/goals`, 'goal-1', {
@@ -186,7 +186,7 @@ describe('Goal Contributions Integration Tests', () => {
       });
 
       mockDb._setDoc(`users/${TEST_USER_ID}/cycleItems`, 'item-1', {
-        cycleId: 'cycle-2024-01',
+        cycleId: '2024-01',
         label: 'Savings',
         amount: 50000,
         status: 'paid',
@@ -198,7 +198,7 @@ describe('Goal Contributions Integration Tests', () => {
         ],
       });
 
-      mockDb._setDoc(`users/${TEST_USER_ID}/cycles`, 'cycle-2024-01', {
+      mockDb._setDoc(`users/${TEST_USER_ID}/cycles`, '2024-01', {
         totalPaid: 100000,
         paidCount: 2,
       });
@@ -221,7 +221,7 @@ describe('Goal Contributions Integration Tests', () => {
     it('should remove contributions when deleting a cycle item', async () => {
       // Setup
       const contributions = [
-        { id: 'item-1-pay-1', amount: 50000, cycleItemId: 'item-1', cycleId: 'cycle-2024-01' },
+        { id: 'item-1-pay-1', amount: 50000, cycleItemId: 'item-1', cycleId: '2024-01' },
       ];
 
       mockDb._setDoc(`users/${TEST_USER_ID}/goals`, 'goal-1', {
@@ -232,7 +232,7 @@ describe('Goal Contributions Integration Tests', () => {
       });
 
       mockDb._setDoc(`users/${TEST_USER_ID}/cycleItems`, 'item-1', {
-        cycleId: 'cycle-2024-01',
+        cycleId: '2024-01',
         label: 'Savings',
         amount: 50000,
         status: 'paid',
@@ -241,7 +241,7 @@ describe('Goal Contributions Integration Tests', () => {
         payments: [{ id: 'pay-1', amount: 50000 }],
       });
 
-      mockDb._setDoc(`users/${TEST_USER_ID}/cycles`, 'cycle-2024-01', {
+      mockDb._setDoc(`users/${TEST_USER_ID}/cycles`, '2024-01', {
         totalPaid: 50000,
         totalCommitted: 50000,
         paidCount: 1,
@@ -265,8 +265,8 @@ describe('Goal Contributions Integration Tests', () => {
     it('should remove all contributions when deleting a cycle', async () => {
       // Setup: Multiple items with contributions
       const contributions = [
-        { id: 'item-1-pay-1', amount: 50000, cycleItemId: 'item-1', cycleId: 'cycle-2024-01' },
-        { id: 'item-2-pay-1', amount: 75000, cycleItemId: 'item-2', cycleId: 'cycle-2024-01' },
+        { id: 'item-1-pay-1', amount: 50000, cycleItemId: 'item-1', cycleId: '2024-01' },
+        { id: 'item-2-pay-1', amount: 75000, cycleItemId: 'item-2', cycleId: '2024-01' },
       ];
 
       mockDb._setDoc(`users/${TEST_USER_ID}/goals`, 'goal-1', {
@@ -277,7 +277,7 @@ describe('Goal Contributions Integration Tests', () => {
       });
 
       mockDb._setDoc(`users/${TEST_USER_ID}/cycleItems`, 'item-1', {
-        cycleId: 'cycle-2024-01',
+        cycleId: '2024-01',
         label: 'Savings 1',
         amount: 50000,
         status: 'paid',
@@ -286,7 +286,7 @@ describe('Goal Contributions Integration Tests', () => {
       });
 
       mockDb._setDoc(`users/${TEST_USER_ID}/cycleItems`, 'item-2', {
-        cycleId: 'cycle-2024-01',
+        cycleId: '2024-01',
         label: 'Savings 2',
         amount: 75000,
         status: 'paid',
@@ -294,7 +294,7 @@ describe('Goal Contributions Integration Tests', () => {
         payments: [{ id: 'pay-1', amount: 75000 }],
       });
 
-      mockDb._setDoc(`users/${TEST_USER_ID}/cycles`, 'cycle-2024-01', {
+      mockDb._setDoc(`users/${TEST_USER_ID}/cycles`, '2024-01', {
         totalPaid: 125000,
         totalCommitted: 125000,
       });
@@ -305,7 +305,7 @@ describe('Goal Contributions Integration Tests', () => {
       // Act: Delete the cycle
       const request = createRequest('DELETE', {});
 
-      await DELETE(request as never, { params: Promise.resolve({ id: 'cycle-2024-01' }) });
+      await DELETE(request as never, { params: Promise.resolve({ id: '2024-01' }) });
 
       // Assert: Check all contributions were removed from goal
       const goal = mockDb._getDoc(`users/${TEST_USER_ID}/goals`, 'goal-1') as GoalDoc | undefined;
@@ -321,7 +321,7 @@ describe('Goal Contributions Integration Tests', () => {
         id: 'item-1-pay-123',
         amount: 50000,
         cycleItemId: 'item-1',
-        cycleId: 'cycle-2024-01',
+        cycleId: '2024-01',
       };
 
       mockDb._setDoc(`users/${TEST_USER_ID}/goals`, 'goal-1', {
@@ -333,7 +333,7 @@ describe('Goal Contributions Integration Tests', () => {
 
       // Setup: Cycle item with the payment (required for validation)
       mockDb._setDoc(`users/${TEST_USER_ID}/cycleItems`, 'item-1', {
-        cycleId: 'cycle-2024-01',
+        cycleId: '2024-01',
         label: 'Savings',
         amount: 50000,
         status: 'paid',
@@ -346,7 +346,7 @@ describe('Goal Contributions Integration Tests', () => {
       // Act: Try to link the same payment again
       const request = createRequest('POST', {
         payments: [
-          { paymentId: 'pay-123', cycleItemId: 'item-1', cycleId: 'cycle-2024-01', amount: 50000, date: '2024-01-15' },
+          { paymentId: 'pay-123', cycleItemId: 'item-1', cycleId: '2024-01', amount: 50000, date: '2024-01-15' },
         ],
       });
 
@@ -364,7 +364,7 @@ describe('Goal Contributions Integration Tests', () => {
         id: 'item-1-pay-123',
         amount: 50000,
         cycleItemId: 'item-1',
-        cycleId: 'cycle-2024-01',
+        cycleId: '2024-01',
       };
 
       mockDb._setDoc(`users/${TEST_USER_ID}/goals`, 'goal-1', {
@@ -376,7 +376,7 @@ describe('Goal Contributions Integration Tests', () => {
 
       // Setup: Cycle items with payments (required for validation)
       mockDb._setDoc(`users/${TEST_USER_ID}/cycleItems`, 'item-1', {
-        cycleId: 'cycle-2024-01',
+        cycleId: '2024-01',
         label: 'Savings 1',
         amount: 50000,
         status: 'paid',
@@ -384,7 +384,7 @@ describe('Goal Contributions Integration Tests', () => {
       });
 
       mockDb._setDoc(`users/${TEST_USER_ID}/cycleItems`, 'item-2', {
-        cycleId: 'cycle-2024-01',
+        cycleId: '2024-01',
         label: 'Savings 2',
         amount: 75000,
         status: 'paid',
@@ -397,8 +397,8 @@ describe('Goal Contributions Integration Tests', () => {
       // Act: Link one existing and one new payment
       const request = createRequest('POST', {
         payments: [
-          { paymentId: 'pay-123', cycleItemId: 'item-1', cycleId: 'cycle-2024-01', amount: 50000, date: '2024-01-15' }, // Duplicate
-          { paymentId: 'pay-456', cycleItemId: 'item-2', cycleId: 'cycle-2024-01', amount: 75000, date: '2024-01-20' }, // New
+          { paymentId: 'pay-123', cycleItemId: 'item-1', cycleId: '2024-01', amount: 50000, date: '2024-01-15' }, // Duplicate
+          { paymentId: 'pay-456', cycleItemId: 'item-2', cycleId: '2024-01', amount: 75000, date: '2024-01-20' }, // New
         ],
       });
 
@@ -416,7 +416,7 @@ describe('Goal Contributions Integration Tests', () => {
     it('should not auto-complete variable items when payment exceeds budget', async () => {
       // Setup
       mockDb._setDoc(`users/${TEST_USER_ID}/cycleItems`, 'item-1', {
-        cycleId: 'cycle-2024-01',
+        cycleId: '2024-01',
         label: 'Groceries',
         amount: 200000, // R2,000 budget
         status: 'upcoming',
@@ -424,7 +424,7 @@ describe('Goal Contributions Integration Tests', () => {
         linkedGoalId: null,
       });
 
-      mockDb._setDoc(`users/${TEST_USER_ID}/cycles`, 'cycle-2024-01', {
+      mockDb._setDoc(`users/${TEST_USER_ID}/cycles`, '2024-01', {
         totalPaid: 0,
         paidCount: 0,
       });
@@ -448,7 +448,7 @@ describe('Goal Contributions Integration Tests', () => {
     it('should auto-complete non-variable items when payment meets budget', async () => {
       // Setup
       mockDb._setDoc(`users/${TEST_USER_ID}/cycleItems`, 'item-1', {
-        cycleId: 'cycle-2024-01',
+        cycleId: '2024-01',
         label: 'Rent',
         amount: 500000, // R5,000
         status: 'upcoming',
@@ -456,7 +456,7 @@ describe('Goal Contributions Integration Tests', () => {
         linkedGoalId: null,
       });
 
-      mockDb._setDoc(`users/${TEST_USER_ID}/cycles`, 'cycle-2024-01', {
+      mockDb._setDoc(`users/${TEST_USER_ID}/cycles`, '2024-01', {
         totalPaid: 0,
         paidCount: 0,
       });
@@ -488,7 +488,7 @@ describe('Goal Contributions Integration Tests', () => {
       });
 
       mockDb._setDoc(`users/${TEST_USER_ID}/cycleItems`, 'item-1', {
-        cycleId: 'cycle-2024-01',
+        cycleId: '2024-01',
         commitmentId: 'commitment-1',
         label: 'Groceries',
         amount: 200000,

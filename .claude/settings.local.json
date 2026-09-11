@@ -31,7 +31,9 @@
       "Bash(ls:*)",
       "Bash(tail:*)",
       "Bash(git reset:*)",
-      "Bash(git show:*)"
+      "Bash(git show:*)",
+      "Bash(npx husky init)",
+      "Bash(npm run test:coverage:*)"
     ]
   }
 }
