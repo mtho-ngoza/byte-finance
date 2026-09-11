@@ -39,7 +39,16 @@ export async function POST(request: NextRequest) {
 
   // Get ALL cycle items
   const allItemsSnap = await db.collection(`users/${userId}/cycleItems`).get();
-  const allItems = allItemsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  const allItems = allItemsSnap.docs.map((d) => ({ id: d.id, ...d.data() } as {
+    id: string;
+    cycleId?: string;
+    status?: string;
+    amount?: number;
+    paidDate?: { toDate?: () => Date } | string;
+    payments?: Array<{ date?: { toDate?: () => Date } | string; amount?: number }>;
+    totalPaidAmount?: number;
+    actualAmount?: number;
+  }));
 
   // Build date ranges for each cycle
   const cycleDateRanges = new Map<string, { startDate: Date; endDate: Date }>();
