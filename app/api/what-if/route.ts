@@ -128,21 +128,36 @@ export async function POST(request: NextRequest) {
             { status: 400 }
           );
         }
-        if (!goal.debtTracking || !goal.debtTracking.minimumPayment) {
+
+        // Current balance = target - contributions (what's been paid off)
+        const paidOff = (goal.contributions ?? []).reduce((sum, c) => sum + c.amount, 0);
+        const originalBalance = goal.debtTracking?.originalBalance ?? goal.targetAmount;
+        const currentBalance = originalBalance - paidOff;
+
+        // Interest rate defaults to 0 (interest-free debt)
+        const interestRate = goal.debtTracking?.interestRate ?? 0;
+
+        // Minimum payment: use debtTracking value, or monthlyTarget, or calculate from balance
+        let minimumPayment = goal.debtTracking?.minimumPayment ?? 0;
+        if (minimumPayment <= 0) {
+          // Fall back to monthly target
+          minimumPayment = goal.monthlyTarget ?? 0;
+        }
+        if (minimumPayment <= 0) {
+          // Fall back to paying off in 12 months
+          minimumPayment = Math.ceil(currentBalance / 12);
+        }
+        if (minimumPayment <= 0) {
           return NextResponse.json(
-            { error: 'This debt goal needs interest rate and minimum payment set up. Edit the goal to add debt tracking details.' },
+            { error: 'Could not determine a payment amount. Set a monthly target for this goal.' },
             { status: 400 }
           );
         }
 
-        // Current balance = original - contributions (what's been paid off)
-        const paidOff = (goal.contributions ?? []).reduce((sum, c) => sum + c.amount, 0);
-        const currentBalance = goal.debtTracking.originalBalance - paidOff;
-
         const result = calculateExtraDebtPayment(
           currentBalance,
-          goal.debtTracking.interestRate ?? 0,
-          goal.debtTracking.minimumPayment ?? 0,
+          interestRate,
+          minimumPayment,
           amount
         );
 
@@ -151,8 +166,8 @@ export async function POST(request: NextRequest) {
           goalName: goal.name,
           input: {
             extraPayment: amount,
-            minimumPayment: goal.debtTracking.minimumPayment ?? 0,
-            interestRate: goal.debtTracking.interestRate ?? 0,
+            minimumPayment,
+            interestRate,
           },
           ...result,
         });
@@ -169,22 +184,30 @@ export async function POST(request: NextRequest) {
         const debts = goalsSnap.docs
           .map((doc) => {
             const data = doc.data() as Goal;
-            if (!data.debtTracking) return null;
 
             const paidOff = (data.contributions ?? []).reduce((sum, c) => sum + c.amount, 0);
-            const currentBalance = data.debtTracking.originalBalance - paidOff;
+            const originalBalance = data.debtTracking?.originalBalance ?? data.targetAmount;
+            const currentBalance = originalBalance - paidOff;
 
             if (currentBalance <= 0) return null;
+
+            // Interest rate defaults to 0 (interest-free)
+            const interestRate = data.debtTracking?.interestRate ?? 0;
+
+            // Minimum payment: use debtTracking, monthlyTarget, or calculate
+            let minPayment = data.debtTracking?.minimumPayment ?? 0;
+            if (minPayment <= 0) minPayment = data.monthlyTarget ?? 0;
+            if (minPayment <= 0) minPayment = Math.ceil(currentBalance / 12);
 
             return {
               id: doc.id,
               name: data.name,
               balance: currentBalance,
-              interestRate: data.debtTracking.interestRate ?? 0,
-              minimumPayment: data.debtTracking.minimumPayment ?? 0,
+              interestRate,
+              minimumPayment: minPayment,
             };
           })
-          .filter((d): d is NonNullable<typeof d> => d !== null);
+          .filter((d): d is NonNullable<typeof d> => d !== null && d.minimumPayment > 0);
 
         if (debts.length === 0) {
           return NextResponse.json(
