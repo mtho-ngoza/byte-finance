@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/auth';
 import { getAdminDb } from '@/lib/firebase-admin';
+import { getCycleIdForDate } from '@/lib/payday-utils';
 import type { Category } from '@/types';
 
 const CATEGORIES: Category[] = [
@@ -52,6 +53,12 @@ export async function GET(request: NextRequest) {
 
   const db = getAdminDb();
 
+  // Get user's payday settings
+  const userDoc = await db.collection('users').doc(userId).get();
+  const userData = userDoc.data();
+  const payDayType = userData?.preferences?.payDayType ?? 'last_working_day';
+  const payDayFixed = userData?.preferences?.payDayFixed;
+
   // Generate cycle IDs for the last N months
   const cycleIds: string[] = [];
   const now = new Date();
@@ -102,9 +109,9 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // Helper to get cycle ID from a date
-  const getCycleIdFromDate = (date: Date): string => {
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+  // Helper to get cycle ID from a date using payday logic
+  const getCycleIdFromPaymentDate = (date: Date): string => {
+    return getCycleIdForDate(date, payDayType, payDayFixed);
   };
 
   // Aggregate PAID amounts by actual payment date, not cycleId
@@ -117,7 +124,7 @@ export async function GET(request: NextRequest) {
     if (payments.length > 0) {
       for (const payment of payments) {
         const paymentDate = payment.date?.toDate?.() ?? new Date(payment.date);
-        const paymentCycleId = getCycleIdFromDate(paymentDate);
+        const paymentCycleId = getCycleIdFromPaymentDate(paymentDate);
 
         if (monthlyData[paymentCycleId]) {
           monthlyData[paymentCycleId].paid += payment.amount ?? 0;
@@ -130,7 +137,7 @@ export async function GET(request: NextRequest) {
       const amount = item.totalPaidAmount ?? item.actualAmount ?? item.amount ?? 0;
 
       if (paidDate) {
-        const paidCycleId = getCycleIdFromDate(paidDate);
+        const paidCycleId = getCycleIdFromPaymentDate(paidDate);
         if (monthlyData[paidCycleId]) {
           monthlyData[paidCycleId].paid += amount;
           monthlyData[paidCycleId].categories[category] += amount;

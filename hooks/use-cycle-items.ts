@@ -214,6 +214,11 @@ export function useCycleItems(cycleId: string | null, cycle?: Cycle | null): Use
         if (status === 'paid' && actualAmount !== undefined) {
           updateData.actualAmount = actualAmount;
         }
+        // When reverting to unpaid, ensure item stays in current cycle
+        // This handles items that were moved by payment date but now have no payment
+        if (status !== 'paid' && status !== 'partial' && item.cycleId !== cycleId) {
+          updateData.cycleId = cycleId;
+        }
         await updateDoc(itemRef, updateData);
 
         // Update cycle totals — use totalPaidAmount when payments exist
