@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/auth';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
+import { getCycleIdForDate } from '@/lib/payday-utils';
 
 /**
  * POST /api/cycle-items/sync-cycle-ids
@@ -30,21 +31,7 @@ export async function POST(request: NextRequest) {
 
   // Helper to get cycle ID from a date based on payday settings
   const getCycleIdFromDate = (date: Date): string => {
-    const year = date.getFullYear();
-    const month = date.getMonth() + 1;
-
-    // Get this month's payday
-    const thisMonthPayday = getPaydayForMonth(year, month, payDayType, payDayFixed);
-
-    // If date is before this month's payday, it belongs to this month's cycle
-    // If date is on or after payday, it belongs to next month's cycle
-    if (date < thisMonthPayday) {
-      return `${year}-${String(month).padStart(2, '0')}`;
-    } else {
-      const nextMonth = month === 12 ? 1 : month + 1;
-      const nextYear = month === 12 ? year + 1 : year;
-      return `${nextYear}-${String(nextMonth).padStart(2, '0')}`;
-    }
+    return getCycleIdForDate(date, payDayType, payDayFixed);
   };
 
   // Track cycle adjustments
@@ -137,34 +124,4 @@ export async function POST(request: NextRequest) {
     moved,
     cycleAdjustments: Object.fromEntries(cycleAdjustments),
   });
-}
-
-// Inline payday calculation (simplified from payday-utils)
-function getPaydayForMonth(
-  year: number,
-  month: number,
-  payDayType: 'last_working_day' | 'fixed',
-  payDayFixed?: number
-): Date {
-  if (payDayType === 'fixed' && payDayFixed) {
-    const date = new Date(year, month - 1, payDayFixed);
-    while (!isWorkingDay(date)) {
-      date.setDate(date.getDate() - 1);
-    }
-    return date;
-  }
-
-  // Last working day of the month
-  const lastDay = new Date(year, month, 0);
-  while (!isWorkingDay(lastDay)) {
-    lastDay.setDate(lastDay.getDate() - 1);
-  }
-  return lastDay;
-}
-
-function isWorkingDay(date: Date): boolean {
-  const dayOfWeek = date.getDay();
-  if (dayOfWeek === 0 || dayOfWeek === 6) return false;
-  // Skip detailed holiday checking for sync - basic weekend check is enough
-  return true;
 }
