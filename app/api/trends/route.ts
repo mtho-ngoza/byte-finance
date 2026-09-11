@@ -207,24 +207,23 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // Format for charts
-  const monthlyTrend = cycleIds
-    .reverse()
-    .map((cycleId) => {
-      const [year, month] = cycleId.split('-');
-      const monthName = new Date(parseInt(year), parseInt(month) - 1).toLocaleDateString('en-ZA', {
-        month: 'short',
-      });
-      return {
-        month: `${monthName} ${year.slice(2)}`,
-        cycleId,
-        committed: monthlyData[cycleId].total,
-        spent: monthlyData[cycleId].paid,
-      };
+  // Format for charts (use slice to avoid mutating original array)
+  const sortedCycleIds = [...cycleIds].reverse(); // Oldest to newest
+  const monthlyTrend = sortedCycleIds.map((cycleId) => {
+    const [year, month] = cycleId.split('-');
+    const monthName = new Date(parseInt(year), parseInt(month) - 1).toLocaleDateString('en-ZA', {
+      month: 'short',
     });
+    return {
+      month: `${monthName} ${year.slice(2)}`,
+      cycleId,
+      committed: monthlyData[cycleId]?.total ?? 0,
+      spent: monthlyData[cycleId]?.paid ?? 0,
+    };
+  });
 
-  // Current month category breakdown
-  const currentCycleId = cycleIds[cycleIds.length - 1];
+  // Current month category breakdown (cycleIds[0] is the current month)
+  const currentCycleId = cycleIds[0];
   const currentData = monthlyData[currentCycleId];
   const categoryBreakdown = CATEGORIES
     .map((cat) => ({
@@ -236,12 +235,12 @@ export async function GET(request: NextRequest) {
     .filter((c) => c.amount > 0)
     .sort((a, b) => b.amount - a.amount);
 
-  // Category trends over time
+  // Category trends over time (use sortedCycleIds which is already oldest to newest)
   const categoryTrends = CATEGORIES.map((cat) => ({
     category: cat,
     label: CATEGORY_LABELS[cat],
     color: CATEGORY_COLORS[cat],
-    data: cycleIds.reverse().map((cycleId) => ({
+    data: sortedCycleIds.map((cycleId) => ({
       cycleId,
       amount: monthlyData[cycleId]?.categories[cat] ?? 0,
     })),
@@ -251,7 +250,7 @@ export async function GET(request: NextRequest) {
   const totalByCategory: Record<Category, number> = {} as Record<Category, number>;
   for (const cat of CATEGORIES) {
     totalByCategory[cat] = 0;
-    for (const cycleId of cycleIds) {
+    for (const cycleId of sortedCycleIds) {
       totalByCategory[cat] += monthlyData[cycleId]?.categories[cat] ?? 0;
     }
   }
