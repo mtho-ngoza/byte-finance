@@ -79,10 +79,12 @@ export default function CycleDetailPage() {
   const userId = useUserId();
   const { cycles, loading: cyclesLoading } = useCycles();
   const { profile } = useUserProfile();
-  const { items, loading: itemsLoading, totalCommitted, totalPaid, updateStatus, updateAmount, addPayment, deletePayment, editPayment } =
-    useCycleItems(cycleId);
 
+  // Find cycle first so we can pass it to useCycleItems for date-based filtering
   const cycle = cycles.find((c) => c.id === cycleId);
+
+  const { items, loading: itemsLoading, totalCommitted, totalPaid, updateStatus, updateAmount, addPayment, deletePayment, editPayment } =
+    useCycleItems(cycleId, cycle);
   const loading = cyclesLoading || itemsLoading;
   const vatPercentage = profile?.preferences?.vatPercentage;
 
