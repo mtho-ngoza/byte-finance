@@ -289,6 +289,7 @@ export interface Insight {
   isDismissed: boolean;
   expiresAt?: Timestamp;
   createdAt: Timestamp;
+  updatedAt?: Timestamp;
 }
 
 /**

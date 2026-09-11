@@ -31,11 +31,12 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const { id } = await params;
   const body = await request.json();
 
+  // NOTE: currentAmount is intentionally NOT in this list
+  // Balance should only be calculated from contributions, never set directly
   const allowed = [
     'name',
     'type',
     'targetAmount',
-    'currentAmount',
     'monthlyTarget',
     'linkedCommitmentLabel',
     'debtTracking',

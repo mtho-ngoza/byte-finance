@@ -495,7 +495,7 @@ function GoalDetail({ goal, allCommitments }: GoalDetailProps) {
           <h2 className="text-sm font-medium text-text-primary mb-3">Timeline</h2>
 
           <div className="space-y-3">
-            {goal.estimatedCompletionDate && goal.currentAmount < goal.targetAmount && (
+            {goal.estimatedCompletionDate && calculatedBalance < goal.targetAmount && (
               <div className="flex items-center justify-between">
                 <span className="text-sm text-text-secondary">Estimated Completion</span>
                 <span className="text-sm text-text-primary">

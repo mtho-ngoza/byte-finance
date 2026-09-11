@@ -4,14 +4,17 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { AmountDisplay } from '@/components/shared/amount-display';
+import { useToast } from '@/hooks/use-toast';
 import type { Project } from '@/types';
 
 export default function ProjectsPage() {
   const router = useRouter();
+  const toast = useToast();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [search, setSearch] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchProjects();
@@ -19,11 +22,15 @@ export default function ProjectsPage() {
 
   const fetchProjects = async () => {
     try {
+      setError(null);
       const res = await fetch('/api/projects');
+      if (!res.ok) throw new Error('Failed to load projects');
       const data = await res.json();
       setProjects(data.projects || []);
-    } catch (error) {
-      console.error('Failed to fetch projects:', error);
+    } catch (err) {
+      console.error('Failed to fetch projects:', err);
+      setError('Failed to load projects. Please try again.');
+      toast('Failed to load projects', 'error');
     } finally {
       setLoading(false);
     }
@@ -38,9 +45,11 @@ export default function ProjectsPage() {
       });
       if (!res.ok) throw new Error('Failed to create project');
       const newProject = await res.json();
+      toast('Project created', 'success');
       router.push(`/projects/${newProject.id}`);
-    } catch (error) {
-      console.error('Failed to create project:', error);
+    } catch (err) {
+      console.error('Failed to create project:', err);
+      toast('Failed to create project', 'error');
     }
   };
 
