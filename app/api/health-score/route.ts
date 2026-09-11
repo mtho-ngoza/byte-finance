@@ -68,12 +68,6 @@ export async function POST(request: NextRequest) {
   const payDayType = userData?.preferences?.payDayType ?? 'last_working_day';
   const payDayFixed = userData?.preferences?.payDayFixed;
 
-  // Parse cycleId and get date range
-  const [yearStr, monthStr] = cycleId.split('-');
-  const year = parseInt(yearStr, 10);
-  const month = parseInt(monthStr, 10);
-  const { startDate, endDate } = getCycleDateRange(year, month, payDayType, payDayFixed);
-
   // Fetch all required data in parallel
   const [cycleSnap, itemsSnap, goalsSnap, previousScoreSnap] = await Promise.all([
     db.collection(`users/${userId}/cycles`).doc(cycleId).get(),
@@ -89,6 +83,32 @@ export async function POST(request: NextRequest) {
   const items = itemsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
   const goals = goalsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
   const previousScore = previousScoreSnap?.exists ? (previousScoreSnap.data() as HealthScore).totalScore : null;
+
+  // Get date range from stored cycle document (same as useCycleItems)
+  const [yearStr, monthStr] = cycleId.split('-');
+  const year = parseInt(yearStr, 10);
+  const month = parseInt(monthStr, 10);
+
+  let startDate: Date;
+  let endDate: Date;
+
+  if (cycle?.startDate) {
+    startDate = cycle.startDate.toDate?.() ?? new Date(cycle.startDate);
+  } else {
+    const { startDate: calcStart } = getCycleDateRange(year, month, payDayType, payDayFixed);
+    startDate = calcStart;
+  }
+
+  if (cycle?.endDate) {
+    endDate = cycle.endDate.toDate?.() ?? new Date(cycle.endDate);
+  } else {
+    const { endDate: calcEnd } = getCycleDateRange(year, month, payDayType, payDayFixed);
+    endDate = calcEnd;
+  }
+
+  // Normalize to full days
+  startDate.setHours(0, 0, 0, 0);
+  endDate.setHours(23, 59, 59, 999);
 
   // Calculate Budget Discipline (25 pts)
   const budgetDiscipline = calculateBudgetDiscipline(items);

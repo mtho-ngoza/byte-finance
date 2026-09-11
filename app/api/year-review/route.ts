@@ -53,7 +53,14 @@ export async function GET(request: NextRequest) {
   ]);
 
   // Process cycles for committed amounts and income
-  const cycles = cyclesSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  const cycles = cyclesSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() } as {
+    id: string;
+    startDate?: { toDate?: () => Date } | string;
+    endDate?: { toDate?: () => Date } | string;
+    totalCommitted?: number;
+    totalPaid?: number;
+    income?: { amount?: number; vatAmount?: number };
+  }));
   const totalCommitted = cycles.reduce((sum, c: any) => sum + (c.totalCommitted || 0), 0);
   const totalIncome = cycles.reduce((sum, c: any) => sum + (c.income?.amount || 0), 0);
   const totalVat = cycles.reduce((sum, c: any) => sum + (c.income?.vatAmount || 0), 0);
@@ -78,11 +85,36 @@ export async function GET(request: NextRequest) {
     return null;
   };
 
-  // Build date ranges for each month of the year
+  // Build date ranges for each month FROM STORED CYCLE DOCUMENTS (same as sync-totals)
   const monthDateRanges: Array<{ month: number; monthId: string; startDate: Date; endDate: Date }> = [];
   for (let i = 1; i <= 12; i++) {
     const monthId = `${year}-${String(i).padStart(2, '0')}`;
-    const { startDate, endDate } = getCycleDateRange(year, i, payDayType, payDayFixed);
+    const cycle = cycles.find((c: any) => c.id === monthId);
+
+    let startDate: Date;
+    let endDate: Date;
+
+    if (cycle?.startDate) {
+      const sd = cycle.startDate as { toDate?: () => Date };
+      startDate = sd.toDate?.() ?? new Date(cycle.startDate as string);
+    } else {
+      // Fallback to calculated if cycle doesn't exist
+      const { startDate: calcStart } = getCycleDateRange(year, i, payDayType, payDayFixed);
+      startDate = calcStart;
+    }
+
+    if (cycle?.endDate) {
+      const ed = cycle.endDate as { toDate?: () => Date };
+      endDate = ed.toDate?.() ?? new Date(cycle.endDate as string);
+    } else {
+      const { endDate: calcEnd } = getCycleDateRange(year, i, payDayType, payDayFixed);
+      endDate = calcEnd;
+    }
+
+    // Normalize to full days
+    startDate.setHours(0, 0, 0, 0);
+    endDate.setHours(23, 59, 59, 999);
+
     monthDateRanges.push({ month: i, monthId, startDate, endDate });
   }
 

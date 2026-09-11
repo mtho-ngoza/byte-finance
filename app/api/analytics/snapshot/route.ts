@@ -89,8 +89,27 @@ export async function POST(request: NextRequest) {
   const year = parseInt(yearStr, 10);
   const month = parseInt(monthStr, 10);
 
-  // Get cycle date range for payment filtering
-  const { startDate, endDate } = getCycleDateRange(year, month, payDayType, payDayFixed);
+  // Get date range from stored cycle document (same as useCycleItems)
+  let startDate: Date;
+  let endDate: Date;
+
+  if (cycle.startDate) {
+    startDate = cycle.startDate.toDate?.() ?? new Date(cycle.startDate);
+  } else {
+    const { startDate: calcStart } = getCycleDateRange(year, month, payDayType, payDayFixed);
+    startDate = calcStart;
+  }
+
+  if (cycle.endDate) {
+    endDate = cycle.endDate.toDate?.() ?? new Date(cycle.endDate);
+  } else {
+    const { endDate: calcEnd } = getCycleDateRange(year, month, payDayType, payDayFixed);
+    endDate = calcEnd;
+  }
+
+  // Normalize to full days
+  startDate.setHours(0, 0, 0, 0);
+  endDate.setHours(23, 59, 59, 999);
 
   // Get all cycle items for this cycle (for committed amounts)
   const itemsSnap = await db
