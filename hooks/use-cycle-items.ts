@@ -120,7 +120,10 @@ export function useCycleItems(cycleId: string | null, cycle?: Cycle | null): Use
     }
 
     const startDate = cycle.startDate.toDate ? cycle.startDate.toDate() : new Date(cycle.startDate as unknown as string);
+    startDate.setHours(0, 0, 0, 0); // Start of day
+
     const endDate = cycle.endDate.toDate ? cycle.endDate.toDate() : new Date(cycle.endDate as unknown as string);
+    endDate.setHours(23, 59, 59, 999); // End of day - include items paid anytime on the last day
 
     // Collect all unique items
     const itemMap = new Map<string, CycleItem>();
@@ -188,7 +191,10 @@ export function useCycleItems(cycleId: string | null, cycle?: Cycle | null): Use
     }
 
     const startDate = cycle.startDate.toDate ? cycle.startDate.toDate() : new Date(cycle.startDate as unknown as string);
+    startDate.setHours(0, 0, 0, 0);
+
     const endDate = cycle.endDate.toDate ? cycle.endDate.toDate() : new Date(cycle.endDate as unknown as string);
+    endDate.setHours(23, 59, 59, 999);
 
     let total = 0;
     for (const item of items) {
