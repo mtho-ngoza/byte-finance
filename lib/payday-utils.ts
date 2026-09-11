@@ -156,15 +156,17 @@ export function getCycleDateRange(
   payDayType: 'last_working_day' | 'fixed' = 'last_working_day',
   payDayFixed?: number
 ): { startDate: Date; endDate: Date; payDay: Date } {
-  // Previous month's payday = start of this cycle
+  // Previous month's payday = start of this cycle (at midnight, start of day)
   const prevMonth = cycleMonth === 1 ? 12 : cycleMonth - 1;
   const prevYear = cycleMonth === 1 ? cycleYear - 1 : cycleYear;
   const startDate = getPaydayForMonth(prevYear, prevMonth, payDayType, payDayFixed);
+  startDate.setHours(0, 0, 0, 0);
 
-  // This month's payday - 1 day = end of this cycle
+  // This month's payday - 1 day = end of this cycle (at 23:59:59.999, end of day)
   const payDay = getPaydayForMonth(cycleYear, cycleMonth, payDayType, payDayFixed);
   const endDate = new Date(payDay);
   endDate.setDate(endDate.getDate() - 1);
+  endDate.setHours(23, 59, 59, 999);
 
   return { startDate, endDate, payDay };
 }
