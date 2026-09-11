@@ -172,14 +172,48 @@ export function useCycleItems(cycleId: string | null, cycle?: Cycle | null): Use
   // Items needing attention (due status)
   const attentionItems = items.filter((item) => item.status === 'due');
 
-  // Totals — use payments sum when available, else actualAmount, else committed amount
+  // Totals — sum only payments within the cycle date range for accurate attribution
   const totalCommitted = items.reduce((sum, i) => sum + i.amount, 0);
-  const totalPaid = items
-    .filter((i) => i.status === 'paid' || i.status === 'partial')
-    .reduce((sum, i) => {
-      if (i.totalPaidAmount !== undefined) return sum + i.totalPaidAmount;
-      return sum + (i.actualAmount ?? i.amount);
-    }, 0);
+
+  // Calculate totalPaid by summing payments within this cycle's date range
+  const totalPaid = useMemo(() => {
+    if (!cycle?.startDate || !cycle?.endDate) {
+      // Fallback: use totalPaidAmount if no date range available
+      return items
+        .filter((i) => i.status === 'paid' || i.status === 'partial')
+        .reduce((sum, i) => {
+          if (i.totalPaidAmount !== undefined) return sum + i.totalPaidAmount;
+          return sum + (i.actualAmount ?? i.amount);
+        }, 0);
+    }
+
+    const startDate = cycle.startDate.toDate ? cycle.startDate.toDate() : new Date(cycle.startDate as unknown as string);
+    const endDate = cycle.endDate.toDate ? cycle.endDate.toDate() : new Date(cycle.endDate as unknown as string);
+
+    let total = 0;
+    for (const item of items) {
+      if (item.status !== 'paid' && item.status !== 'partial') continue;
+
+      if (item.payments && item.payments.length > 0) {
+        // Sum only payments within date range
+        for (const p of item.payments) {
+          const pDate = p.date?.toDate ? p.date.toDate() : new Date(p.date as unknown as string);
+          if (pDate >= startDate && pDate <= endDate) {
+            total += p.amount;
+          }
+        }
+      } else {
+        // Item without payments array - use paidDate to check if it belongs
+        const paidDate = item.paidDate
+          ? (item.paidDate.toDate ? item.paidDate.toDate() : new Date(item.paidDate as unknown as string))
+          : null;
+        if (paidDate && paidDate >= startDate && paidDate <= endDate) {
+          total += item.totalPaidAmount ?? item.actualAmount ?? item.amount;
+        }
+      }
+    }
+    return total;
+  }, [items, cycle?.startDate, cycle?.endDate]);
 
   // Update status with optimistic update and smart linking
   const updateStatus = useCallback(
