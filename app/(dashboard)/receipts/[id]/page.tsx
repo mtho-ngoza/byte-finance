@@ -262,11 +262,14 @@ export default function ReceiptDetailPage({ params }: ReceiptDetailPageProps) {
         </div>
       )}
 
-      {/* Needs attention banner */}
-      {(!receipt.amountInCents || !receipt.vendor) && !editing && (
+      {/* Needs attention banner - only show if truly incomplete */}
+      {/* Linked receipts (cycleItemId) don't require vendor */}
+      {(!receipt.amountInCents || (!receipt.vendor && !receipt.cycleItemId)) && !editing && (
         <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-warning/10 border border-warning/30">
           <span>⚠️</span>
-          <p className="text-sm text-warning">Missing amount or vendor — tap Edit to complete.</p>
+          <p className="text-sm text-warning">
+            {!receipt.amountInCents ? 'Missing amount' : 'Missing vendor'} — tap Edit to complete.
+          </p>
         </div>
       )}
 
