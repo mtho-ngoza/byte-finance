@@ -39,9 +39,17 @@ interface TopCategory {
   average: number;
 }
 
+interface CategoryTrendData {
+  category: string;
+  label: string;
+  color: string;
+  data: Array<{ cycleId: string; amount: number }>;
+}
+
 interface TrendsData {
   monthlyTrend: MonthlyData[];
   categoryBreakdown: CategoryData[];
+  categoryTrends: CategoryTrendData[];
   topCategories: TopCategory[];
   months: number;
 }
@@ -275,12 +283,11 @@ export default function TrendsPage() {
                 <LineChart
                   data={data.monthlyTrend.map((m) => {
                     const point: Record<string, string | number> = { month: m.month };
+                    // Get category amounts from categoryTrends for this cycle
                     for (const cat of data.topCategories.slice(0, 5)) {
-                      const catData = data.monthlyTrend.find((mt) => mt.cycleId === m.cycleId);
-                      if (catData) {
-                        // We need to get the category data from categoryTrends
-                        point[cat.category] = 0; // Will be filled below
-                      }
+                      const catTrend = (data.categoryTrends ?? []).find((ct) => ct.category === cat.category);
+                      const catData = catTrend?.data.find((d) => d.cycleId === m.cycleId);
+                      point[cat.category] = catData?.amount ?? 0;
                     }
                     return point;
                   })}
