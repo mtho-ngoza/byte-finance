@@ -122,9 +122,15 @@ export async function POST(request: NextRequest) {
         }
 
         const goal = { id: goalDoc.id, ...goalDoc.data() } as Goal;
-        if (goal.type !== 'debt_payoff' || !goal.debtTracking) {
+        if (goal.type !== 'debt_payoff') {
           return NextResponse.json(
-            { error: 'Goal must be a debt_payoff type with debt tracking' },
+            { error: 'This scenario only works with debt payoff goals' },
+            { status: 400 }
+          );
+        }
+        if (!goal.debtTracking || !goal.debtTracking.minimumPayment) {
+          return NextResponse.json(
+            { error: 'This debt goal needs interest rate and minimum payment set up. Edit the goal to add debt tracking details.' },
             { status: 400 }
           );
         }

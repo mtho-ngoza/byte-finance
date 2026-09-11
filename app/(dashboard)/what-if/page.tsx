@@ -71,6 +71,7 @@ export default function WhatIfPage() {
   const [result, setResult] = useState<WhatIfResult | null>(null);
   const [debtComparison, setDebtComparison] = useState<DebtStrategyComparison | null>(null);
   const [goalName, setGoalName] = useState<string>('');
+  const [error, setError] = useState<string | null>(null);
 
   const formatAmount = (cents: number) => {
     return `R${(cents / 100).toLocaleString('en-ZA', { minimumFractionDigits: 0 })}`;
@@ -94,6 +95,7 @@ export default function WhatIfPage() {
     setCalculating(true);
     setResult(null);
     setDebtComparison(null);
+    setError(null);
 
     try {
       const body: Record<string, unknown> = { scenario: selectedScenario };
@@ -126,8 +128,10 @@ export default function WhatIfPage() {
         });
         setGoalName(data.goalName || '');
       }
-    } catch (error) {
-      console.error('What-if calculation failed:', error);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Calculation failed';
+      setError(message);
+      console.error('What-if calculation failed:', err);
     } finally {
       setCalculating(false);
     }
@@ -139,6 +143,7 @@ export default function WhatIfPage() {
     setResult(null);
     setDebtComparison(null);
     setGoalName('');
+    setError(null);
   };
 
   const handleScenarioSelect = (type: WhatIfScenarioType) => {
@@ -296,6 +301,13 @@ export default function WhatIfPage() {
           >
             {calculating ? 'Calculating...' : 'Calculate'}
           </button>
+
+          {/* Error display */}
+          {error && (
+            <div className="p-3 rounded-lg bg-error/10 border border-error/20 text-error text-sm">
+              {error}
+            </div>
+          )}
         </div>
       )}
 
