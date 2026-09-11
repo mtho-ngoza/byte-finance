@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
       const targetAmount = goal.targetAmount || 0;
       const progress = targetAmount > 0 ? Math.min(100, Math.round((currentAmount / targetAmount) * 100)) : 0;
 
-      if (item.currentAmount !== currentAmount || item.progress !== progress) {
+      if (item.currentAmount !== currentAmount || item.targetAmount !== targetAmount || item.progress !== progress) {
         updates.currentAmount = currentAmount;
         updates.targetAmount = targetAmount;
         updates.progress = progress;

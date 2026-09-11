@@ -45,8 +45,10 @@ export default function WishlistPage() {
 
   // Sync progress on mount
   useEffect(() => {
-    syncProgress().catch(console.error);
-  }, [syncProgress]);
+    syncProgress().catch(() => {
+      toast('Failed to sync wishlist progress', 'error');
+    });
+  }, [syncProgress, toast]);
 
   const yearItems = getItemsForYear(selectedYear);
   const yearStats = getYearStats(selectedYear);
@@ -295,9 +297,13 @@ export default function WishlistPage() {
           }}
           onDelete={async () => {
             confirm('This will permanently delete this priority.', async () => {
-              await deleteItem(editingItem.id);
-              setEditingItem(null);
-              toast('Priority deleted', 'success');
+              try {
+                await deleteItem(editingItem.id);
+                setEditingItem(null);
+                toast('Priority deleted', 'success');
+              } catch (err) {
+                toast('Failed to delete priority', 'error');
+              }
             }, { title: 'Delete Priority', confirmLabel: 'Delete', danger: true });
           }}
         />
