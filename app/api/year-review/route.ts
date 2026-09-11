@@ -98,6 +98,15 @@ export async function GET(request: NextRequest) {
         monthlySpending[cycleId] = (monthlySpending[cycleId] ?? 0) + amount;
         categoryTotals[category] += amount;
       }
+    } else {
+      // Fallback: use item's cycleId if no payment date info available
+      const cycleId = item.cycleId;
+      const amount = item.totalPaidAmount ?? item.actualAmount ?? item.amount ?? 0;
+
+      if (cycleId && cycleId.startsWith(`${year}-`)) {
+        monthlySpending[cycleId] = (monthlySpending[cycleId] ?? 0) + amount;
+        categoryTotals[category] += amount;
+      }
     }
   }
 
