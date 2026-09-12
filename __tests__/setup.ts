@@ -158,7 +158,7 @@ export function createMockFirestore() {
         get: async () => {
           const collection = getCollection(path);
           const docs = Array.from(collection.entries())
-            .filter(([, doc]) => matchesCondition(doc, field, op, value) && matchesCondition(doc, field2, op2, value2))
+            .filter(([id, doc]) => matchesCondition(doc, field, op, value, id) && matchesCondition(doc, field2, op2, value2, id))
             .map(([id, data]) => ({
               id,
               ref: mockDoc(path, id),
@@ -170,7 +170,7 @@ export function createMockFirestore() {
           get: async () => {
             const collection = getCollection(path);
             const docs = Array.from(collection.entries())
-              .filter(([, doc]) => matchesCondition(doc, field, op, value) && matchesCondition(doc, field2, op2, value2))
+              .filter(([id, doc]) => matchesCondition(doc, field, op, value, id) && matchesCondition(doc, field2, op2, value2, id))
               .map(([id, data]) => ({
                 id,
                 ref: mockDoc(path, id),
@@ -183,7 +183,7 @@ export function createMockFirestore() {
       get: async () => {
         const collection = getCollection(path);
         const docs = Array.from(collection.entries())
-          .filter(([, doc]) => matchesCondition(doc, field, op, value))
+          .filter(([id, doc]) => matchesCondition(doc, field, op, value, id))
           .map(([id, data]) => ({
             id,
             ref: mockDoc(path, id),
@@ -195,7 +195,7 @@ export function createMockFirestore() {
         get: async () => {
           const collection = getCollection(path);
           const docs = Array.from(collection.entries())
-            .filter(([, doc]) => matchesCondition(doc, field, op, value))
+            .filter(([id, doc]) => matchesCondition(doc, field, op, value, id))
             .map(([id, data]) => ({
               id,
               ref: mockDoc(path, id),
@@ -207,7 +207,7 @@ export function createMockFirestore() {
           get: async () => {
             const collection = getCollection(path);
             const docs = Array.from(collection.entries())
-              .filter(([, doc]) => matchesCondition(doc, field, op, value))
+              .filter(([id, doc]) => matchesCondition(doc, field, op, value, id))
               .map(([id, data]) => ({
                 id,
                 ref: mockDoc(path, id),
@@ -306,15 +306,66 @@ export function createMockFirestore() {
   };
 }
 
-function matchesCondition(doc: Record<string, unknown>, field: string, op: string, value: unknown): boolean {
-  const fieldValue = doc[field];
+function matchesCondition(doc: Record<string, unknown>, field: string, op: string, value: unknown, docId?: string): boolean {
+  // Handle __name__ (document ID) queries
+  let fieldValue: unknown;
+  if (field === '__name__') {
+    fieldValue = docId ?? doc.id;
+  } else {
+    fieldValue = doc[field];
+  }
+
+  // Convert Date values for comparison
+  const normalizeValue = (v: unknown): unknown => {
+    if (v instanceof Date) return v.getTime();
+    if (v && typeof v === 'object' && 'toDate' in v) {
+      return (v as { toDate: () => Date }).toDate().getTime();
+    }
+    return v;
+  };
+
+  const normalizedFieldValue = normalizeValue(fieldValue);
+  const normalizedValue = normalizeValue(value);
+
   switch (op) {
     case '==':
-      return fieldValue === value;
+      return normalizedFieldValue === normalizedValue;
     case 'in':
       return Array.isArray(value) && value.includes(fieldValue);
     case '!=':
-      return fieldValue !== value;
+      return normalizedFieldValue !== normalizedValue;
+    case '>=':
+      if (typeof normalizedFieldValue === 'string' && typeof normalizedValue === 'string') {
+        return normalizedFieldValue >= normalizedValue;
+      }
+      if (typeof normalizedFieldValue === 'number' && typeof normalizedValue === 'number') {
+        return normalizedFieldValue >= normalizedValue;
+      }
+      return false;
+    case '<=':
+      if (typeof normalizedFieldValue === 'string' && typeof normalizedValue === 'string') {
+        return normalizedFieldValue <= normalizedValue;
+      }
+      if (typeof normalizedFieldValue === 'number' && typeof normalizedValue === 'number') {
+        return normalizedFieldValue <= normalizedValue;
+      }
+      return false;
+    case '>':
+      if (typeof normalizedFieldValue === 'string' && typeof normalizedValue === 'string') {
+        return normalizedFieldValue > normalizedValue;
+      }
+      if (typeof normalizedFieldValue === 'number' && typeof normalizedValue === 'number') {
+        return normalizedFieldValue > normalizedValue;
+      }
+      return false;
+    case '<':
+      if (typeof normalizedFieldValue === 'string' && typeof normalizedValue === 'string') {
+        return normalizedFieldValue < normalizedValue;
+      }
+      if (typeof normalizedFieldValue === 'number' && typeof normalizedValue === 'number') {
+        return normalizedFieldValue < normalizedValue;
+      }
+      return false;
     default:
       return false;
   }
