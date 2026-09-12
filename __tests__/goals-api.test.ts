@@ -169,6 +169,16 @@ describe('Goals API', () => {
       const goal = mockDb._getDoc(`users/${TEST_USER_ID}/goals`, 'goal-1');
       expect(goal?.currentAmount).toBe(500000);
     });
+
+    it('should return 404 for non-existent goal on PATCH', async () => {
+      const { PATCH } = await import('@/app/api/goals/[id]/route');
+      const response = await PATCH(
+        createRequest('PATCH', { name: 'Updated' }) as never,
+        { params: Promise.resolve({ id: 'non-existent' }) }
+      );
+
+      expect(response.status).toBe(404);
+    });
   });
 
   describe('DELETE /api/goals/[id]', () => {
@@ -189,6 +199,16 @@ describe('Goals API', () => {
       const goal = mockDb._getDoc(`users/${TEST_USER_ID}/goals`, 'goal-1');
       // Goals are archived, not deleted
       expect(goal?.status).toBe('archived');
+    });
+
+    it('should return 404 for non-existent goal on DELETE', async () => {
+      const { DELETE } = await import('@/app/api/goals/[id]/route');
+      const response = await DELETE(
+        createRequest('DELETE') as never,
+        { params: Promise.resolve({ id: 'non-existent' }) }
+      );
+
+      expect(response.status).toBe(404);
     });
   });
 

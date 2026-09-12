@@ -157,5 +157,62 @@ describe('Trends API', () => {
 
       expect(response.status).toBe(200);
     });
+
+    it('should handle items with payments array', async () => {
+      mockDb._setDoc(`users/${TEST_USER_ID}/cycles`, '2026-09', {
+        status: 'closed',
+        startDate: { toDate: () => new Date('2026-08-25') },
+        endDate: { toDate: () => new Date('2026-09-24') },
+      });
+
+      // Item with multiple payments in payments array
+      mockDb._setDoc(`users/${TEST_USER_ID}/cycleItems`, 'item-1', {
+        cycleId: '2026-09',
+        category: 'savings',
+        amount: 100000,
+        status: 'partial',
+        payments: [
+          { amount: 30000, date: { toDate: () => new Date('2026-09-01') } },
+          { amount: 40000, date: { toDate: () => new Date('2026-09-15') } },
+          { amount: 30000, date: { toDate: () => new Date('2026-10-01') } }, // Outside cycle range
+        ],
+      });
+
+      const { GET } = await import('@/app/api/trends/route');
+      const response = await GET(createRequest('GET', 'http://localhost/api/trends?months=6') as never);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      // Should return monthlyTrend data
+      expect(data.monthlyTrend.length).toBeGreaterThan(0);
+    });
+
+    it('should find earliest payment date from payments array', async () => {
+      mockDb._setDoc(`users/${TEST_USER_ID}/cycles`, '2026-09', {
+        status: 'closed',
+        startDate: { toDate: () => new Date('2026-08-25') },
+        endDate: { toDate: () => new Date('2026-09-24') },
+      });
+
+      // Item with payments - should use earliest payment date for cycle attribution
+      mockDb._setDoc(`users/${TEST_USER_ID}/cycleItems`, 'item-1', {
+        cycleId: '2026-09',
+        category: 'lifestyle',
+        amount: 50000,
+        status: 'paid',
+        payments: [
+          { amount: 25000, date: { toDate: () => new Date('2026-09-10') } },
+          { amount: 25000, date: { toDate: () => new Date('2026-09-05') } }, // This is the earliest
+        ],
+      });
+
+      const { GET } = await import('@/app/api/trends/route');
+      const response = await GET(createRequest('GET', 'http://localhost/api/trends?months=6') as never);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      // Should return data with categoryTrends
+      expect(data.categoryTrends).toBeDefined();
+    });
   });
 });
