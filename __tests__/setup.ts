@@ -203,6 +203,19 @@ export function createMockFirestore() {
             }));
           return { docs, empty: docs.length === 0, size: docs.length };
         },
+        limit: () => ({
+          get: async () => {
+            const collection = getCollection(path);
+            const docs = Array.from(collection.entries())
+              .filter(([, doc]) => matchesCondition(doc, field, op, value))
+              .map(([id, data]) => ({
+                id,
+                ref: mockDoc(path, id),
+                data: () => data,
+              }));
+            return { docs, empty: docs.length === 0, size: docs.length };
+          },
+        }),
       }),
     }),
     get: async () => {
