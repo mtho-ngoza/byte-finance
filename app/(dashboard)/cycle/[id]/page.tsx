@@ -513,6 +513,7 @@ function SortableItemRow({ item, cycleId, userId, onStatusChange, onAmountChange
         toast('Item deleted', 'success');
       } catch (err) {
         console.error('Delete failed:', err);
+        toast('Failed to delete item', 'error');
       }
     }, { title: 'Delete Item', confirmLabel: 'Delete', danger: true });
   };
@@ -891,6 +892,7 @@ interface EditItemModalProps {
 }
 
 function EditItemModal({ item, userId, onClose }: EditItemModalProps) {
+  const { toast } = useToast();
   const [saving, setSaving] = useState(false);
   const [label, setLabel] = useState(item.label);
   const [amount, setAmount] = useState((item.amount / 100).toFixed(2));
@@ -913,6 +915,7 @@ function EditItemModal({ item, userId, onClose }: EditItemModalProps) {
       onClose();
     } catch (err) {
       console.error('Update failed:', err);
+      toast('Failed to update item', 'error');
     } finally {
       setSaving(false);
     }
@@ -1000,7 +1003,9 @@ interface ReceiptPickerModalProps {
   onAttached: (detached: boolean) => void;
 }
 
-function ReceiptPickerModal({ item, cycleId, userId, onClose, onAttached }: ReceiptPickerModalProps) {  const hasPayments = (item.payments?.length ?? 0) > 0;
+function ReceiptPickerModal({ item, cycleId, userId, onClose, onAttached }: ReceiptPickerModalProps) {
+  const { toast } = useToast();
+  const hasPayments = (item.payments?.length ?? 0) > 0;
   const [selectedPaymentId, setSelectedPaymentId] = useState<string | null>(
     hasPayments ? null : '__item__'
   );
@@ -1077,6 +1082,7 @@ function ReceiptPickerModal({ item, cycleId, userId, onClose, onAttached }: Rece
       onAttached(isDetach);
     } catch (err) {
       console.error('Attach/detach failed:', err);
+      toast('Failed to attach/detach receipt', 'error');
     } finally {
       setAttaching(false);
     }
@@ -1188,6 +1194,7 @@ interface IncomeEntryProps {
 }
 
 function IncomeEntry({ cycle, cycleId, totalCommitted, vatPercentage }: IncomeEntryProps) {
+  const { toast } = useToast();
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [amount, setAmount] = useState(cycle.income?.amount ?? 0);
@@ -1231,6 +1238,7 @@ function IncomeEntry({ cycle, cycleId, totalCommitted, vatPercentage }: IncomeEn
       setEditing(false);
     } catch (err) {
       console.error('Failed to save income:', err);
+      toast('Failed to save income', 'error');
     } finally {
       setSaving(false);
     }

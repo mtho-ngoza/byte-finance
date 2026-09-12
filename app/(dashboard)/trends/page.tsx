@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useToast } from '@/components/shared/toast';
 import {
   BarChart,
   Bar,
@@ -55,8 +56,10 @@ interface TrendsData {
 }
 
 export default function TrendsPage() {
+  const { toast } = useToast();
   const [data, setData] = useState<TrendsData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [months, setMonths] = useState(6);
   const [activeView, setActiveView] = useState<'overview' | 'categories'>('overview');
 
@@ -81,6 +84,8 @@ export default function TrendsPage() {
         setData(json);
       } catch (err) {
         console.error('Failed to fetch trends:', err);
+        setError('Failed to load trends data');
+        toast('Failed to load trends', 'error');
       } finally {
         setLoading(false);
       }

@@ -22,6 +22,7 @@ import type { GoalWithComputed } from '@/hooks/use-goals';
 import { getCycleDateRange, getCycleIdForDate, formatCycleDateRange } from '@/lib/payday-utils';
 
 export default function DashboardPage() {
+  const { toast } = useToast();
   const { cycles, loading: cyclesLoading } = useCycles();
   const { activeGoals, loading: goalsLoading } = useGoals();
   const { profile, loading: profileLoading } = useUserProfile();
@@ -152,6 +153,7 @@ export default function DashboardPage() {
       if (!res.ok) throw new Error('Delete failed');
     } catch (err) {
       console.error('Delete failed:', err);
+      toast('Failed to delete item', 'error');
     }
   };
 
@@ -174,6 +176,7 @@ export default function DashboardPage() {
       if (!res.ok) throw new Error('Failed to save income');
     } catch (err) {
       console.error('Save income failed:', err);
+      toast('Failed to save income', 'error');
       throw err;
     }
   };
