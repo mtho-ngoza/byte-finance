@@ -416,6 +416,8 @@ function matchesCondition(doc: Record<string, unknown>, field: string, op: strin
       return normalizedFieldValue === normalizedValue;
     case 'in':
       return Array.isArray(value) && value.includes(fieldValue);
+    case 'array-contains':
+      return Array.isArray(fieldValue) && fieldValue.includes(value);
     case '!=':
       return normalizedFieldValue !== normalizedValue;
     case '>=':

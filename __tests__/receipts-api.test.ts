@@ -729,4 +729,135 @@ describe('Receipts API', () => {
       expect(receipt?.needsAttention).toBe(false);
     });
   });
+
+  describe('GET /api/receipts/export', () => {
+    it('should export receipts as CSV by default', async () => {
+      mockDb._setDoc(`users/${TEST_USER_ID}/receipts`, 'receipt-1', {
+        vendor: 'Shop A',
+        amountInCents: 150000,
+        vatNumber: '123456789',
+        note: 'Business expense',
+        capturedAt: { toDate: () => new Date('2026-09-15T10:30:00Z') },
+        cycleItemId: 'item-1',
+      });
+      mockDb._setDoc(`users/${TEST_USER_ID}/receipts`, 'receipt-2', {
+        vendor: 'Shop B',
+        amountInCents: 75000,
+        capturedAt: { toDate: () => new Date('2026-09-10T14:00:00Z') },
+      });
+
+      const { GET } = await import('@/app/api/receipts/export/route');
+      const response = await GET(createRequest('GET', null, 'http://localhost/api/receipts/export') as never);
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get('Content-Type')).toBe('text/csv');
+      expect(response.headers.get('Content-Disposition')).toContain('.csv');
+
+      const csv = await response.text();
+      const lines = csv.split('\n');
+
+      // Check header
+      expect(lines[0]).toContain('Date');
+      expect(lines[0]).toContain('Vendor');
+      expect(lines[0]).toContain('Amount (R)');
+      expect(lines[0]).toContain('VAT Number');
+
+      // Check data rows
+      expect(csv).toContain('Shop A');
+      expect(csv).toContain('1500.00'); // 150000 cents = R1500.00
+      expect(csv).toContain('123456789');
+      expect(csv).toContain('Business expense');
+      expect(csv).toContain('Yes'); // Linked to cycle item
+      expect(csv).toContain('Shop B');
+      expect(csv).toContain('750.00');
+      expect(csv).toContain('No'); // Not linked
+    });
+
+    it('should filter by date range', async () => {
+      mockDb._setDoc(`users/${TEST_USER_ID}/receipts`, 'receipt-1', {
+        vendor: 'In Range',
+        amountInCents: 100000,
+        capturedAt: { toDate: () => new Date('2026-09-15T10:00:00Z') },
+      });
+      mockDb._setDoc(`users/${TEST_USER_ID}/receipts`, 'receipt-2', {
+        vendor: 'Before Range',
+        amountInCents: 200000,
+        capturedAt: { toDate: () => new Date('2026-08-01T10:00:00Z') },
+      });
+      mockDb._setDoc(`users/${TEST_USER_ID}/receipts`, 'receipt-3', {
+        vendor: 'After Range',
+        amountInCents: 300000,
+        capturedAt: { toDate: () => new Date('2026-10-20T10:00:00Z') },
+      });
+
+      const { GET } = await import('@/app/api/receipts/export/route');
+      const response = await GET(createRequest('GET', null, 'http://localhost/api/receipts/export?from=2026-09-01&to=2026-09-30') as never);
+
+      const csv = await response.text();
+      expect(csv).toContain('In Range');
+      expect(csv).not.toContain('Before Range');
+      expect(csv).not.toContain('After Range');
+    });
+
+    it('should handle empty receipts collection', async () => {
+      const { GET } = await import('@/app/api/receipts/export/route');
+      const response = await GET(createRequest('GET', null, 'http://localhost/api/receipts/export') as never);
+
+      expect(response.status).toBe(200);
+      const csv = await response.text();
+      const lines = csv.split('\n');
+
+      // Only header row
+      expect(lines).toHaveLength(1);
+      expect(lines[0]).toContain('Date');
+    });
+
+    it('should escape CSV special characters', async () => {
+      mockDb._setDoc(`users/${TEST_USER_ID}/receipts`, 'receipt-1', {
+        vendor: 'Shop, with comma',
+        amountInCents: 100000,
+        note: 'Note with "quotes" inside',
+        capturedAt: { toDate: () => new Date('2026-09-15T10:00:00Z') },
+      });
+
+      const { GET } = await import('@/app/api/receipts/export/route');
+      const response = await GET(createRequest('GET', null, 'http://localhost/api/receipts/export') as never);
+
+      const csv = await response.text();
+      // Values with commas or quotes should be properly escaped
+      expect(csv).toContain('"Shop, with comma"');
+    });
+
+    it('should return error for invalid format', async () => {
+      const { GET } = await import('@/app/api/receipts/export/route');
+      const response = await GET(createRequest('GET', null, 'http://localhost/api/receipts/export?format=invalid') as never);
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error).toContain('Invalid format');
+    });
+
+    it('should handle missing optional fields', async () => {
+      mockDb._setDoc(`users/${TEST_USER_ID}/receipts`, 'receipt-1', {
+        capturedAt: { toDate: () => new Date('2026-09-15T10:00:00Z') },
+        // Missing: vendor, amountInCents, note, vatNumber
+      });
+
+      const { GET } = await import('@/app/api/receipts/export/route');
+      const response = await GET(createRequest('GET', null, 'http://localhost/api/receipts/export') as never);
+
+      expect(response.status).toBe(200);
+      const csv = await response.text();
+      const lines = csv.split('\n');
+      expect(lines.length).toBe(2); // Header + 1 data row
+    });
+
+    it('should include date label in filename', async () => {
+      const { GET } = await import('@/app/api/receipts/export/route');
+      const response = await GET(createRequest('GET', null, 'http://localhost/api/receipts/export?from=2026-09-01&to=2026-09-30') as never);
+
+      const disposition = response.headers.get('Content-Disposition');
+      expect(disposition).toContain('2026-09-01_to_2026-09-30');
+    });
+  });
 });
