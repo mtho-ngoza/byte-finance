@@ -3,6 +3,7 @@ import {
   getPaydayForMonth,
   getCycleDateRange,
   getCycleIdForDate,
+  formatCycleDateRange,
   isWorkingDay,
   isPublicHoliday,
   getLastWorkingDayOfMonth,
@@ -151,6 +152,32 @@ describe('Payday Utils', () => {
       expect(endDate.getFullYear()).toBe(2026);
       expect(endDate.getMonth()).toBe(0); // January
       expect(endDate.getDate()).toBe(22); // Day before payday (23rd)
+    });
+  });
+
+  describe('formatCycleDateRange', () => {
+    it('should format dates within same year', () => {
+      const start = new Date('2026-08-31');
+      const end = new Date('2026-09-29');
+      const formatted = formatCycleDateRange(start, end);
+      // Format is "31 Aug → 29 Sept" (en-ZA locale)
+      expect(formatted).toMatch(/31.*Aug.*29.*Sep/);
+      expect(formatted).not.toContain('2026');
+    });
+
+    it('should include year when dates span different years', () => {
+      const start = new Date('2025-12-25');
+      const end = new Date('2026-01-24');
+      const formatted = formatCycleDateRange(start, end);
+      expect(formatted).toContain('2025');
+      expect(formatted).toContain('2026');
+    });
+
+    it('should use arrow separator', () => {
+      const start = new Date('2026-08-31');
+      const end = new Date('2026-09-29');
+      const formatted = formatCycleDateRange(start, end);
+      expect(formatted).toContain('→');
     });
   });
 
