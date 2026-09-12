@@ -609,4 +609,124 @@ describe('Receipts API', () => {
       expect(receipt?.cycleItemId).toBe('item-1');
     });
   });
+
+  describe('POST /api/receipts/migrate-payment-data', () => {
+    it('should return zero updated when no receipts need migration', async () => {
+      const { POST } = await import('@/app/api/receipts/migrate-payment-data/route');
+      const response = await POST(createRequest('POST', null, 'http://localhost/api/receipts/migrate-payment-data') as never);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.updated).toBe(0);
+      expect(data.message).toContain('No receipts');
+    });
+
+    it('should skip receipts with complete data', async () => {
+      // Receipt with cycleItemId but already has amount and vendor
+      mockDb._setDoc(`users/${TEST_USER_ID}/receipts`, 'receipt-1', {
+        cycleItemId: 'item-1',
+        cycleId: '2026-09',
+        amountInCents: 150000,
+        vendor: 'Shop A',
+      });
+
+      const { POST } = await import('@/app/api/receipts/migrate-payment-data/route');
+      const response = await POST(createRequest('POST', null, 'http://localhost/api/receipts/migrate-payment-data') as never);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.updated).toBe(0);
+    });
+
+    it('should populate missing amount from cycle item', async () => {
+      // Receipt linked but missing amount
+      mockDb._setDoc(`users/${TEST_USER_ID}/receipts`, 'receipt-1', {
+        cycleItemId: 'item-1',
+        cycleId: '2026-09',
+        vendor: 'Shop A',
+        amountInCents: null,
+      });
+
+      // Cycle item with amount
+      mockDb._setDoc(`users/${TEST_USER_ID}/cycleItems`, 'item-1', {
+        cycleId: '2026-09',
+        label: 'Groceries',
+        amount: 150000,
+      });
+
+      const { POST } = await import('@/app/api/receipts/migrate-payment-data/route');
+      const response = await POST(createRequest('POST', null, 'http://localhost/api/receipts/migrate-payment-data') as never);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.updated).toBe(1);
+
+      const receipt = mockDb._getDoc(`users/${TEST_USER_ID}/receipts`, 'receipt-1');
+      expect(receipt?.amountInCents).toBe(150000);
+    });
+
+    it('should populate missing vendor from cycle item label', async () => {
+      // Receipt linked but missing vendor
+      mockDb._setDoc(`users/${TEST_USER_ID}/receipts`, 'receipt-1', {
+        cycleItemId: 'item-1',
+        cycleId: '2026-09',
+        amountInCents: 150000,
+        vendor: null,
+      });
+
+      // Cycle item with label
+      mockDb._setDoc(`users/${TEST_USER_ID}/cycleItems`, 'item-1', {
+        cycleId: '2026-09',
+        label: 'Groceries',
+        amount: 150000,
+      });
+
+      const { POST } = await import('@/app/api/receipts/migrate-payment-data/route');
+      const response = await POST(createRequest('POST', null, 'http://localhost/api/receipts/migrate-payment-data') as never);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.updated).toBe(1);
+
+      const receipt = mockDb._getDoc(`users/${TEST_USER_ID}/receipts`, 'receipt-1');
+      expect(receipt?.vendor).toBe('Groceries');
+    });
+
+    it('should handle missing cycle item', async () => {
+      // Receipt linked to non-existent cycle item
+      mockDb._setDoc(`users/${TEST_USER_ID}/receipts`, 'receipt-1', {
+        cycleItemId: 'non-existent',
+        cycleId: '2026-09',
+        amountInCents: null,
+      });
+
+      const { POST } = await import('@/app/api/receipts/migrate-payment-data/route');
+      const response = await POST(createRequest('POST', null, 'http://localhost/api/receipts/migrate-payment-data') as never);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.failed).toBe(1);
+      expect(data.errors).toHaveLength(1);
+    });
+
+    it('should update needsAttention flag', async () => {
+      mockDb._setDoc(`users/${TEST_USER_ID}/receipts`, 'receipt-1', {
+        cycleItemId: 'item-1',
+        cycleId: '2026-09',
+        needsAttention: true,
+      });
+
+      mockDb._setDoc(`users/${TEST_USER_ID}/cycleItems`, 'item-1', {
+        cycleId: '2026-09',
+        label: 'Groceries',
+        amount: 150000,
+      });
+
+      const { POST } = await import('@/app/api/receipts/migrate-payment-data/route');
+      await POST(createRequest('POST', null, 'http://localhost/api/receipts/migrate-payment-data') as never);
+
+      const receipt = mockDb._getDoc(`users/${TEST_USER_ID}/receipts`, 'receipt-1');
+      expect(receipt?.needsAttention).toBe(false);
+    });
+  });
 });
