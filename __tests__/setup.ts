@@ -54,6 +54,14 @@ class MockNextResponseClass {
     return typeof this.data === 'string' ? this.data : JSON.stringify(this.data);
   }
 
+  static redirect(url: string | URL, status: number = 307) {
+    const urlStr = typeof url === 'string' ? url : url.toString();
+    return new MockNextResponseClass(null, {
+      status,
+      headers: { Location: urlStr },
+    });
+  }
+
   static json(data: unknown, init?: { status?: number; headers?: Record<string, string> }) {
     const response = new MockNextResponseClass(JSON.stringify(data), {
       status: init?.status ?? 200,
