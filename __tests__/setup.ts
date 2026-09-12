@@ -133,14 +133,29 @@ export function createMockFirestore() {
       update: async (data: Record<string, unknown>) => {
         const existing = collection.get(docId) ?? {};
         // Handle FieldValue operations
-        const processed = processFieldValues(existing, data);
-        collection.set(docId, { ...existing, ...processed });
+        const { updates: processed, deletes } = processFieldValues(existing, data);
+        const merged = { ...existing, ...processed };
+        // Remove deleted fields
+        for (const key of deletes) {
+          delete merged[key];
+        }
+        collection.set(docId, merged);
       },
       delete: async () => {
         collection.delete(docId);
       },
     };
   };
+
+  // Helper to create query result with forEach method
+  const createQueryResult = (docs: Array<{ id: string; ref: unknown; data: () => unknown }>) => ({
+    docs,
+    empty: docs.length === 0,
+    size: docs.length,
+    forEach: (callback: (doc: { id: string; ref: unknown; data: () => unknown }) => void) => {
+      docs.forEach(callback);
+    },
+  });
 
   const mockCollection = (path: string) => ({
     doc: (docId?: string) => {
@@ -162,7 +177,7 @@ export function createMockFirestore() {
             ref: mockDoc(path, id),
             data: () => data,
           }));
-          return { docs, empty: docs.length === 0, size: docs.length };
+          return createQueryResult(docs);
         },
         limit: () => ({
           get: async () => {
@@ -172,7 +187,7 @@ export function createMockFirestore() {
               ref: mockDoc(path, id),
               data: () => data,
             }));
-            return { docs, empty: docs.length === 0, size: docs.length };
+            return createQueryResult(docs);
           },
         }),
       }),
@@ -183,7 +198,7 @@ export function createMockFirestore() {
           ref: mockDoc(path, id),
           data: () => data,
         }));
-        return { docs, empty: docs.length === 0, size: docs.length };
+        return createQueryResult(docs);
       },
       limit: () => ({
         get: async () => {
@@ -193,7 +208,7 @@ export function createMockFirestore() {
             ref: mockDoc(path, id),
             data: () => data,
           }));
-          return { docs, empty: docs.length === 0, size: docs.length };
+          return createQueryResult(docs);
         },
       }),
     }),
@@ -208,7 +223,7 @@ export function createMockFirestore() {
               ref: mockDoc(path, id),
               data: () => data,
             }));
-          return { docs, empty: docs.length === 0, size: docs.length };
+          return createQueryResult(docs);
         },
         orderBy: () => ({
           get: async () => {
@@ -220,7 +235,7 @@ export function createMockFirestore() {
                 ref: mockDoc(path, id),
                 data: () => data,
               }));
-            return { docs, empty: docs.length === 0, size: docs.length };
+            return createQueryResult(docs);
           },
         }),
       }),
@@ -233,8 +248,21 @@ export function createMockFirestore() {
             ref: mockDoc(path, id),
             data: () => data,
           }));
-        return { docs, empty: docs.length === 0, size: docs.length };
+        return createQueryResult(docs);
       },
+      limit: () => ({
+        get: async () => {
+          const collection = getCollection(path);
+          const docs = Array.from(collection.entries())
+            .filter(([id, doc]) => matchesCondition(doc, field, op, value, id))
+            .map(([id, data]) => ({
+              id,
+              ref: mockDoc(path, id),
+              data: () => data,
+            }));
+          return createQueryResult(docs);
+        },
+      }),
       orderBy: () => ({
         get: async () => {
           const collection = getCollection(path);
@@ -245,7 +273,7 @@ export function createMockFirestore() {
               ref: mockDoc(path, id),
               data: () => data,
             }));
-          return { docs, empty: docs.length === 0, size: docs.length };
+          return createQueryResult(docs);
         },
         limit: () => ({
           get: async () => {
@@ -257,7 +285,7 @@ export function createMockFirestore() {
                 ref: mockDoc(path, id),
                 data: () => data,
               }));
-            return { docs, empty: docs.length === 0, size: docs.length };
+            return createQueryResult(docs);
           },
         }),
       }),
@@ -269,7 +297,7 @@ export function createMockFirestore() {
         ref: mockDoc(path, id),
         data: () => data,
       }));
-      return { docs, empty: docs.length === 0, size: docs.length };
+      return createQueryResult(docs);
     },
   });
 
@@ -310,8 +338,12 @@ export function createMockFirestore() {
             const collectionPath = parts.join('/');
             const collection = getCollection(collectionPath);
             const existing = collection.get(docId) ?? {};
-            const processed = processFieldValues(existing, data);
-            collection.set(docId, { ...existing, ...processed });
+            const { updates: processed, deletes } = processFieldValues(existing, data);
+            const merged = { ...existing, ...processed };
+            for (const key of deletes) {
+              delete merged[key];
+            }
+            collection.set(docId, merged);
           });
         },
         delete: (ref: { id: string; path?: string; ref?: { path: string } }) => {
@@ -415,8 +447,9 @@ function matchesCondition(doc: Record<string, unknown>, field: string, op: strin
   }
 }
 
-function processFieldValues(existing: Record<string, unknown>, updates: Record<string, unknown>): Record<string, unknown> {
+function processFieldValues(existing: Record<string, unknown>, updates: Record<string, unknown>): { updates: Record<string, unknown>; deletes: string[] } {
   const result: Record<string, unknown> = {};
+  const deletes: string[] = [];
 
   for (const [key, value] of Object.entries(updates)) {
     if (value && typeof value === 'object' && '_type' in value) {
@@ -431,6 +464,9 @@ function processFieldValues(existing: Record<string, unknown>, updates: Record<s
         case 'serverTimestamp':
           result[key] = new Date();
           break;
+        case 'delete':
+          deletes.push(key);
+          break;
         default:
           result[key] = value;
       }
@@ -439,7 +475,7 @@ function processFieldValues(existing: Record<string, unknown>, updates: Record<s
     }
   }
 
-  return result;
+  return { updates: result, deletes };
 }
 
 // Mock FieldValue

@@ -1,0 +1,443 @@
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { createMockFirestore, type MockFirestore } from './setup';
+
+const TEST_USER_ID = 'test-user-123';
+
+let mockDb: MockFirestore;
+
+// Mock storage bucket
+const mockBucket = {
+  file: vi.fn(() => ({
+    delete: vi.fn().mockResolvedValue(undefined),
+  })),
+};
+
+vi.mock('@/lib/firebase-admin', () => ({
+  getAdminDb: () => mockDb,
+  getAdminStorage: () => ({
+    bucket: () => mockBucket,
+  }),
+}));
+
+vi.mock('firebase-admin/firestore', () => ({
+  FieldValue: {
+    serverTimestamp: () => ({ _type: 'serverTimestamp' }),
+    increment: (n: number) => ({ _type: 'increment', _value: n }),
+    arrayUnion: (...elements: unknown[]) => ({ _type: 'arrayUnion', _elements: elements }),
+    delete: () => ({ _type: 'delete' }),
+  },
+}));
+
+vi.mock('@/lib/auth', () => ({
+  withAuth: async () => ({ userId: TEST_USER_ID }),
+}));
+
+function createRequest(method: string, body?: unknown, url = 'http://localhost/api/receipts') {
+  return {
+    method,
+    url,
+    json: async () => body ?? {},
+    headers: new Map(),
+  };
+}
+
+describe('Receipts API', () => {
+  beforeEach(() => {
+    mockDb = createMockFirestore();
+    vi.clearAllMocks();
+  });
+
+  describe('GET /api/receipts', () => {
+    it('should return all receipts', async () => {
+      mockDb._setDoc(`users/${TEST_USER_ID}/receipts`, 'receipt-1', {
+        vendor: 'Shop A',
+        amountInCents: 150000,
+        capturedAt: { toDate: () => new Date('2026-09-01') },
+      });
+      mockDb._setDoc(`users/${TEST_USER_ID}/receipts`, 'receipt-2', {
+        vendor: 'Shop B',
+        amountInCents: 200000,
+        capturedAt: { toDate: () => new Date('2026-09-05') },
+      });
+
+      const { GET } = await import('@/app/api/receipts/route');
+      const response = await GET(createRequest('GET') as never);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.receipts).toHaveLength(2);
+    });
+
+    it('should filter by needsAttention', async () => {
+      mockDb._setDoc(`users/${TEST_USER_ID}/receipts`, 'receipt-1', {
+        vendor: 'Shop A',
+        amountInCents: 150000,
+        needsAttention: false,
+      });
+      mockDb._setDoc(`users/${TEST_USER_ID}/receipts`, 'receipt-2', {
+        vendor: null,
+        amountInCents: null,
+        needsAttention: true,
+      });
+
+      const { GET } = await import('@/app/api/receipts/route');
+      const response = await GET(createRequest('GET', null, 'http://localhost/api/receipts?needsAttention=true') as never);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.receipts).toHaveLength(1);
+      expect(data.receipts[0].needsAttention).toBe(true);
+    });
+
+    it('should sort receipts by capturedAt descending', async () => {
+      mockDb._setDoc(`users/${TEST_USER_ID}/receipts`, 'receipt-1', {
+        vendor: 'Shop A',
+        capturedAt: { toDate: () => new Date('2026-09-01') },
+      });
+      mockDb._setDoc(`users/${TEST_USER_ID}/receipts`, 'receipt-2', {
+        vendor: 'Shop B',
+        capturedAt: { toDate: () => new Date('2026-09-10') },
+      });
+
+      const { GET } = await import('@/app/api/receipts/route');
+      const response = await GET(createRequest('GET') as never);
+
+      const data = await response.json();
+      // Most recent first
+      expect(data.receipts[0].vendor).toBe('Shop B');
+      expect(data.receipts[1].vendor).toBe('Shop A');
+    });
+
+    it('should return empty array when no receipts', async () => {
+      const { GET } = await import('@/app/api/receipts/route');
+      const response = await GET(createRequest('GET') as never);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.receipts).toEqual([]);
+    });
+  });
+
+  describe('POST /api/receipts', () => {
+    it('should require imageUrl and imageHash', async () => {
+      const { POST } = await import('@/app/api/receipts/route');
+      const response = await POST(createRequest('POST', {
+        vendor: 'Shop',
+      }) as never);
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error).toContain('imageUrl');
+    });
+
+    it('should create a receipt with required fields', async () => {
+      const { POST } = await import('@/app/api/receipts/route');
+      const response = await POST(createRequest('POST', {
+        imageUrl: 'https://storage.example.com/receipt.jpg',
+        imageHash: 'abc123hash',
+        vendor: 'Shop A',
+        amountInCents: 150000,
+      }) as never);
+
+      expect(response.status).toBe(201);
+      const data = await response.json();
+      expect(data.imageUrl).toBe('https://storage.example.com/receipt.jpg');
+      expect(data.imageHash).toBe('abc123hash');
+      expect(data.vendor).toBe('Shop A');
+      expect(data.amountInCents).toBe(150000);
+      expect(data.needsAttention).toBe(false);
+    });
+
+    it('should set needsAttention when vendor or amount is missing', async () => {
+      const { POST } = await import('@/app/api/receipts/route');
+      const response = await POST(createRequest('POST', {
+        imageUrl: 'https://storage.example.com/receipt.jpg',
+        imageHash: 'xyz789hash',
+      }) as never);
+
+      expect(response.status).toBe(201);
+      const data = await response.json();
+      expect(data.needsAttention).toBe(true);
+    });
+
+    it('should detect duplicate receipts by imageHash', async () => {
+      // Create existing receipt
+      mockDb._setDoc(`users/${TEST_USER_ID}/receipts`, 'existing-receipt', {
+        imageUrl: 'https://storage.example.com/old.jpg',
+        imageHash: 'duplicate-hash',
+        vendor: 'Shop A',
+      });
+
+      const { POST } = await import('@/app/api/receipts/route');
+      const response = await POST(createRequest('POST', {
+        imageUrl: 'https://storage.example.com/new.jpg',
+        imageHash: 'duplicate-hash',
+      }) as never);
+
+      expect(response.status).toBe(409);
+      const data = await response.json();
+      expect(data.error).toContain('Duplicate');
+      expect(data.existingId).toBe('existing-receipt');
+    });
+
+    it('should store optional fields', async () => {
+      const { POST } = await import('@/app/api/receipts/route');
+      const response = await POST(createRequest('POST', {
+        imageUrl: 'https://storage.example.com/receipt.jpg',
+        imageHash: 'unique-hash',
+        originalImageUrl: 'https://storage.example.com/original.jpg',
+        thumbnailUrl: 'https://storage.example.com/thumb.jpg',
+        vendor: 'Coffee Shop',
+        amountInCents: 5000,
+        note: 'Morning coffee',
+        location: 'Downtown',
+        capturedAt: '2026-09-15T10:30:00Z',
+      }) as never);
+
+      expect(response.status).toBe(201);
+      const data = await response.json();
+      expect(data.originalImageUrl).toBe('https://storage.example.com/original.jpg');
+      expect(data.thumbnailUrl).toBe('https://storage.example.com/thumb.jpg');
+      expect(data.note).toBe('Morning coffee');
+      expect(data.location).toBe('Downtown');
+    });
+  });
+
+  describe('GET /api/receipts/[id]', () => {
+    it('should return 404 for non-existent receipt', async () => {
+      const { GET } = await import('@/app/api/receipts/[id]/route');
+      const response = await GET(
+        createRequest('GET') as never,
+        { params: Promise.resolve({ id: 'non-existent' }) }
+      );
+
+      expect(response.status).toBe(404);
+    });
+
+    it('should return a single receipt', async () => {
+      mockDb._setDoc(`users/${TEST_USER_ID}/receipts`, 'receipt-1', {
+        vendor: 'Shop A',
+        amountInCents: 150000,
+        imageUrl: 'https://storage.example.com/img.jpg',
+        capturedAt: { toDate: () => new Date('2026-09-01') },
+      });
+
+      const { GET } = await import('@/app/api/receipts/[id]/route');
+      const response = await GET(
+        createRequest('GET') as never,
+        { params: Promise.resolve({ id: 'receipt-1' }) }
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.id).toBe('receipt-1');
+      expect(data.vendor).toBe('Shop A');
+      expect(data.amountInCents).toBe(150000);
+    });
+  });
+
+  describe('PATCH /api/receipts/[id]', () => {
+    it('should return 404 for non-existent receipt', async () => {
+      const { PATCH } = await import('@/app/api/receipts/[id]/route');
+      const response = await PATCH(
+        createRequest('PATCH', { vendor: 'New Vendor' }) as never,
+        { params: Promise.resolve({ id: 'non-existent' }) }
+      );
+
+      expect(response.status).toBe(404);
+    });
+
+    it('should update receipt fields', async () => {
+      mockDb._setDoc(`users/${TEST_USER_ID}/receipts`, 'receipt-1', {
+        vendor: 'Old Vendor',
+        amountInCents: 100000,
+        needsAttention: false,
+      });
+
+      const { PATCH } = await import('@/app/api/receipts/[id]/route');
+      const response = await PATCH(
+        createRequest('PATCH', {
+          vendor: 'New Vendor',
+          amountInCents: 150000,
+          note: 'Updated note',
+        }) as never,
+        { params: Promise.resolve({ id: 'receipt-1' }) }
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.vendor).toBe('New Vendor');
+      expect(data.amountInCents).toBe(150000);
+      expect(data.note).toBe('Updated note');
+    });
+
+    it('should update needsAttention when linking to cycleItem', async () => {
+      mockDb._setDoc(`users/${TEST_USER_ID}/receipts`, 'receipt-1', {
+        vendor: null,
+        amountInCents: 150000,
+        needsAttention: true, // Originally needs attention (no vendor)
+      });
+
+      const { PATCH } = await import('@/app/api/receipts/[id]/route');
+      const response = await PATCH(
+        createRequest('PATCH', {
+          cycleItemId: 'item-123',
+          cycleId: '2026-09',
+        }) as never,
+        { params: Promise.resolve({ id: 'receipt-1' }) }
+      );
+
+      expect(response.status).toBe(200);
+      const receipt = mockDb._getDoc(`users/${TEST_USER_ID}/receipts`, 'receipt-1');
+      // Linked receipts don't need vendor, so needsAttention should be false
+      expect(receipt?.needsAttention).toBe(false);
+    });
+
+    it('should set needsAttention when amount is cleared', async () => {
+      mockDb._setDoc(`users/${TEST_USER_ID}/receipts`, 'receipt-1', {
+        vendor: 'Shop A',
+        amountInCents: 150000,
+        needsAttention: false,
+      });
+
+      const { PATCH } = await import('@/app/api/receipts/[id]/route');
+      const response = await PATCH(
+        createRequest('PATCH', {
+          amountInCents: null,
+        }) as never,
+        { params: Promise.resolve({ id: 'receipt-1' }) }
+      );
+
+      expect(response.status).toBe(200);
+      const receipt = mockDb._getDoc(`users/${TEST_USER_ID}/receipts`, 'receipt-1');
+      expect(receipt?.needsAttention).toBe(true);
+    });
+  });
+
+  describe('DELETE /api/receipts/[id]', () => {
+    it('should return 404 for non-existent receipt', async () => {
+      const { DELETE } = await import('@/app/api/receipts/[id]/route');
+      const response = await DELETE(
+        createRequest('DELETE') as never,
+        { params: Promise.resolve({ id: 'non-existent' }) }
+      );
+
+      expect(response.status).toBe(404);
+    });
+
+    it('should delete receipt and return success', async () => {
+      mockDb._setDoc(`users/${TEST_USER_ID}/receipts`, 'receipt-1', {
+        vendor: 'Shop A',
+        imageUrl: 'https://storage.googleapis.com/bucket/users/test/img.jpg',
+      });
+
+      const { DELETE } = await import('@/app/api/receipts/[id]/route');
+      const response = await DELETE(
+        createRequest('DELETE') as never,
+        { params: Promise.resolve({ id: 'receipt-1' }) }
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.success).toBe(true);
+
+      // Verify receipt is deleted
+      const receipt = mockDb._getDoc(`users/${TEST_USER_ID}/receipts`, 'receipt-1');
+      expect(receipt).toBeUndefined();
+    });
+
+    it('should attempt to clean up storage files', async () => {
+      mockDb._setDoc(`users/${TEST_USER_ID}/receipts`, 'receipt-1', {
+        imageUrl: 'https://storage.googleapis.com/bucket/users/test/image.jpg',
+        originalImageUrl: 'https://storage.googleapis.com/bucket/users/test/original.jpg',
+        thumbnailUrl: 'https://firebasestorage.googleapis.com/v0/b/bucket/o/users%2Ftest%2Fthumb.jpg?alt=media',
+      });
+
+      const { DELETE } = await import('@/app/api/receipts/[id]/route');
+      await DELETE(
+        createRequest('DELETE') as never,
+        { params: Promise.resolve({ id: 'receipt-1' }) }
+      );
+
+      // Storage cleanup should be called
+      expect(mockBucket.file).toHaveBeenCalled();
+    });
+  });
+
+  describe('POST /api/receipts/cleanup-vendors', () => {
+    it('should return zero cleaned when no invalid vendors', async () => {
+      mockDb._setDoc(`users/${TEST_USER_ID}/receipts`, 'receipt-1', {
+        vendor: 'Checkers', // Valid vendor name
+        amountInCents: 150000,
+      });
+
+      const { POST } = await import('@/app/api/receipts/cleanup-vendors/route');
+      const response = await POST(createRequest('POST') as never);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.cleaned).toBe(0);
+    });
+
+    it('should clean invalid vendor names (category names)', async () => {
+      mockDb._setDoc(`users/${TEST_USER_ID}/receipts`, 'receipt-1', {
+        vendor: 'Grocery', // Invalid - category name
+        amountInCents: 150000,
+        needsAttention: false,
+      });
+      mockDb._setDoc(`users/${TEST_USER_ID}/receipts`, 'receipt-2', {
+        vendor: 'Entertainment', // Invalid - category name
+        amountInCents: 200000,
+        needsAttention: false,
+      });
+      mockDb._setDoc(`users/${TEST_USER_ID}/receipts`, 'receipt-3', {
+        vendor: 'Woolworths', // Valid vendor name
+        amountInCents: 100000,
+      });
+
+      const { POST } = await import('@/app/api/receipts/cleanup-vendors/route');
+      const response = await POST(createRequest('POST') as never);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.cleaned).toBe(2);
+      expect(data.found).toBe(2);
+
+      // Invalid vendors should be cleared
+      const receipt1 = mockDb._getDoc(`users/${TEST_USER_ID}/receipts`, 'receipt-1');
+      expect(receipt1?.needsAttention).toBe(true);
+
+      // Valid vendor should be untouched
+      const receipt3 = mockDb._getDoc(`users/${TEST_USER_ID}/receipts`, 'receipt-3');
+      expect(receipt3?.vendor).toBe('Woolworths');
+    });
+
+    it('should handle case-insensitive vendor matching', async () => {
+      mockDb._setDoc(`users/${TEST_USER_ID}/receipts`, 'receipt-1', {
+        vendor: 'HOUSING', // Uppercase category
+        amountInCents: 500000,
+      });
+      mockDb._setDoc(`users/${TEST_USER_ID}/receipts`, 'receipt-2', {
+        vendor: 'Transport', // Mixed case category
+        amountInCents: 200000,
+      });
+
+      const { POST } = await import('@/app/api/receipts/cleanup-vendors/route');
+      const response = await POST(createRequest('POST') as never);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.cleaned).toBe(2);
+    });
+
+    it('should handle empty receipts collection', async () => {
+      const { POST } = await import('@/app/api/receipts/cleanup-vendors/route');
+      const response = await POST(createRequest('POST') as never);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.cleaned).toBe(0);
+      expect(data.message).toContain('No receipts');
+    });
+  });
+});
