@@ -120,6 +120,17 @@ export function createMockFirestore() {
           }));
           return { docs, empty: docs.length === 0, size: docs.length };
         },
+        limit: () => ({
+          get: async () => {
+            const collection = getCollection(path);
+            const docs = Array.from(collection.entries()).map(([id, data]) => ({
+              id,
+              ref: mockDoc(path, id),
+              data: () => data,
+            }));
+            return { docs, empty: docs.length === 0, size: docs.length };
+          },
+        }),
       }),
       get: async () => {
         const collection = getCollection(path);
@@ -130,6 +141,17 @@ export function createMockFirestore() {
         }));
         return { docs, empty: docs.length === 0, size: docs.length };
       },
+      limit: () => ({
+        get: async () => {
+          const collection = getCollection(path);
+          const docs = Array.from(collection.entries()).map(([id, data]) => ({
+            id,
+            ref: mockDoc(path, id),
+            data: () => data,
+          }));
+          return { docs, empty: docs.length === 0, size: docs.length };
+        },
+      }),
     }),
     where: (field: string, op: string, value: unknown) => ({
       where: (field2: string, op2: string, value2: unknown) => ({
