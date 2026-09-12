@@ -97,7 +97,47 @@ describe('Wishlist API', () => {
     });
   });
 
+  describe('GET /api/wishlist/[id]', () => {
+    it('should return 404 for non-existent item', async () => {
+      const { GET } = await import('@/app/api/wishlist/[id]/route');
+      const response = await GET(
+        createRequest('GET') as never,
+        { params: Promise.resolve({ id: 'non-existent' }) }
+      );
+
+      expect(response.status).toBe(404);
+    });
+
+    it('should return a single wishlist item', async () => {
+      mockDb._setDoc(`users/${TEST_USER_ID}/wishlist`, 'item-1', {
+        title: 'New Laptop',
+        targetAmount: 1500000,
+        status: 'active',
+      });
+
+      const { GET } = await import('@/app/api/wishlist/[id]/route');
+      const response = await GET(
+        createRequest('GET') as never,
+        { params: Promise.resolve({ id: 'item-1' }) }
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.title).toBe('New Laptop');
+    });
+  });
+
   describe('PATCH /api/wishlist/[id]', () => {
+    it('should return 404 for non-existent item', async () => {
+      const { PATCH } = await import('@/app/api/wishlist/[id]/route');
+      const response = await PATCH(
+        createRequest('PATCH', { title: 'Updated' }) as never,
+        { params: Promise.resolve({ id: 'non-existent' }) }
+      );
+
+      expect(response.status).toBe(404);
+    });
+
     it('should update wishlist item', async () => {
       mockDb._setDoc(`users/${TEST_USER_ID}/wishlist`, 'item-1', {
         title: 'New Laptop',
@@ -115,6 +155,27 @@ describe('Wishlist API', () => {
       expect(response.status).toBe(200);
       const item = mockDb._getDoc(`users/${TEST_USER_ID}/wishlist`, 'item-1');
       expect(item?.title).toBe('Gaming Laptop');
+    });
+
+    it('should set progress to 100 when marking as completed', async () => {
+      mockDb._setDoc(`users/${TEST_USER_ID}/wishlist`, 'item-1', {
+        title: 'Vacation',
+        targetAmount: 3000000,
+        status: 'active',
+        progress: 75,
+      });
+
+      const { PATCH } = await import('@/app/api/wishlist/[id]/route');
+      const response = await PATCH(
+        createRequest('PATCH', { status: 'completed' }) as never,
+        { params: Promise.resolve({ id: 'item-1' }) }
+      );
+
+      expect(response.status).toBe(200);
+      const item = mockDb._getDoc(`users/${TEST_USER_ID}/wishlist`, 'item-1');
+      expect(item?.status).toBe('completed');
+      expect(item?.progress).toBe(100);
+      expect(item?.completedAt).toBeDefined();
     });
 
     it('should calculate progress when linking to goal', async () => {
@@ -144,9 +205,48 @@ describe('Wishlist API', () => {
       expect(item?.currentAmount).toBe(750000);
       expect(item?.progress).toBe(50);
     });
+
+    it('should auto-complete when linking to completed goal', async () => {
+      mockDb._setDoc(`users/${TEST_USER_ID}/wishlist`, 'item-1', {
+        title: 'New Laptop',
+        targetAmount: 1500000,
+        status: 'active',
+        progress: 0,
+      });
+
+      mockDb._setDoc(`users/${TEST_USER_ID}/goals`, 'goal-1', {
+        name: 'Laptop Fund',
+        targetAmount: 1500000,
+        status: 'completed',
+        contributions: [
+          { id: 'c1', amount: 1500000 },
+        ],
+      });
+
+      const { PATCH } = await import('@/app/api/wishlist/[id]/route');
+      const response = await PATCH(
+        createRequest('PATCH', { linkedGoalId: 'goal-1' }) as never,
+        { params: Promise.resolve({ id: 'item-1' }) }
+      );
+
+      expect(response.status).toBe(200);
+      const item = mockDb._getDoc(`users/${TEST_USER_ID}/wishlist`, 'item-1');
+      expect(item?.status).toBe('completed');
+      expect(item?.progress).toBe(100);
+    });
   });
 
   describe('DELETE /api/wishlist/[id]', () => {
+    it('should return 404 for non-existent item', async () => {
+      const { DELETE } = await import('@/app/api/wishlist/[id]/route');
+      const response = await DELETE(
+        createRequest('DELETE') as never,
+        { params: Promise.resolve({ id: 'non-existent' }) }
+      );
+
+      expect(response.status).toBe(404);
+    });
+
     it('should delete wishlist item', async () => {
       mockDb._setDoc(`users/${TEST_USER_ID}/wishlist`, 'item-1', {
         title: 'New Laptop',
