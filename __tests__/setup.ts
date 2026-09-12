@@ -4,19 +4,63 @@ import { vi } from 'vitest';
 class MockNextResponseClass {
   data: unknown;
   status: number;
+  headers: Map<string, string>;
   _isMockNextResponse = true;
+  private _bodyText: string | null = null;
 
-  constructor(data: unknown, status: number = 200) {
-    this.data = data;
-    this.status = status;
+  constructor(body?: BodyInit | null, init?: { status?: number; headers?: Record<string, string> | Headers }) {
+    // Handle body
+    if (typeof body === 'string') {
+      this._bodyText = body;
+      try {
+        this.data = JSON.parse(body);
+      } catch {
+        this.data = body;
+      }
+    } else {
+      this.data = body;
+    }
+
+    this.status = init?.status ?? 200;
+
+    // Handle headers with a mock Headers-like interface
+    const headersMap = new Map<string, string>();
+    if (init?.headers) {
+      if (init.headers instanceof Map) {
+        init.headers.forEach((v, k) => headersMap.set(k, v));
+      } else if (typeof init.headers === 'object') {
+        for (const [key, value] of Object.entries(init.headers)) {
+          headersMap.set(key, value);
+        }
+      }
+    }
+    // Create headers object with get method
+    this.headers = {
+      get: (key: string) => headersMap.get(key) ?? null,
+      set: (key: string, value: string) => headersMap.set(key, value),
+      has: (key: string) => headersMap.has(key),
+      forEach: (cb: (value: string, key: string) => void) => headersMap.forEach(cb),
+    } as unknown as Map<string, string>;
   }
 
   async json() {
     return this.data;
   }
 
-  static json(data: unknown, init?: { status?: number }) {
-    return new MockNextResponseClass(data, init?.status ?? 200);
+  async text() {
+    if (this._bodyText !== null) {
+      return this._bodyText;
+    }
+    return typeof this.data === 'string' ? this.data : JSON.stringify(this.data);
+  }
+
+  static json(data: unknown, init?: { status?: number; headers?: Record<string, string> }) {
+    const response = new MockNextResponseClass(JSON.stringify(data), {
+      status: init?.status ?? 200,
+      headers: { 'Content-Type': 'application/json', ...init?.headers },
+    });
+    response.data = data;
+    return response;
   }
 }
 

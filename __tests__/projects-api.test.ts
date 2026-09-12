@@ -271,4 +271,326 @@ describe('Projects API', () => {
       expect(project?.archivedAt).toBeDefined();
     });
   });
+
+  describe('GET /api/projects/[id]/transactions', () => {
+    it('should return 404 for non-existent project', async () => {
+      const { GET } = await import('@/app/api/projects/[id]/transactions/route');
+      const response = await GET(
+        createRequest('GET') as never,
+        { params: Promise.resolve({ id: 'non-existent' }) }
+      );
+
+      expect(response.status).toBe(404);
+    });
+
+    it('should return transactions array', async () => {
+      mockDb._setDoc(`users/${TEST_USER_ID}/projects`, 'proj-1', {
+        name: 'Test Project',
+        type: 'construction',
+        transactions: [
+          { id: 'txn-1', type: 'contribution', amount: 100000, description: 'Initial' },
+          { id: 'txn-2', type: 'payment', amount: 50000, description: 'Materials' },
+        ],
+      });
+
+      const { GET } = await import('@/app/api/projects/[id]/transactions/route');
+      const response = await GET(
+        createRequest('GET') as never,
+        { params: Promise.resolve({ id: 'proj-1' }) }
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.transactions).toHaveLength(2);
+      expect(data.transactions[0].type).toBe('contribution');
+    });
+
+    it('should return empty array when no transactions', async () => {
+      mockDb._setDoc(`users/${TEST_USER_ID}/projects`, 'proj-1', {
+        name: 'Test Project',
+        type: 'construction',
+      });
+
+      const { GET } = await import('@/app/api/projects/[id]/transactions/route');
+      const response = await GET(
+        createRequest('GET') as never,
+        { params: Promise.resolve({ id: 'proj-1' }) }
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.transactions).toEqual([]);
+    });
+  });
+
+  describe('POST /api/projects/[id]/transactions', () => {
+    it('should return 404 for non-existent project', async () => {
+      const { POST } = await import('@/app/api/projects/[id]/transactions/route');
+      const response = await POST(
+        createRequest('POST', {
+          type: 'contribution',
+          amount: 100000,
+          description: 'Test',
+        }) as never,
+        { params: Promise.resolve({ id: 'non-existent' }) }
+      );
+
+      expect(response.status).toBe(404);
+    });
+
+    it('should require valid transaction type', async () => {
+      mockDb._setDoc(`users/${TEST_USER_ID}/projects`, 'proj-1', {
+        name: 'Test',
+        type: 'construction',
+      });
+
+      const { POST } = await import('@/app/api/projects/[id]/transactions/route');
+      const response = await POST(
+        createRequest('POST', {
+          type: 'invalid',
+          amount: 100000,
+          description: 'Test',
+        }) as never,
+        { params: Promise.resolve({ id: 'proj-1' }) }
+      );
+
+      expect(response.status).toBe(400);
+    });
+
+    it('should require positive amount', async () => {
+      mockDb._setDoc(`users/${TEST_USER_ID}/projects`, 'proj-1', {
+        name: 'Test',
+        type: 'construction',
+      });
+
+      const { POST } = await import('@/app/api/projects/[id]/transactions/route');
+      const response = await POST(
+        createRequest('POST', {
+          type: 'contribution',
+          amount: -100,
+          description: 'Test',
+        }) as never,
+        { params: Promise.resolve({ id: 'proj-1' }) }
+      );
+
+      expect(response.status).toBe(400);
+    });
+
+    it('should require description', async () => {
+      mockDb._setDoc(`users/${TEST_USER_ID}/projects`, 'proj-1', {
+        name: 'Test',
+        type: 'construction',
+      });
+
+      const { POST } = await import('@/app/api/projects/[id]/transactions/route');
+      const response = await POST(
+        createRequest('POST', {
+          type: 'contribution',
+          amount: 100000,
+        }) as never,
+        { params: Promise.resolve({ id: 'proj-1' }) }
+      );
+
+      expect(response.status).toBe(400);
+    });
+
+    it('should add contribution and increase currentAmount', async () => {
+      mockDb._setDoc(`users/${TEST_USER_ID}/projects`, 'proj-1', {
+        name: 'Test',
+        type: 'construction',
+        currentAmount: 100000,
+        transactions: [],
+      });
+
+      const { POST } = await import('@/app/api/projects/[id]/transactions/route');
+      const response = await POST(
+        createRequest('POST', {
+          type: 'contribution',
+          amount: 50000,
+          description: 'Monthly contribution',
+          contributorName: 'John',
+        }) as never,
+        { params: Promise.resolve({ id: 'proj-1' }) }
+      );
+
+      expect(response.status).toBe(201);
+      const data = await response.json();
+      expect(data.transaction.type).toBe('contribution');
+      expect(data.transaction.amount).toBe(50000);
+      expect(data.transaction.contributorName).toBe('John');
+
+      const project = mockDb._getDoc(`users/${TEST_USER_ID}/projects`, 'proj-1');
+      expect(project?.currentAmount).toBe(150000);
+    });
+
+    it('should add payment and decrease currentAmount', async () => {
+      mockDb._setDoc(`users/${TEST_USER_ID}/projects`, 'proj-1', {
+        name: 'Test',
+        type: 'construction',
+        currentAmount: 100000,
+        transactions: [],
+      });
+
+      const { POST } = await import('@/app/api/projects/[id]/transactions/route');
+      const response = await POST(
+        createRequest('POST', {
+          type: 'payment',
+          amount: 30000,
+          description: 'Material purchase',
+        }) as never,
+        { params: Promise.resolve({ id: 'proj-1' }) }
+      );
+
+      expect(response.status).toBe(201);
+      const project = mockDb._getDoc(`users/${TEST_USER_ID}/projects`, 'proj-1');
+      expect(project?.currentAmount).toBe(70000);
+    });
+  });
+
+  describe('PATCH /api/projects/[id]/transactions/[transactionId]', () => {
+    it('should return 404 for non-existent project', async () => {
+      const { PATCH } = await import('@/app/api/projects/[id]/transactions/[transactionId]/route');
+      const response = await PATCH(
+        createRequest('PATCH', { amount: 100000 }) as never,
+        { params: Promise.resolve({ id: 'non-existent', transactionId: 'txn-1' }) }
+      );
+
+      expect(response.status).toBe(404);
+    });
+
+    it('should return 404 for non-existent transaction', async () => {
+      mockDb._setDoc(`users/${TEST_USER_ID}/projects`, 'proj-1', {
+        name: 'Test',
+        type: 'construction',
+        transactions: [],
+      });
+
+      const { PATCH } = await import('@/app/api/projects/[id]/transactions/[transactionId]/route');
+      const response = await PATCH(
+        createRequest('PATCH', { amount: 100000 }) as never,
+        { params: Promise.resolve({ id: 'proj-1', transactionId: 'non-existent' }) }
+      );
+
+      expect(response.status).toBe(404);
+    });
+
+    it('should update transaction amount and adjust currentAmount', async () => {
+      mockDb._setDoc(`users/${TEST_USER_ID}/projects`, 'proj-1', {
+        name: 'Test',
+        type: 'construction',
+        currentAmount: 100000,
+        transactions: [
+          { id: 'txn-1', type: 'contribution', amount: 100000, description: 'Initial' },
+        ],
+      });
+
+      const { PATCH } = await import('@/app/api/projects/[id]/transactions/[transactionId]/route');
+      const response = await PATCH(
+        createRequest('PATCH', { amount: 150000 }) as never,
+        { params: Promise.resolve({ id: 'proj-1', transactionId: 'txn-1' }) }
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.transaction.amount).toBe(150000);
+
+      // currentAmount should increase by 50000 (150000 - 100000)
+      const project = mockDb._getDoc(`users/${TEST_USER_ID}/projects`, 'proj-1');
+      expect(project?.currentAmount).toBe(150000);
+    });
+
+    it('should update transaction description', async () => {
+      mockDb._setDoc(`users/${TEST_USER_ID}/projects`, 'proj-1', {
+        name: 'Test',
+        type: 'construction',
+        currentAmount: 100000,
+        transactions: [
+          { id: 'txn-1', type: 'contribution', amount: 100000, description: 'Old desc' },
+        ],
+      });
+
+      const { PATCH } = await import('@/app/api/projects/[id]/transactions/[transactionId]/route');
+      const response = await PATCH(
+        createRequest('PATCH', { description: 'New description' }) as never,
+        { params: Promise.resolve({ id: 'proj-1', transactionId: 'txn-1' }) }
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.transaction.description).toBe('New description');
+    });
+  });
+
+  describe('DELETE /api/projects/[id]/transactions/[transactionId]', () => {
+    it('should return 404 for non-existent project', async () => {
+      const { DELETE } = await import('@/app/api/projects/[id]/transactions/[transactionId]/route');
+      const response = await DELETE(
+        createRequest('DELETE') as never,
+        { params: Promise.resolve({ id: 'non-existent', transactionId: 'txn-1' }) }
+      );
+
+      expect(response.status).toBe(404);
+    });
+
+    it('should return 404 for non-existent transaction', async () => {
+      mockDb._setDoc(`users/${TEST_USER_ID}/projects`, 'proj-1', {
+        name: 'Test',
+        type: 'construction',
+        transactions: [],
+      });
+
+      const { DELETE } = await import('@/app/api/projects/[id]/transactions/[transactionId]/route');
+      const response = await DELETE(
+        createRequest('DELETE') as never,
+        { params: Promise.resolve({ id: 'proj-1', transactionId: 'non-existent' }) }
+      );
+
+      expect(response.status).toBe(404);
+    });
+
+    it('should delete contribution and decrease currentAmount', async () => {
+      mockDb._setDoc(`users/${TEST_USER_ID}/projects`, 'proj-1', {
+        name: 'Test',
+        type: 'construction',
+        currentAmount: 150000,
+        transactions: [
+          { id: 'txn-1', type: 'contribution', amount: 100000, description: 'First' },
+          { id: 'txn-2', type: 'contribution', amount: 50000, description: 'Second' },
+        ],
+      });
+
+      const { DELETE } = await import('@/app/api/projects/[id]/transactions/[transactionId]/route');
+      const response = await DELETE(
+        createRequest('DELETE') as never,
+        { params: Promise.resolve({ id: 'proj-1', transactionId: 'txn-1' }) }
+      );
+
+      expect(response.status).toBe(200);
+      const project = mockDb._getDoc(`users/${TEST_USER_ID}/projects`, 'proj-1');
+      expect(project?.transactions).toHaveLength(1);
+      expect(project?.currentAmount).toBe(50000); // 150000 - 100000
+    });
+
+    it('should delete payment and increase currentAmount', async () => {
+      mockDb._setDoc(`users/${TEST_USER_ID}/projects`, 'proj-1', {
+        name: 'Test',
+        type: 'construction',
+        currentAmount: 70000,
+        transactions: [
+          { id: 'txn-1', type: 'contribution', amount: 100000, description: 'Deposit' },
+          { id: 'txn-2', type: 'payment', amount: 30000, description: 'Materials' },
+        ],
+      });
+
+      const { DELETE } = await import('@/app/api/projects/[id]/transactions/[transactionId]/route');
+      const response = await DELETE(
+        createRequest('DELETE') as never,
+        { params: Promise.resolve({ id: 'proj-1', transactionId: 'txn-2' }) }
+      );
+
+      expect(response.status).toBe(200);
+      const project = mockDb._getDoc(`users/${TEST_USER_ID}/projects`, 'proj-1');
+      expect(project?.currentAmount).toBe(100000); // 70000 + 30000
+    });
+  });
 });
