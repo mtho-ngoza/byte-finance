@@ -103,6 +103,34 @@ export function createMockFirestore() {
       const id = docId ?? `doc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       return mockDoc(path, id);
     },
+    add: async (data: Record<string, unknown>) => {
+      const id = `doc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const collection = getCollection(path);
+      collection.set(id, { ...data, id });
+      return { id, path: `${path}/${id}` };
+    },
+    orderBy: () => ({
+      orderBy: () => ({
+        get: async () => {
+          const collection = getCollection(path);
+          const docs = Array.from(collection.entries()).map(([id, data]) => ({
+            id,
+            ref: mockDoc(path, id),
+            data: () => data,
+          }));
+          return { docs, empty: docs.length === 0, size: docs.length };
+        },
+      }),
+      get: async () => {
+        const collection = getCollection(path);
+        const docs = Array.from(collection.entries()).map(([id, data]) => ({
+          id,
+          ref: mockDoc(path, id),
+          data: () => data,
+        }));
+        return { docs, empty: docs.length === 0, size: docs.length };
+      },
+    }),
     where: (field: string, op: string, value: unknown) => ({
       where: (field2: string, op2: string, value2: unknown) => ({
         get: async () => {
