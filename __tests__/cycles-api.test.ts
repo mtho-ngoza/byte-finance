@@ -131,7 +131,48 @@ describe('Cycles API', () => {
     });
   });
 
+  describe('GET /api/cycles/[id]', () => {
+    it('should return 404 for non-existent cycle', async () => {
+      const { GET } = await import('@/app/api/cycles/[id]/route');
+      const response = await GET(
+        createRequest('GET') as never,
+        { params: Promise.resolve({ id: 'non-existent' }) }
+      );
+
+      expect(response.status).toBe(404);
+    });
+
+    it('should return a single cycle', async () => {
+      mockDb._setDoc(`users/${TEST_USER_ID}/cycles`, '2026-09', {
+        status: 'active',
+        totalCommitted: 500000,
+        totalPaid: 250000,
+      });
+
+      const { GET } = await import('@/app/api/cycles/[id]/route');
+      const response = await GET(
+        createRequest('GET') as never,
+        { params: Promise.resolve({ id: '2026-09' }) }
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.status).toBe('active');
+      expect(data.totalCommitted).toBe(500000);
+    });
+  });
+
   describe('DELETE /api/cycles/[id]', () => {
+    it('should return 404 for non-existent cycle', async () => {
+      const { DELETE } = await import('@/app/api/cycles/[id]/route');
+      const response = await DELETE(
+        createRequest('DELETE') as never,
+        { params: Promise.resolve({ id: 'non-existent' }) }
+      );
+
+      expect(response.status).toBe(404);
+    });
+
     it('should delete cycle and its items', async () => {
       mockDb._setDoc(`users/${TEST_USER_ID}/cycles`, '2026-09', {
         status: 'active',
@@ -181,6 +222,48 @@ describe('Cycles API', () => {
       // Cycle should be deleted
       const cycle = mockDb._getDoc(`users/${TEST_USER_ID}/cycles`, '2026-09');
       expect(cycle).toBeUndefined();
+    });
+
+    it('should remove contributions from linked goals when deleting cycle', async () => {
+      mockDb._setDoc(`users/${TEST_USER_ID}/cycles`, '2026-09', {
+        status: 'active',
+      });
+
+      // Item with linked goal and payments
+      mockDb._setDoc(`users/${TEST_USER_ID}/cycleItems`, 'item-1', {
+        cycleId: '2026-09',
+        label: 'Savings',
+        amount: 50000,
+        linkedGoalId: 'goal-1',
+        payments: [
+          { id: 'pay-1', amount: 30000 },
+          { id: 'pay-2', amount: 20000 },
+        ],
+      });
+
+      // Goal with contributions
+      mockDb._setDoc(`users/${TEST_USER_ID}/goals`, 'goal-1', {
+        name: 'Emergency Fund',
+        currentAmount: 100000,
+        contributions: [
+          { id: 'item-1-pay-1', amount: 30000 },
+          { id: 'item-1-pay-2', amount: 20000 },
+          { id: 'other-contrib', amount: 50000 },
+        ],
+      });
+
+      const { DELETE } = await import('@/app/api/cycles/[id]/route');
+      const response = await DELETE(
+        createRequest('DELETE') as never,
+        { params: Promise.resolve({ id: '2026-09' }) }
+      );
+
+      expect(response.status).toBe(200);
+
+      // Goal contributions should be filtered
+      const goal = mockDb._getDoc(`users/${TEST_USER_ID}/goals`, 'goal-1');
+      expect(goal?.contributions?.length).toBe(1);
+      expect(goal?.contributions?.[0].id).toBe('other-contrib');
     });
   });
 });
