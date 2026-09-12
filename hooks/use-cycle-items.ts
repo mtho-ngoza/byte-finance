@@ -135,10 +135,20 @@ export function useCycleItems(cycleId: string | null, cycle?: Cycle | null): Use
       }
     }
 
-    // Add paid/partial items that fall within the date range
-    // Check both paidDate AND individual payment dates
-    for (const item of [...rawItems, ...allRecentItems]) {
+    // Add paid/partial items from this cycle (always include if they have the right cycleId)
+    for (const item of rawItems) {
       if (item.status === 'paid' || item.status === 'partial') {
+        itemMap.set(item.id, item);
+      }
+    }
+
+    // Add paid/partial items from OTHER cycles that fall within this cycle's date range
+    // (items paid during this cycle but spawned in a different cycle)
+    for (const item of allRecentItems) {
+      if (item.status === 'paid' || item.status === 'partial') {
+        // Skip if already added from rawItems
+        if (itemMap.has(item.id)) continue;
+
         const paymentDate = getEarliestPaymentDate(item);
         if (paymentDate && paymentDate >= startDate && paymentDate <= endDate) {
           itemMap.set(item.id, item);
