@@ -440,4 +440,173 @@ describe('Receipts API', () => {
       expect(data.message).toContain('No receipts');
     });
   });
+
+  describe('GET /api/receipts/sync-links', () => {
+    it('should return sync status with no data', async () => {
+      const { GET } = await import('@/app/api/receipts/sync-links/route');
+      const response = await GET(createRequest('GET', null, 'http://localhost/api/receipts/sync-links') as never);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.totalReceipts).toBe(0);
+      expect(data.linkedFromItems).toBe(0);
+      expect(data.needsUpdate).toBe(0);
+    });
+
+    it('should identify receipts needing update', async () => {
+      // Receipt not linked
+      mockDb._setDoc(`users/${TEST_USER_ID}/receipts`, 'receipt-1', {
+        vendor: 'Shop A',
+        amountInCents: 150000,
+        cycleItemId: null,
+      });
+
+      // Cycle item linking to receipt
+      mockDb._setDoc(`users/${TEST_USER_ID}/cycleItems`, 'item-1', {
+        cycleId: '2026-09',
+        receiptId: 'receipt-1',
+      });
+
+      const { GET } = await import('@/app/api/receipts/sync-links/route');
+      const response = await GET(createRequest('GET', null, 'http://localhost/api/receipts/sync-links') as never);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.totalReceipts).toBe(1);
+      expect(data.linkedFromItems).toBe(1);
+      expect(data.needsUpdate).toBe(1);
+    });
+
+    it('should count already linked receipts', async () => {
+      // Receipt already linked
+      mockDb._setDoc(`users/${TEST_USER_ID}/receipts`, 'receipt-1', {
+        vendor: 'Shop A',
+        cycleItemId: 'item-1',
+        cycleId: '2026-09',
+      });
+
+      mockDb._setDoc(`users/${TEST_USER_ID}/cycleItems`, 'item-1', {
+        cycleId: '2026-09',
+        receiptId: 'receipt-1',
+      });
+
+      const { GET } = await import('@/app/api/receipts/sync-links/route');
+      const response = await GET(createRequest('GET', null, 'http://localhost/api/receipts/sync-links') as never);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.alreadyLinked).toBe(1);
+      expect(data.needsUpdate).toBe(0);
+    });
+
+    it('should detect payment-level receipt links', async () => {
+      mockDb._setDoc(`users/${TEST_USER_ID}/receipts`, 'receipt-1', {
+        vendor: 'Shop A',
+        cycleItemId: null,
+      });
+
+      mockDb._setDoc(`users/${TEST_USER_ID}/cycleItems`, 'item-1', {
+        cycleId: '2026-09',
+        payments: [
+          { amount: 100000, receiptId: 'receipt-1' },
+        ],
+      });
+
+      const { GET } = await import('@/app/api/receipts/sync-links/route');
+      const response = await GET(createRequest('GET', null, 'http://localhost/api/receipts/sync-links') as never);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.linkedFromItems).toBe(1);
+      expect(data.needsUpdate).toBe(1);
+    });
+  });
+
+  describe('POST /api/receipts/sync-links', () => {
+    it('should update receipts with cycleItemId', async () => {
+      // Receipt not linked
+      mockDb._setDoc(`users/${TEST_USER_ID}/receipts`, 'receipt-1', {
+        vendor: 'Shop A',
+        amountInCents: 150000,
+      });
+
+      // Cycle item linking to receipt
+      mockDb._setDoc(`users/${TEST_USER_ID}/cycleItems`, 'item-1', {
+        cycleId: '2026-09',
+        receiptId: 'receipt-1',
+      });
+
+      const { POST } = await import('@/app/api/receipts/sync-links/route');
+      const response = await POST(createRequest('POST', null, 'http://localhost/api/receipts/sync-links') as never);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.success).toBe(true);
+      expect(data.updated).toBe(1);
+
+      const receipt = mockDb._getDoc(`users/${TEST_USER_ID}/receipts`, 'receipt-1');
+      expect(receipt?.cycleItemId).toBe('item-1');
+      expect(receipt?.cycleId).toBe('2026-09');
+    });
+
+    it('should skip already linked receipts', async () => {
+      mockDb._setDoc(`users/${TEST_USER_ID}/receipts`, 'receipt-1', {
+        vendor: 'Shop A',
+        cycleItemId: 'item-1', // Already linked
+        cycleId: '2026-09',
+      });
+
+      mockDb._setDoc(`users/${TEST_USER_ID}/cycleItems`, 'item-1', {
+        cycleId: '2026-09',
+        receiptId: 'receipt-1',
+      });
+
+      const { POST } = await import('@/app/api/receipts/sync-links/route');
+      const response = await POST(createRequest('POST', null, 'http://localhost/api/receipts/sync-links') as never);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.updated).toBe(0);
+      expect(data.skipped).toBe(1);
+    });
+
+    it('should skip non-existent receipts', async () => {
+      // No receipt exists, but cycle item references it
+      mockDb._setDoc(`users/${TEST_USER_ID}/cycleItems`, 'item-1', {
+        cycleId: '2026-09',
+        receiptId: 'non-existent-receipt',
+      });
+
+      const { POST } = await import('@/app/api/receipts/sync-links/route');
+      const response = await POST(createRequest('POST', null, 'http://localhost/api/receipts/sync-links') as never);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.skipped).toBe(1);
+      expect(data.updated).toBe(0);
+    });
+
+    it('should handle payment-level receipt links', async () => {
+      mockDb._setDoc(`users/${TEST_USER_ID}/receipts`, 'receipt-1', {
+        vendor: 'Shop A',
+      });
+
+      mockDb._setDoc(`users/${TEST_USER_ID}/cycleItems`, 'item-1', {
+        cycleId: '2026-09',
+        payments: [
+          { amount: 100000, receiptId: 'receipt-1' },
+        ],
+      });
+
+      const { POST } = await import('@/app/api/receipts/sync-links/route');
+      const response = await POST(createRequest('POST', null, 'http://localhost/api/receipts/sync-links') as never);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.updated).toBe(1);
+
+      const receipt = mockDb._getDoc(`users/${TEST_USER_ID}/receipts`, 'receipt-1');
+      expect(receipt?.cycleItemId).toBe('item-1');
+    });
+  });
 });
