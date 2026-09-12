@@ -4,12 +4,12 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { AmountDisplay } from '@/components/shared/amount-display';
-import { useToast } from '@/hooks/use-toast';
+import { useToast } from '@/components/shared/toast';
 import type { Project } from '@/types';
 
 export default function ProjectsPage() {
   const router = useRouter();
-  const toast = useToast();
+  const { toast } = useToast();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateForm, setShowCreateForm] = useState(false);

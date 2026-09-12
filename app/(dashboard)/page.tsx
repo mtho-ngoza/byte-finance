@@ -17,7 +17,8 @@ import { Modal, ModalActions } from '@/components/shared/modal';
 import { ProgressBar } from '@/components/shared/progress-bar';
 import { HealthScoreWidget } from '@/components/health-score/health-score-widget';
 import { IncomeEntry } from '@/components/shared/income-entry';
-import type { CycleItem, CycleItemStatus, Goal, Insight } from '@/types';
+import type { CycleItem, CycleItemStatus, Insight } from '@/types';
+import type { GoalWithComputed } from '@/hooks/use-goals';
 import { getCycleDateRange, getCycleIdForDate, formatCycleDateRange } from '@/lib/payday-utils';
 
 export default function DashboardPage() {
@@ -540,12 +541,12 @@ function formatCycleId(id: string): string {
 // ---------------------------------------------------------------------------
 
 interface GoalSummaryRowProps {
-  goal: Goal;
+  goal: GoalWithComputed;
 }
 
 function GoalSummaryRow({ goal }: GoalSummaryRowProps) {
   const progressPercent = goal.targetAmount > 0
-    ? Math.min(100, Math.round((goal.currentAmount / goal.targetAmount) * 100))
+    ? Math.min(100, Math.round((goal.calculatedBalance / goal.targetAmount) * 100))
     : 0;
 
   const typeIcon = {
@@ -572,7 +573,7 @@ function GoalSummaryRow({ goal }: GoalSummaryRowProps) {
           />
         </div>
         <div className="flex justify-between mt-1">
-          <AmountDisplay amount={goal.currentAmount} size="xs" className="text-text-secondary" />
+          <AmountDisplay amount={goal.calculatedBalance} size="xs" className="text-text-secondary" />
           <AmountDisplay amount={goal.targetAmount} size="xs" className="text-text-secondary" />
         </div>
       </div>

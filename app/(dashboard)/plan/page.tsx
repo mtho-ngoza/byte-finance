@@ -499,7 +499,7 @@ interface GoalCardProps {
 function GoalCard({ goal, onDelete }: GoalCardProps) {
   const progressPercent =
     goal.targetAmount > 0
-      ? Math.min(100, Math.round((goal.currentAmount / goal.targetAmount) * 100))
+      ? Math.min(100, Math.round((goal.calculatedBalance / goal.targetAmount) * 100))
       : 0;
 
   const icon = GOAL_TYPE_ICONS[goal.type] ?? '🎯';
@@ -547,7 +547,7 @@ function GoalCard({ goal, onDelete }: GoalCardProps) {
       {/* Progress bar */}
       <div className="mb-2">
         <div className="flex items-center justify-between text-xs text-text-secondary mb-1">
-          <AmountDisplay amount={goal.currentAmount} size="xs" />
+          <AmountDisplay amount={goal.calculatedBalance} size="xs" />
           <span>{progressPercent}%</span>
           <AmountDisplay amount={goal.targetAmount} size="xs" />
         </div>
@@ -567,7 +567,7 @@ function GoalCard({ goal, onDelete }: GoalCardProps) {
         ) : (
           <span>No monthly target set</span>
         )}
-        {goal.estimatedCompletionDate && goal.currentAmount < goal.targetAmount && (
+        {goal.estimatedCompletionDate && goal.calculatedBalance < goal.targetAmount && (
           <span>
             Est.{' '}
             {goal.estimatedCompletionDate.toLocaleDateString('en-ZA', {

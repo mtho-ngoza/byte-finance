@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
   const db = getAdminDb();
   const now = FieldValue.serverTimestamp();
 
-  // Calculate initial progress if linked
+  // Calculate initial progress if linked (from contributions, not stale field)
   let progress = 0;
   let currentAmount = 0;
 
@@ -94,7 +94,12 @@ export async function POST(request: NextRequest) {
     const goalDoc = await db.doc(`users/${userId}/goals/${linkedGoalId}`).get();
     if (goalDoc.exists) {
       const goal = goalDoc.data()!;
-      currentAmount = goal.currentAmount || 0;
+      // Calculate balance from contributions (accurate, not stale)
+      const contributions = goal.contributions ?? [];
+      currentAmount = contributions.reduce(
+        (sum: number, c: { amount: number }) => sum + c.amount,
+        0
+      );
       if (goal.targetAmount > 0) {
         progress = Math.min(100, Math.round((currentAmount / goal.targetAmount) * 100));
       }

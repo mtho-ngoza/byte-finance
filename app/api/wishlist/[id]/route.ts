@@ -94,14 +94,20 @@ export async function PATCH(
     }
   }
 
-  // If linking to a goal, calculate progress
+  // If linking to a goal, calculate progress from contributions
   if (linkedGoalId) {
     const goalDoc = await db.doc(`users/${userId}/goals/${linkedGoalId}`).get();
     if (goalDoc.exists) {
       const goal = goalDoc.data()!;
-      updates.currentAmount = goal.currentAmount || 0;
+      // Calculate balance from contributions (accurate, not stale)
+      const contributions = goal.contributions ?? [];
+      const calculatedBalance = contributions.reduce(
+        (sum: number, c: { amount: number }) => sum + c.amount,
+        0
+      );
+      updates.currentAmount = calculatedBalance;
       if (goal.targetAmount > 0) {
-        updates.progress = Math.min(100, Math.round(((goal.currentAmount || 0) / goal.targetAmount) * 100));
+        updates.progress = Math.min(100, Math.round((calculatedBalance / goal.targetAmount) * 100));
       }
       updates.targetAmount = goal.targetAmount;
 

@@ -39,10 +39,15 @@ export async function POST(request: NextRequest) {
     const item = doc.data();
     const updates: Record<string, unknown> = {};
 
-    // Sync with linked goal
+    // Sync with linked goal (calculate from contributions, not stale field)
     if (item.linkedGoalId && goalsMap.has(item.linkedGoalId)) {
       const goal = goalsMap.get(item.linkedGoalId)!;
-      const currentAmount = goal.currentAmount || 0;
+      // Calculate balance from contributions (accurate, not stale)
+      const contributions = goal.contributions ?? [];
+      const currentAmount = contributions.reduce(
+        (sum: number, c: { amount: number }) => sum + c.amount,
+        0
+      );
       const targetAmount = goal.targetAmount || 0;
       const progress = targetAmount > 0 ? Math.min(100, Math.round((currentAmount / targetAmount) * 100)) : 0;
 

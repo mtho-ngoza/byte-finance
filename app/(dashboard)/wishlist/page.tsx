@@ -7,7 +7,8 @@ import { AmountDisplay } from '@/components/shared/amount-display';
 import { CurrencyInput } from '@/components/shared/currency-input';
 import { useToast } from '@/components/shared/toast';
 import { Modal } from '@/components/shared/modal';
-import type { WishlistItem, Goal } from '@/types';
+import type { WishlistItem } from '@/types';
+import type { GoalWithComputed } from '@/hooks/use-goals';
 
 // ---------------------------------------------------------------------------
 // Main Wishlist Page
@@ -347,7 +348,7 @@ export default function WishlistPage() {
 
 interface WishlistItemCardProps {
   item: WishlistItem;
-  goals: Goal[];
+  goals: GoalWithComputed[];
   onEdit: () => void;
   onComplete?: () => void;
   onAbandon?: () => void;
@@ -497,7 +498,7 @@ function WishlistItemCard({
 
 interface AddEditModalProps {
   item?: WishlistItem;
-  goals: Goal[];
+  goals: GoalWithComputed[];
   targetYear: number;
   onClose: () => void;
   onSave: (data: {
@@ -661,7 +662,7 @@ function AddEditModal({ item, goals, targetYear, onClose, onSave, onDelete }: Ad
             <option value="">No link - track manually</option>
             {activeGoals.map((goal) => (
               <option key={goal.id} value={goal.id}>
-                {goal.name} ({Math.round((goal.currentAmount / goal.targetAmount) * 100)}%)
+                {goal.name} ({Math.round((goal.calculatedBalance / goal.targetAmount) * 100)}%)
               </option>
             ))}
           </select>
