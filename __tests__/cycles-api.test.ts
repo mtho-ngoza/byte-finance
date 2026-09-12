@@ -9,6 +9,21 @@ vi.mock('@/lib/firebase-admin', () => ({
   getAdminDb: () => mockDb,
 }));
 
+vi.mock('firebase-admin/firestore', () => ({
+  FieldValue: {
+    serverTimestamp: () => ({ _type: 'serverTimestamp' }),
+    increment: (n: number) => ({ _type: 'increment', _value: n }),
+    arrayUnion: (...elements: unknown[]) => ({ _type: 'arrayUnion', _elements: elements }),
+  },
+  Timestamp: {
+    fromDate: (date: Date) => ({ toDate: () => date }),
+  },
+}));
+
+vi.mock('@/lib/payday-utils', () => ({
+  getPaydayForMonth: () => new Date('2026-09-30'),
+}));
+
 vi.mock('@/lib/auth', () => ({
   withAuth: async () => ({ userId: TEST_USER_ID }),
 }));
@@ -128,6 +143,143 @@ describe('Cycles API', () => {
       const cycle = mockDb._getDoc(`users/${TEST_USER_ID}/cycles`, '2026-09');
       expect(cycle?.income?.amount).toBe(2500000);
       expect(cycle?.income?.vatAmount).toBe(375000);
+    });
+
+    it('should return 404 for non-existent cycle on PATCH', async () => {
+      const { PATCH } = await import('@/app/api/cycles/[id]/route');
+      const response = await PATCH(
+        createRequest('PATCH', { status: 'closed' }) as never,
+        { params: Promise.resolve({ id: 'non-existent' }) }
+      );
+
+      expect(response.status).toBe(404);
+    });
+
+    it('should update date range when income.receivedDate is set', async () => {
+      mockDb._setDoc('users', TEST_USER_ID, {
+        preferences: { payDayType: 'last_working_day' },
+      });
+      mockDb._setDoc(`users/${TEST_USER_ID}/cycles`, '2026-09', {
+        status: 'active',
+        startDate: { toDate: () => new Date('2026-08-25') },
+        endDate: { toDate: () => new Date('2026-09-24') },
+      });
+
+      const { PATCH } = await import('@/app/api/cycles/[id]/route');
+      const response = await PATCH(
+        createRequest('PATCH', {
+          income: {
+            amount: 2500000,
+            receivedDate: '2026-08-30T00:00:00Z',
+          },
+        }) as never,
+        { params: Promise.resolve({ id: '2026-09' }) }
+      );
+
+      expect(response.status).toBe(200);
+      const cycle = mockDb._getDoc(`users/${TEST_USER_ID}/cycles`, '2026-09');
+      // Start date should be income received date
+      expect(cycle?.startDate).toBeDefined();
+    });
+
+    it('should update previous cycle end date when income.receivedDate is set', async () => {
+      mockDb._setDoc('users', TEST_USER_ID, {
+        preferences: { payDayType: 'last_working_day' },
+      });
+      mockDb._setDoc(`users/${TEST_USER_ID}/cycles`, '2026-08', {
+        status: 'active',
+        startDate: { toDate: () => new Date('2026-07-25') },
+        endDate: { toDate: () => new Date('2026-08-24') },
+      });
+      mockDb._setDoc(`users/${TEST_USER_ID}/cycles`, '2026-09', {
+        status: 'active',
+        startDate: { toDate: () => new Date('2026-08-25') },
+        endDate: { toDate: () => new Date('2026-09-24') },
+      });
+
+      const { PATCH } = await import('@/app/api/cycles/[id]/route');
+      await PATCH(
+        createRequest('PATCH', {
+          income: {
+            amount: 2500000,
+            receivedDate: '2026-08-30T00:00:00Z',
+          },
+        }) as never,
+        { params: Promise.resolve({ id: '2026-09' }) }
+      );
+
+      // Previous cycle end date should be updated
+      const prevCycle = mockDb._getDoc(`users/${TEST_USER_ID}/cycles`, '2026-08');
+      expect(prevCycle?.endDate).toBeDefined();
+    });
+
+    it('should use next cycle income date for end date calculation', async () => {
+      mockDb._setDoc('users', TEST_USER_ID, {
+        preferences: { payDayType: 'last_working_day' },
+      });
+      mockDb._setDoc(`users/${TEST_USER_ID}/cycles`, '2026-09', {
+        status: 'active',
+      });
+      mockDb._setDoc(`users/${TEST_USER_ID}/cycles`, '2026-10', {
+        status: 'active',
+        income: {
+          receivedDate: { toDate: () => new Date('2026-09-30') },
+        },
+      });
+
+      const { PATCH } = await import('@/app/api/cycles/[id]/route');
+      const response = await PATCH(
+        createRequest('PATCH', {
+          income: {
+            amount: 2500000,
+            receivedDate: '2026-08-30T00:00:00Z',
+          },
+        }) as never,
+        { params: Promise.resolve({ id: '2026-09' }) }
+      );
+
+      expect(response.status).toBe(200);
+    });
+
+    it('should reassign items based on payment date when income.receivedDate changes', async () => {
+      mockDb._setDoc('users', TEST_USER_ID, {
+        preferences: { payDayType: 'last_working_day' },
+      });
+      mockDb._setDoc(`users/${TEST_USER_ID}/cycles`, '2026-08', {
+        status: 'active',
+        totalPaid: 50000,
+        paidCount: 1,
+      });
+      mockDb._setDoc(`users/${TEST_USER_ID}/cycles`, '2026-09', {
+        status: 'active',
+        totalPaid: 0,
+        paidCount: 0,
+      });
+
+      // Item paid in September but currently assigned to August
+      mockDb._setDoc(`users/${TEST_USER_ID}/cycleItems`, 'item-1', {
+        cycleId: '2026-08',
+        label: 'Rent',
+        amount: 50000,
+        status: 'paid',
+        paidDate: { toDate: () => new Date('2026-09-05') },
+        totalPaidAmount: 50000,
+      });
+
+      const { PATCH } = await import('@/app/api/cycles/[id]/route');
+      await PATCH(
+        createRequest('PATCH', {
+          income: {
+            amount: 2500000,
+            receivedDate: '2026-08-30T00:00:00Z',
+          },
+        }) as never,
+        { params: Promise.resolve({ id: '2026-09' }) }
+      );
+
+      // Item should be reassigned to 2026-09 based on paidDate
+      const item = mockDb._getDoc(`users/${TEST_USER_ID}/cycleItems`, 'item-1');
+      expect(item?.cycleId).toBe('2026-09');
     });
   });
 
