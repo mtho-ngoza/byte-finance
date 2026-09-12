@@ -50,9 +50,61 @@ describe('Wishlist API', () => {
       const data = await response.json();
       expect(data.items).toHaveLength(2);
     });
+
+    it('should filter items by year', async () => {
+      mockDb._setDoc(`users/${TEST_USER_ID}/wishlist`, 'item-1', {
+        title: '2026 Item',
+        targetYear: 2026,
+      });
+      mockDb._setDoc(`users/${TEST_USER_ID}/wishlist`, 'item-2', {
+        title: '2027 Item',
+        targetYear: 2027,
+      });
+
+      const { GET } = await import('@/app/api/wishlist/route');
+      const response = await GET(createRequest('GET', null, 'http://localhost/api/wishlist?year=2026') as never);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.items).toHaveLength(1);
+      expect(data.items[0].title).toBe('2026 Item');
+    });
+
+    it('should include items with year range that includes requested year', async () => {
+      mockDb._setDoc(`users/${TEST_USER_ID}/wishlist`, 'item-1', {
+        title: 'Multi-year project',
+        targetYear: 2025,
+        targetYearEnd: 2027, // 2025-2027 range includes 2026
+      });
+      mockDb._setDoc(`users/${TEST_USER_ID}/wishlist`, 'item-2', {
+        title: '2024 Item',
+        targetYear: 2024,
+        targetYearEnd: 2024, // Not in range
+      });
+
+      const { GET } = await import('@/app/api/wishlist/route');
+      const response = await GET(createRequest('GET', null, 'http://localhost/api/wishlist?year=2026') as never);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.items).toHaveLength(1);
+      expect(data.items[0].title).toBe('Multi-year project');
+    });
   });
 
   describe('POST /api/wishlist', () => {
+    it('should require title, type, and targetYear', async () => {
+      const { POST } = await import('@/app/api/wishlist/route');
+
+      const response = await POST(createRequest('POST', {
+        // Missing required fields
+        description: 'Some item',
+      }) as never);
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error).toContain('title');
+    });
     it('should create a wishlist item', async () => {
       const { POST } = await import('@/app/api/wishlist/route');
 
