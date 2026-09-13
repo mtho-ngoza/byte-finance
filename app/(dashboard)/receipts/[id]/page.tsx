@@ -8,6 +8,9 @@ import { AmountDisplay } from '@/components/shared/amount-display';
 import { CurrencyInput } from '@/components/shared/currency-input';
 import { VendorAutocomplete } from '@/components/shared/vendor-autocomplete';
 import { useToast } from '@/components/shared/toast';
+import { useCategorySuggestion, useVendorRules } from '@/hooks/use-vendor-rules';
+import { CATEGORY_LABELS, SUB_CATEGORY_LABELS } from '@/lib/constants';
+import { CONFIDENCE_ICONS } from '@/lib/category-engine';
 import type { Receipt } from '@/types';
 
 interface ReceiptDetailPageProps {
@@ -28,6 +31,9 @@ export default function ReceiptDetailPage({ params }: ReceiptDetailPageProps) {
   const [extracting, setExtracting] = useState(false);
 
   const { toast, confirm } = useToast();
+
+  // Category suggestion based on vendor
+  const { suggestion: categorySuggestion } = useCategorySuggestion(vendor);
 
   // Sage integration state
   const { connectionStatus, findMatches, pushToSage } = useSage();
@@ -290,6 +296,19 @@ export default function ReceiptDetailPage({ params }: ReceiptDetailPageProps) {
                 placeholder="e.g., Checkers, KFC, Netflix"
                 className="w-full px-3 py-2 bg-background border border-border rounded-lg text-text-primary focus:outline-none focus:border-primary text-sm"
               />
+              {/* Category suggestion badge */}
+              {categorySuggestion && categorySuggestion.category !== 'other' && (
+                <div className="flex items-center gap-2 mt-2">
+                  <span className="text-xs text-text-secondary">Suggested:</span>
+                  <span className="px-2 py-0.5 text-xs rounded bg-primary/10 text-primary">
+                    {CONFIDENCE_ICONS[categorySuggestion.confidence]}{' '}
+                    {CATEGORY_LABELS[categorySuggestion.category]}
+                    {categorySuggestion.subCategory && (
+                      <span className="text-primary/70"> / {SUB_CATEGORY_LABELS[categorySuggestion.subCategory] || categorySuggestion.subCategory}</span>
+                    )}
+                  </span>
+                </div>
+              )}
             </div>
             <button
               onClick={handleSave}
@@ -313,6 +332,16 @@ export default function ReceiptDetailPage({ params }: ReceiptDetailPageProps) {
               <div>
                 <p className="text-xs text-text-secondary mb-1">Vendor</p>
                 <p className="text-text-primary font-medium">{receipt.vendor || <span className="text-warning text-sm">Not set</span>}</p>
+                {/* Show suggested category in view mode */}
+                {receipt.vendor && categorySuggestion && categorySuggestion.category !== 'other' && (
+                  <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 text-xs rounded bg-primary/10 text-primary">
+                    {CONFIDENCE_ICONS[categorySuggestion.confidence]}{' '}
+                    {CATEGORY_LABELS[categorySuggestion.category]}
+                    {categorySuggestion.subCategory && (
+                      <span className="text-primary/70">/ {SUB_CATEGORY_LABELS[categorySuggestion.subCategory]}</span>
+                    )}
+                  </span>
+                )}
               </div>
             </div>
 

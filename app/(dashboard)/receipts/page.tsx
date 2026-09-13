@@ -11,6 +11,9 @@ import { CurrencyInput } from '@/components/shared/currency-input';
 import { DateInput } from '@/components/shared/date-input';
 import { VendorAutocomplete } from '@/components/shared/vendor-autocomplete';
 import { useToast } from '@/components/shared/toast';
+import { useCategorySuggestion } from '@/hooks/use-vendor-rules';
+import { CATEGORY_LABELS, SUB_CATEGORY_LABELS } from '@/lib/constants';
+import { CONFIDENCE_ICONS } from '@/lib/category-engine';
 import type { Receipt, PendingReceipt } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -643,6 +646,9 @@ function ReceiptCapture({ onClose }: { onClose: () => void }) {
   const [vendor, setVendor] = useState('');
   const [capturedDate, setCapturedDate] = useState(new Date().toISOString().split('T')[0]);
 
+  // Category suggestion based on vendor
+  const { suggestion: categorySuggestion } = useCategorySuggestion(vendor);
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -746,6 +752,19 @@ function ReceiptCapture({ onClose }: { onClose: () => void }) {
                 placeholder="e.g., Checkers, KFC, Netflix..."
                 className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder:text-white/50 focus:outline-none focus:border-primary text-sm"
               />
+              {/* Category suggestion badge */}
+              {categorySuggestion && categorySuggestion.category !== 'other' && (
+                <div className="flex items-center gap-2 mt-2">
+                  <span className="text-xs text-white/50">Category:</span>
+                  <span className="px-2 py-0.5 text-xs rounded bg-primary/20 text-primary">
+                    {CONFIDENCE_ICONS[categorySuggestion.confidence]}{' '}
+                    {CATEGORY_LABELS[categorySuggestion.category]}
+                    {categorySuggestion.subCategory && (
+                      <span className="text-primary/70"> / {SUB_CATEGORY_LABELS[categorySuggestion.subCategory] || categorySuggestion.subCategory}</span>
+                    )}
+                  </span>
+                </div>
+              )}
             </div>
             <div>
               <label className="block text-xs text-white/70 mb-1">Date</label>
