@@ -510,6 +510,13 @@ export default function SettingsPage() {
           <h2 className="text-base font-semibold text-text-primary">Manage</h2>
         </div>
         <div className="space-y-2">
+          <Link href="/settings/vendor-rules" className="flex items-center justify-between p-4 bg-surface border border-border rounded-lg hover:bg-background transition-colors">
+            <div>
+              <p className="text-sm font-medium text-text-primary">Vendor Rules</p>
+              <p className="text-xs text-text-secondary">Auto-categorize receipts by vendor</p>
+            </div>
+            <svg className="w-5 h-5 text-text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+          </Link>
           <Link href="/plan" className="flex items-center justify-between p-4 bg-surface border border-border rounded-lg hover:bg-background transition-colors">
             <div>
               <p className="text-sm font-medium text-text-primary">Commitments</p>

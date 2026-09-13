@@ -16,6 +16,44 @@ export type Category =
   | 'other';
 
 /**
+ * Sub-categories for granular expense tracking
+ */
+export type SubCategoryMap = {
+  transport: 'fuel' | 'parking' | 'tolls' | 'maintenance' | 'insurance';
+  utilities: 'electricity' | 'water' | 'internet' | 'streaming';
+  lifestyle: 'groceries' | 'dining' | 'entertainment' | 'shopping';
+  health: 'medical_aid' | 'pharmacy' | 'doctor';
+  family: 'school' | 'childcare' | 'support';
+  housing: never;
+  education: never;
+  savings: never;
+  business: never;
+  other: never;
+};
+
+export type SubCategory = SubCategoryMap[Category] | undefined;
+
+/**
+ * Confidence level for category assignment
+ */
+export type CategoryConfidence = 'high' | 'medium' | 'low';
+
+/**
+ * Vendor rule for auto-categorization
+ * Per-user Firestore collection to map vendors → categories
+ */
+export interface VendorRule {
+  id: string;
+  vendor: string;                     // Normalized vendor name: "pick n pay" → "Pick n Pay"
+  category: Category;
+  subCategory?: string;
+  confidence: 'user_set' | 'learned'; // How the rule was created
+  matchCount: number;                 // Times this rule was applied
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+/**
  * Status flow for cycle items: upcoming → due → partial → paid (or skipped)
  * partial = some payments made but committed amount not fully covered
  */
@@ -240,6 +278,8 @@ export interface CycleItem {
   amount: number;                   // Committed/budgeted amount in cents
   actualAmount?: number;            // What was actually spent (for variable items). Falls back to amount if not set.
   category: Category;
+  subCategory?: string;             // Optional sub-category for granularity
+  categoryConfidence?: CategoryConfidence; // How category was assigned (high/medium/low)
   accountType: 'personal' | 'business';
 
   // Status flow
@@ -435,6 +475,7 @@ export type CreateCycle = Omit<Cycle, 'id' | 'createdAt' | 'updatedAt'>;
 export type CreateCycleItem = Omit<CycleItem, 'id' | 'createdAt' | 'updatedAt'>;
 export type CreateReceipt = Omit<Receipt, 'id' | 'createdAt' | 'updatedAt'>;
 export type CreateWishlistItem = Omit<WishlistItem, 'id' | 'createdAt' | 'updatedAt' | 'completedAt' | 'progress' | 'currentAmount'>;
+export type CreateVendorRule = Omit<VendorRule, 'id' | 'createdAt' | 'updatedAt' | 'matchCount'>;
 
 /**
  * Health Score - Gamified 0-100 score based on 4 pillars
