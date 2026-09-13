@@ -44,6 +44,13 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  if (typeof targetAmount !== 'number' || targetAmount <= 0) {
+    return NextResponse.json(
+      { error: 'targetAmount must be a positive number' },
+      { status: 400 }
+    );
+  }
+
   const db = getAdminDb();
   const now = FieldValue.serverTimestamp();
 

@@ -53,6 +53,13 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  if (typeof amount !== 'number' || amount < 0) {
+    return NextResponse.json(
+      { error: 'amount must be a non-negative number' },
+      { status: 400 }
+    );
+  }
+
   const db = getAdminDb();
   const now = FieldValue.serverTimestamp();
 

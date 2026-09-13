@@ -44,6 +44,11 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: 'Contribution not found' }, { status: 404 });
   }
 
+  // Validate amount if provided
+  if (body.amount !== undefined && (typeof body.amount !== 'number' || body.amount <= 0)) {
+    return NextResponse.json({ error: 'amount must be a positive number' }, { status: 400 });
+  }
+
   const oldContrib = contributions[contribIndex];
   const oldAmount = oldContrib.amount;
 
