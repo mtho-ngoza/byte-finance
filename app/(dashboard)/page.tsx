@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { useCycles } from '@/hooks/use-cycles';
 import { useCycleItems } from '@/hooks/use-cycle-items';
@@ -17,7 +17,10 @@ import { Modal, ModalActions } from '@/components/shared/modal';
 import { ProgressBar } from '@/components/shared/progress-bar';
 import { HealthScoreWidget } from '@/components/health-score/health-score-widget';
 import { IncomeEntry } from '@/components/shared/income-entry';
-import type { CycleItem, CycleItemStatus, Insight } from '@/types';
+import { useCategorySuggestion } from '@/hooks/use-vendor-rules';
+import { CATEGORY_LABELS, SUB_CATEGORY_LABELS } from '@/lib/constants';
+import { CONFIDENCE_ICONS } from '@/lib/category-engine';
+import type { CycleItem, CycleItemStatus, Insight, Category } from '@/types';
 import type { GoalWithComputed } from '@/hooks/use-goals';
 import { getCycleDateRange, getCycleIdForDate, formatCycleDateRange } from '@/lib/payday-utils';
 
@@ -972,18 +975,31 @@ interface AddItemButtonProps {
 function AddItemButton({ cycleId }: AddItemButtonProps) {
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [label, setLabel] = useState('');
+  const [amount, setAmount] = useState('');
+  const [category, setCategory] = useState<Category>('other');
+  const [accountType, setAccountType] = useState<'personal' | 'business'>('personal');
+
+  // Category suggestion based on label (treats label as vendor-like keyword)
+  const { suggestion: categorySuggestion } = useCategorySuggestion(label);
+
+  // Auto-apply suggestion when it changes and user hasn't manually selected
+  useEffect(() => {
+    if (categorySuggestion && categorySuggestion.category !== 'other' && category === 'other') {
+      setCategory(categorySuggestion.category);
+    }
+  }, [categorySuggestion, category]);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setSaving(true);
 
-    const formData = new FormData(e.currentTarget);
     const body = {
       cycleId,
-      label: formData.get('label'),
-      amount: Number(formData.get('amount')) * 100, // Convert to cents
-      category: formData.get('category'),
-      accountType: formData.get('accountType'),
+      label,
+      amount: Number(amount) * 100, // Convert to cents
+      category,
+      accountType,
     };
 
     try {
@@ -994,28 +1010,39 @@ function AddItemButton({ cycleId }: AddItemButtonProps) {
       });
       if (res.ok) {
         setShowForm(false);
-        (e.target as HTMLFormElement).reset();
+        setLabel('');
+        setAmount('');
+        setCategory('other');
+        setAccountType('personal');
       }
     } finally {
       setSaving(false);
     }
   };
 
+  const handleClose = () => {
+    setShowForm(false);
+    setLabel('');
+    setAmount('');
+    setCategory('other');
+    setAccountType('personal');
+  };
+
   return (
     <>
       <Modal
         open={showForm}
-        onClose={() => setShowForm(false)}
+        onClose={handleClose}
         title="Add One-off Item"
         footer={
           <ModalActions
-            onCancel={() => setShowForm(false)}
+            onCancel={handleClose}
             onConfirm={() => {
               const form = document.getElementById('add-item-form') as HTMLFormElement;
               form?.requestSubmit();
             }}
             confirmLabel={saving ? 'Adding...' : 'Add Item'}
-            confirmDisabled={saving}
+            confirmDisabled={saving || !label.trim() || !amount}
           />
         }
       >
@@ -1023,16 +1050,39 @@ function AddItemButton({ cycleId }: AddItemButtonProps) {
           <div>
             <label className="block text-xs text-text-secondary mb-1">Label</label>
             <input
-              name="label"
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
               required
-              placeholder="e.g., Doctor visit"
+              placeholder="e.g., Engen fuel, Doctor visit"
               className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary text-sm"
             />
+            {/* Category suggestion badge */}
+            {categorySuggestion && categorySuggestion.category !== 'other' && (
+              <div className="flex items-center gap-2 mt-1.5">
+                <span className="text-[10px] text-text-secondary">Suggested:</span>
+                <button
+                  type="button"
+                  onClick={() => setCategory(categorySuggestion.category)}
+                  className={`px-2 py-0.5 text-xs rounded transition-colors ${
+                    category === categorySuggestion.category
+                      ? 'bg-primary/20 text-primary'
+                      : 'bg-primary/10 text-primary/70 hover:bg-primary/15'
+                  }`}
+                >
+                  {CONFIDENCE_ICONS[categorySuggestion.confidence]}{' '}
+                  {CATEGORY_LABELS[categorySuggestion.category]}
+                  {categorySuggestion.subCategory && (
+                    <span className="opacity-70"> / {SUB_CATEGORY_LABELS[categorySuggestion.subCategory]}</span>
+                  )}
+                </button>
+              </div>
+            )}
           </div>
           <div>
             <label className="block text-xs text-text-secondary mb-1">Amount (R)</label>
             <input
-              name="amount"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
               type="number"
               required
               min="0"
@@ -1045,7 +1095,8 @@ function AddItemButton({ cycleId }: AddItemButtonProps) {
             <div>
               <label className="block text-xs text-text-secondary mb-1">Category</label>
               <select
-                name="category"
+                value={category}
+                onChange={(e) => setCategory(e.target.value as Category)}
                 required
                 className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary text-sm"
               >
@@ -1064,7 +1115,8 @@ function AddItemButton({ cycleId }: AddItemButtonProps) {
             <div>
               <label className="block text-xs text-text-secondary mb-1">Account</label>
               <select
-                name="accountType"
+                value={accountType}
+                onChange={(e) => setAccountType(e.target.value as 'personal' | 'business')}
                 required
                 className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary text-sm"
               >

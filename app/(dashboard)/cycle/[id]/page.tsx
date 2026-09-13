@@ -35,6 +35,9 @@ import { GroupedReceiptPicker, ReceiptItem } from '@/components/shared/grouped-r
 import { DateInput } from '@/components/shared/date-input';
 import { Modal, ModalActions } from '@/components/shared/modal';
 import { ProgressBar } from '@/components/shared/progress-bar';
+import { useCategorySuggestion } from '@/hooks/use-vendor-rules';
+import { CATEGORY_LABELS, SUB_CATEGORY_LABELS } from '@/lib/constants';
+import { CONFIDENCE_ICONS } from '@/lib/category-engine';
 import type { CycleItem, CycleItemStatus, Category, Cycle } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -899,6 +902,9 @@ function EditItemModal({ item, userId, onClose }: EditItemModalProps) {
   const [category, setCategory] = useState<Category>(item.category);
   const [accountType, setAccountType] = useState<'personal' | 'business'>(item.accountType);
 
+  // Category suggestion based on label
+  const { suggestion: categorySuggestion } = useCategorySuggestion(label);
+
   const handleSave = async () => {
     if (!userId) return;
     setSaving(true);
@@ -943,6 +949,23 @@ function EditItemModal({ item, userId, onClose }: EditItemModalProps) {
             onChange={(e) => setLabel(e.target.value)}
             className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary text-sm"
           />
+          {/* Category suggestion badge */}
+          {categorySuggestion && categorySuggestion.category !== 'other' && categorySuggestion.category !== category && (
+            <div className="flex items-center gap-2 mt-1.5">
+              <span className="text-[10px] text-text-secondary">Suggested:</span>
+              <button
+                type="button"
+                onClick={() => setCategory(categorySuggestion.category)}
+                className="px-2 py-0.5 text-xs rounded bg-primary/10 text-primary hover:bg-primary/15 transition-colors"
+              >
+                {CONFIDENCE_ICONS[categorySuggestion.confidence]}{' '}
+                {CATEGORY_LABELS[categorySuggestion.category]}
+                {categorySuggestion.subCategory && (
+                  <span className="opacity-70"> / {SUB_CATEGORY_LABELS[categorySuggestion.subCategory]}</span>
+                )}
+              </button>
+            </div>
+          )}
         </div>
 
         <div>
