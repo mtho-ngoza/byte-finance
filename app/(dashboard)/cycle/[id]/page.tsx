@@ -630,6 +630,17 @@ function SortableItemRow({ item, cycleId, userId, onStatusChange, onAmountChange
               </span>
             )}
             {isSkipped && <span className="text-warning">skipped</span>}
+            {/* Category confidence badge */}
+            {item.categoryConfidence && item.categoryConfidence !== 'high' && (
+              <span
+                className={`text-[10px] ${
+                  item.categoryConfidence === 'medium' ? 'text-warning' : 'text-text-secondary'
+                }`}
+                title={`Category confidence: ${item.categoryConfidence}`}
+              >
+                {CONFIDENCE_ICONS[item.categoryConfidence]}
+              </span>
+            )}
           </div>
         </div>
 

@@ -738,6 +738,15 @@ function CycleItemRow({ item, onStatusChange, onAmountChange, onDelete, onAddPay
               <span className="ml-1.5 px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 text-[10px] uppercase">Biz</span>
             )}
             {item.linkedGoalId && <span className="ml-1.5 text-primary">linked</span>}
+            {/* Category confidence indicator */}
+            {item.categoryConfidence && item.categoryConfidence !== 'high' && (
+              <span
+                className={`ml-1.5 ${item.categoryConfidence === 'medium' ? 'text-warning' : 'text-text-secondary/50'}`}
+                title={`Category confidence: ${item.categoryConfidence}`}
+              >
+                {CONFIDENCE_ICONS[item.categoryConfidence]}
+              </span>
+            )}
           </p>
         </div>
 
