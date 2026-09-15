@@ -38,12 +38,15 @@ function formatZARCompact(cents: number): string {
 }
 
 export function AmountDisplay({ amount, className = '', size = 'md', compact = false }: AmountDisplayProps) {
+  // Auto-compact large amounts for lg size to prevent overflow
+  const shouldCompact = compact || (size === 'lg' && Math.abs(amount) >= 1000000);
+
   return (
     <span
       className={`font-mono whitespace-nowrap ${sizeClasses[size]} ${className}`}
       style={{ fontFamily: 'var(--font-jetbrains-mono), ui-monospace, monospace' }}
     >
-      {compact ? formatZARCompact(amount) : formatZAR(amount)}
+      {shouldCompact ? formatZARCompact(amount) : formatZAR(amount)}
     </span>
   );
 }
