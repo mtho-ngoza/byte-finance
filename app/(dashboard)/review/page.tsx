@@ -183,7 +183,7 @@ export default function YearReviewPage() {
       <section className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <StatCard
           label="Total Spent"
-          value={<AmountDisplay amount={data.summary.totalSpent} size="lg" />}
+          value={<AmountDisplay amount={data.summary.totalSpent} size="lg" compact />}
           subtext={data.summary.spendingChange !== null ? (
             <span className={data.summary.spendingChange >= 0 ? 'text-error' : 'text-primary'}>
               {data.summary.spendingChange >= 0 ? '+' : ''}{data.summary.spendingChange}% vs {selectedYear - 1}
@@ -192,7 +192,7 @@ export default function YearReviewPage() {
         />
         <StatCard
           label="Net Income"
-          value={<AmountDisplay amount={data.summary.netIncome} size="lg" />}
+          value={<AmountDisplay amount={data.summary.netIncome} size="lg" compact />}
           subtext={data.summary.totalVat > 0 ? (
             <span className="text-text-secondary">After VAT</span>
           ) : null}
@@ -468,10 +468,10 @@ interface StatCardProps {
 
 function StatCard({ label, value, subtext }: StatCardProps) {
   return (
-    <div className="p-4 rounded-xl border border-border bg-surface">
+    <div className="p-3 sm:p-4 rounded-xl border border-border bg-surface overflow-hidden">
       <p className="text-xs text-text-secondary uppercase tracking-wide mb-1">{label}</p>
-      <p className="text-xl font-semibold text-text-primary">{value}</p>
-      {subtext && <p className="text-xs mt-1">{subtext}</p>}
+      <div className="text-lg sm:text-xl font-semibold text-text-primary truncate">{value}</div>
+      {subtext && <p className="text-xs mt-1 truncate">{subtext}</p>}
     </div>
   );
 }
