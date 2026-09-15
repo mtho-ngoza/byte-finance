@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useCommitments } from '@/hooks/use-commitments';
 import { useGoals, GoalWithComputed } from '@/hooks/use-goals';
@@ -10,7 +10,7 @@ import { useToast } from '@/components/shared/toast';
 import { Modal } from '@/components/shared/modal';
 import { ToggleSwitch } from '@/components/shared/toggle-switch';
 import { ProgressBar } from '@/components/shared/progress-bar';
-import { CATEGORIES, CATEGORY_LABELS, GOAL_TYPE_ICONS } from '@/lib/constants';
+import { CATEGORIES, CATEGORY_LABELS, GOAL_TYPE_ICONS, getSubCategoryOptions } from '@/lib/constants';
 import type { Category, Commitment } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -338,11 +338,22 @@ function CommitmentForm({ initial, goals, onSave, onCancel }: CommitmentFormProp
   const [label, setLabel] = useState(initial?.label ?? '');
   const [amount, setAmount] = useState(initial?.amount ?? 0);
   const [category, setCategory] = useState<Category>(initial?.category ?? 'other');
+  const [subCategory, setSubCategory] = useState(initial?.subCategory ?? '');
   const [accountType, setAccountType] = useState<'personal' | 'business'>(initial?.accountType ?? 'personal');
   const [isVariable, setIsVariable] = useState(initial?.isVariable ?? false);
   const [dueDay, setDueDay] = useState<string>(initial?.dueDay?.toString() ?? '');
   const [linkedGoalId, setLinkedGoalId] = useState(initial?.linkedGoalId ?? '');
   const [saving, setSaving] = useState(false);
+
+  // Get available sub-categories for current category
+  const subCategoryOptions = getSubCategoryOptions(category);
+
+  // Reset sub-category when category changes and sub-category is not valid
+  useEffect(() => {
+    if (!subCategoryOptions.some((opt) => opt.value === subCategory)) {
+      setSubCategory('');
+    }
+  }, [category, subCategoryOptions, subCategory]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -352,6 +363,7 @@ function CommitmentForm({ initial, goals, onSave, onCancel }: CommitmentFormProp
         label,
         amount,
         category,
+        subCategory: subCategory || null,
         accountType,
         isVariable,
         dueDay: dueDay ? parseInt(dueDay, 10) : null,
@@ -409,6 +421,22 @@ function CommitmentForm({ initial, goals, onSave, onCancel }: CommitmentFormProp
           >
             {CATEGORIES.map((c) => (
               <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Sub-category */}
+        <div>
+          <label className="block text-xs text-text-secondary mb-1">Sub-category</label>
+          <select
+            value={subCategory}
+            onChange={(e) => setSubCategory(e.target.value)}
+            disabled={subCategoryOptions.length === 0}
+            className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary text-sm focus:outline-none focus:border-primary disabled:opacity-50"
+          >
+            <option value="">None</option>
+            {subCategoryOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
             ))}
           </select>
         </div>

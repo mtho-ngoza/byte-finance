@@ -17,8 +17,8 @@ import { Modal, ModalActions } from '@/components/shared/modal';
 import { ProgressBar } from '@/components/shared/progress-bar';
 import { HealthScoreWidget } from '@/components/health-score/health-score-widget';
 import { IncomeEntry } from '@/components/shared/income-entry';
-import { useCategorySuggestion } from '@/hooks/use-vendor-rules';
-import { CATEGORY_LABELS, SUB_CATEGORY_LABELS } from '@/lib/constants';
+import { useCategorySuggestion, useVendorRules } from '@/hooks/use-vendor-rules';
+import { CATEGORY_LABELS, SUB_CATEGORY_LABELS, getSubCategoryOptions } from '@/lib/constants';
 import { CONFIDENCE_ICONS } from '@/lib/category-engine';
 import type { CycleItem, CycleItemStatus, Insight, Category } from '@/types';
 import type { GoalWithComputed } from '@/hooks/use-goals';
@@ -978,27 +978,51 @@ function AddItemButton({ cycleId }: AddItemButtonProps) {
   const [label, setLabel] = useState('');
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState<Category>('other');
+  const [subCategory, setSubCategory] = useState('');
   const [accountType, setAccountType] = useState<'personal' | 'business'>('personal');
 
   // Category suggestion based on label (treats label as vendor-like keyword)
   const { suggestion: categorySuggestion } = useCategorySuggestion(label);
 
+  // Vendor rules for learning
+  const { learnFromAssignment } = useVendorRules();
+
+  // Get available sub-categories for current category
+  const subCategoryOptions = getSubCategoryOptions(category);
+
   // Auto-apply suggestion when it changes and user hasn't manually selected
   useEffect(() => {
     if (categorySuggestion && categorySuggestion.category !== 'other' && category === 'other') {
       setCategory(categorySuggestion.category);
+      if (categorySuggestion.subCategory) {
+        setSubCategory(categorySuggestion.subCategory);
+      }
     }
   }, [categorySuggestion, category]);
+
+  // Reset sub-category when category changes and sub-category is not valid
+  useEffect(() => {
+    if (!subCategoryOptions.some((opt) => opt.value === subCategory)) {
+      setSubCategory('');
+    }
+  }, [category, subCategoryOptions, subCategory]);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setSaving(true);
+
+    // Determine category confidence based on suggestion
+    const confidence = categorySuggestion && category === categorySuggestion.category
+      ? categorySuggestion.confidence
+      : 'high'; // User manually selected, so high confidence
 
     const body = {
       cycleId,
       label,
       amount: Number(amount) * 100, // Convert to cents
       category,
+      subCategory: subCategory || undefined,
+      categoryConfidence: confidence,
       accountType,
     };
 
@@ -1009,10 +1033,16 @@ function AddItemButton({ cycleId }: AddItemButtonProps) {
         body: JSON.stringify(body),
       });
       if (res.ok) {
+        // Learn from user's category assignment if category is not 'other' and label looks like a vendor
+        if (category !== 'other' && label.trim().length >= 3) {
+          learnFromAssignment(label, category, subCategory || undefined);
+        }
+
         setShowForm(false);
         setLabel('');
         setAmount('');
         setCategory('other');
+        setSubCategory('');
         setAccountType('personal');
       }
     } finally {
@@ -1025,6 +1055,7 @@ function AddItemButton({ cycleId }: AddItemButtonProps) {
     setLabel('');
     setAmount('');
     setCategory('other');
+    setSubCategory('');
     setAccountType('personal');
   };
 
@@ -1113,17 +1144,31 @@ function AddItemButton({ cycleId }: AddItemButtonProps) {
               </select>
             </div>
             <div>
-              <label className="block text-xs text-text-secondary mb-1">Account</label>
+              <label className="block text-xs text-text-secondary mb-1">Sub-category</label>
               <select
-                value={accountType}
-                onChange={(e) => setAccountType(e.target.value as 'personal' | 'business')}
-                required
-                className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary text-sm"
+                value={subCategory}
+                onChange={(e) => setSubCategory(e.target.value)}
+                disabled={subCategoryOptions.length === 0}
+                className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary text-sm disabled:opacity-50"
               >
-                <option value="personal">Personal</option>
-                <option value="business">Business</option>
+                <option value="">None</option>
+                {subCategoryOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
               </select>
             </div>
+          </div>
+          <div>
+            <label className="block text-xs text-text-secondary mb-1">Account</label>
+            <select
+              value={accountType}
+              onChange={(e) => setAccountType(e.target.value as 'personal' | 'business')}
+              required
+              className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary text-sm"
+            >
+              <option value="personal">Personal</option>
+              <option value="business">Business</option>
+            </select>
           </div>
         </form>
       </Modal>

@@ -88,6 +88,7 @@ export interface Commitment {
   label: string;                    // "Bond", "Medical Aid", "Grocery"
   amount: number;                   // Default amount in cents
   category: Category;
+  subCategory?: string;             // Optional sub-category for granularity
   accountType: 'personal' | 'business';
 
   // Smart linking - auto-contribute to goal when paid

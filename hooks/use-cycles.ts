@@ -119,6 +119,8 @@ export async function createCycle(
       label: commitment.label,
       amount: commitment.amount,
       category: commitment.category,
+      subCategory: commitment.subCategory,
+      categoryConfidence: 'high', // From commitment template, so high confidence
       accountType: commitment.accountType,
       status: 'upcoming',
       linkedGoalId: commitment.linkedGoalId,

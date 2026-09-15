@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -35,8 +35,8 @@ import { GroupedReceiptPicker, ReceiptItem } from '@/components/shared/grouped-r
 import { DateInput } from '@/components/shared/date-input';
 import { Modal, ModalActions } from '@/components/shared/modal';
 import { ProgressBar } from '@/components/shared/progress-bar';
-import { useCategorySuggestion } from '@/hooks/use-vendor-rules';
-import { CATEGORY_LABELS, SUB_CATEGORY_LABELS } from '@/lib/constants';
+import { useCategorySuggestion, useVendorRules } from '@/hooks/use-vendor-rules';
+import { CATEGORY_LABELS, SUB_CATEGORY_LABELS, getSubCategoryOptions } from '@/lib/constants';
 import { CONFIDENCE_ICONS } from '@/lib/category-engine';
 import type { CycleItem, CycleItemStatus, Category, Cycle } from '@/types';
 
@@ -900,10 +900,24 @@ function EditItemModal({ item, userId, onClose }: EditItemModalProps) {
   const [label, setLabel] = useState(item.label);
   const [amount, setAmount] = useState((item.amount / 100).toFixed(2));
   const [category, setCategory] = useState<Category>(item.category);
+  const [subCategory, setSubCategory] = useState(item.subCategory || '');
   const [accountType, setAccountType] = useState<'personal' | 'business'>(item.accountType);
 
   // Category suggestion based on label
   const { suggestion: categorySuggestion } = useCategorySuggestion(label);
+
+  // Vendor rules for learning
+  const { learnFromAssignment } = useVendorRules();
+
+  // Get available sub-categories for current category
+  const subCategoryOptions = getSubCategoryOptions(category);
+
+  // Reset sub-category when category changes and sub-category is not valid
+  useEffect(() => {
+    if (!subCategoryOptions.some((opt) => opt.value === subCategory)) {
+      setSubCategory('');
+    }
+  }, [category, subCategoryOptions, subCategory]);
 
   const handleSave = async () => {
     if (!userId) return;
@@ -915,9 +929,17 @@ function EditItemModal({ item, userId, onClose }: EditItemModalProps) {
         label,
         amount: Math.round(parseFloat(amount) * 100),
         category,
+        subCategory: subCategory || null,
+        categoryConfidence: 'high', // User manually confirmed
         accountType,
         updatedAt: Timestamp.now(),
       });
+
+      // Learn from user's category assignment if category changed and label looks like a vendor
+      if (category !== item.category && label.trim().length >= 3) {
+        learnFromAssignment(label, category, subCategory || undefined);
+      }
+
       onClose();
     } catch (err) {
       console.error('Update failed:', err);
@@ -996,16 +1018,30 @@ function EditItemModal({ item, userId, onClose }: EditItemModalProps) {
             </select>
           </div>
           <div>
-            <label className="block text-xs text-text-secondary mb-1">Account</label>
+            <label className="block text-xs text-text-secondary mb-1">Sub-category</label>
             <select
-              value={accountType}
-              onChange={(e) => setAccountType(e.target.value as 'personal' | 'business')}
-              className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary text-sm"
+              value={subCategory}
+              onChange={(e) => setSubCategory(e.target.value)}
+              disabled={subCategoryOptions.length === 0}
+              className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary text-sm disabled:opacity-50"
             >
-              <option value="personal">Personal</option>
-              <option value="business">Business</option>
+              <option value="">None</option>
+              {subCategoryOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
             </select>
           </div>
+        </div>
+        <div>
+          <label className="block text-xs text-text-secondary mb-1">Account</label>
+          <select
+            value={accountType}
+            onChange={(e) => setAccountType(e.target.value as 'personal' | 'business')}
+            className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary text-sm"
+          >
+            <option value="personal">Personal</option>
+            <option value="business">Business</option>
+          </select>
         </div>
       </div>
     </Modal>

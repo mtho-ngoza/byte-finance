@@ -37,6 +37,8 @@ export async function POST(request: NextRequest) {
     label,
     amount,
     category,
+    subCategory,
+    categoryConfidence,
     accountType,
     linkedGoalId,
     dueDate,
@@ -72,6 +74,8 @@ export async function POST(request: NextRequest) {
     label,
     amount,
     category,
+    subCategory: subCategory ?? null,
+    categoryConfidence: categoryConfidence ?? null, // 'high' | 'medium' | 'low'
     accountType,
     status: status ?? 'upcoming',
     linkedGoalId: linkedGoalId ?? null,
