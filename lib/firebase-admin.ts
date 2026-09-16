@@ -1,6 +1,7 @@
 import { initializeApp, getApps, cert, App } from 'firebase-admin/app';
 import { getFirestore, Firestore } from 'firebase-admin/firestore';
 import { getStorage, Storage } from 'firebase-admin/storage';
+import { getAuth, Auth } from 'firebase-admin/auth';
 
 // Singleton — reuse across hot-reloads in Next.js dev mode
 let adminApp: App;
@@ -39,3 +40,14 @@ export function getAdminStorage(): Storage {
   adminStorage = getStorage(getAdminApp());
   return adminStorage;
 }
+
+// Export Auth instance for creating custom tokens
+let adminAuthInstance: Auth;
+export const adminAuth = {
+  createCustomToken: async (uid: string) => {
+    if (!adminAuthInstance) {
+      adminAuthInstance = getAuth(getAdminApp());
+    }
+    return adminAuthInstance.createCustomToken(uid);
+  },
+};
