@@ -15,6 +15,12 @@ export function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!login|api/auth|_next/static|_next/image|favicon.ico|manifest.json|icons).*)',
+    // Protect all routes except:
+    // - login page
+    // - api/auth (NextAuth routes)
+    // - share routes (token-authenticated, not session-authenticated)
+    // - api/share routes (public share API)
+    // - static files
+    '/((?!login|register|api/auth|share|api/share|_next/static|_next/image|favicon.ico|manifest.json|icons).*)',
   ],
 };
