@@ -1,22 +1,35 @@
 'use client';
 
-import { useSession } from 'next-auth/react';
-
-/** Fixed dev user ID — matches the one in lib/auth.ts */
-const DEV_USER_ID = 'dev-user-local';
+import { useFirebaseAuth } from '@/components/providers/firebase-auth-provider';
 
 /**
- * Returns the current user ID.
- * In development or when SKIP_AUTH is set, returns a fixed dev user ID.
- * In production, returns the session user ID.
+ * Returns the current user ID for Firestore operations.
+ *
+ * In production: Returns the Firebase Auth UID after the session is synced.
+ * In development: Returns 'dev-user-local' for local testing.
+ *
+ * This hook should be used by all Firestore queries to ensure the user ID
+ * matches both the document path AND the Firebase Auth UID (for security rules).
+ *
+ * Returns undefined while loading or if not authenticated.
  */
 export function useUserId(): string | undefined {
-  const { data: session } = useSession();
+  const { userId, ready } = useFirebaseAuth();
 
-  // NEXT_PUBLIC_ prefix needed for client-side access
-  if (process.env.NODE_ENV === 'development' || process.env.NEXT_PUBLIC_SKIP_AUTH === 'true') {
-    return DEV_USER_ID;
+  // Return undefined while Firebase Auth is initializing
+  // This prevents Firestore queries from running with wrong/no user ID
+  if (!ready) {
+    return undefined;
   }
 
-  return session?.user?.id;
+  return userId ?? undefined;
+}
+
+/**
+ * Returns true if the user ID is ready to use.
+ * Useful for showing loading states in components.
+ */
+export function useUserIdReady(): boolean {
+  const { ready } = useFirebaseAuth();
+  return ready;
 }
