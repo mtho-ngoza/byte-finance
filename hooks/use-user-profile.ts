@@ -23,14 +23,21 @@ export function useUserProfile(): UseUserProfileResult {
     }
 
     const ref = doc(db, `users/${userId}`);
-    const unsubscribe = onSnapshot(ref, (snap) => {
-      if (snap.exists()) {
-        setProfile({ id: snap.id, ...snap.data() } as UserProfile);
-      } else {
-        setProfile(null);
+    const unsubscribe = onSnapshot(
+      ref,
+      (snap) => {
+        if (snap.exists()) {
+          setProfile({ id: snap.id, ...snap.data() } as UserProfile);
+        } else {
+          setProfile(null);
+        }
+        setLoading(false);
+      },
+      (err) => {
+        console.error('User profile subscription error:', err);
+        setLoading(false);
       }
-      setLoading(false);
-    });
+    );
 
     return unsubscribe;
   }, [userId]);

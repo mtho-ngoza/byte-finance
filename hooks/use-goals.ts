@@ -139,11 +139,18 @@ export function useGoals(): UseGoalsResult {
       orderBy('createdAt', 'desc')
     );
 
-    const unsubscribe = onSnapshot(q, (snap) => {
-      const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Goal);
-      setRawGoals(docs);
-      setLoading(false);
-    });
+    const unsubscribe = onSnapshot(
+      q,
+      (snap) => {
+        const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Goal);
+        setRawGoals(docs);
+        setLoading(false);
+      },
+      (err) => {
+        console.error('Goals subscription error:', err);
+        setLoading(false);
+      }
+    );
 
     return unsubscribe;
   }, [userId]);
@@ -157,10 +164,16 @@ export function useGoals(): UseGoalsResult {
       where('isActive', '==', true)
     );
 
-    const unsubscribe = onSnapshot(q, (snap) => {
-      const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Commitment);
-      setCommitments(docs);
-    });
+    const unsubscribe = onSnapshot(
+      q,
+      (snap) => {
+        const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Commitment);
+        setCommitments(docs);
+      },
+      (err) => {
+        console.error('Commitments subscription error:', err);
+      }
+    );
 
     return unsubscribe;
   }, [userId]);

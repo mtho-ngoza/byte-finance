@@ -61,11 +61,18 @@ export function useCycleItems(cycleId: string | null, cycle?: Cycle | null): Use
       orderBy('sortOrder')
     );
 
-    const unsubscribe = onSnapshot(q, (snap) => {
-      const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as CycleItem);
-      setRawItems(docs);
-      setLoading(false);
-    });
+    const unsubscribe = onSnapshot(
+      q,
+      (snap) => {
+        const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as CycleItem);
+        setRawItems(docs);
+        setLoading(false);
+      },
+      (err) => {
+        console.error('Cycle items subscription error:', err);
+        setLoading(false);
+      }
+    );
 
     return unsubscribe;
   }, [userId, cycleId]);
@@ -85,10 +92,16 @@ export function useCycleItems(cycleId: string | null, cycle?: Cycle | null): Use
       where('paidDate', '>=', Timestamp.fromDate(startDate))
     );
 
-    const unsubscribe = onSnapshot(q, (snap) => {
-      const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as CycleItem);
-      setAllRecentItems(docs);
-    });
+    const unsubscribe = onSnapshot(
+      q,
+      (snap) => {
+        const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as CycleItem);
+        setAllRecentItems(docs);
+      },
+      (err) => {
+        console.error('Recent items subscription error:', err);
+      }
+    );
 
     return unsubscribe;
   }, [userId, cycle?.startDate]);

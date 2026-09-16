@@ -45,14 +45,21 @@ export function useHealthScore(cycleId: string | null): UseHealthScoreResult {
     setLoading(true);
     const docRef = doc(db, `users/${userId}/healthScores`, cycleId);
 
-    const unsubscribe = onSnapshot(docRef, (snap) => {
-      if (snap.exists()) {
-        setScore({ id: snap.id, ...snap.data() } as HealthScore);
-      } else {
-        setScore(null);
+    const unsubscribe = onSnapshot(
+      docRef,
+      (snap) => {
+        if (snap.exists()) {
+          setScore({ id: snap.id, ...snap.data() } as HealthScore);
+        } else {
+          setScore(null);
+        }
+        setLoading(false);
+      },
+      (err) => {
+        console.error('Health score subscription error:', err);
+        setLoading(false);
       }
-      setLoading(false);
-    });
+    );
 
     return unsubscribe;
   }, [userId, cycleId]);

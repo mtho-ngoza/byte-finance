@@ -133,11 +133,18 @@ export function useEvents(): UseEventsResult {
       orderBy('createdAt', 'desc')
     );
 
-    const unsubscribe = onSnapshot(q, (snap) => {
-      const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Event);
-      setRawEvents(docs);
-      setLoading(false);
-    });
+    const unsubscribe = onSnapshot(
+      q,
+      (snap) => {
+        const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Event);
+        setRawEvents(docs);
+        setLoading(false);
+      },
+      (err) => {
+        console.error('Events subscription error:', err);
+        setLoading(false);
+      }
+    );
 
     return unsubscribe;
   }, [userId]);
@@ -151,10 +158,16 @@ export function useEvents(): UseEventsResult {
       orderBy('createdAt', 'desc')
     );
 
-    const unsubscribe = onSnapshot(q, (snap) => {
-      const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Project);
-      setProjects(docs);
-    });
+    const unsubscribe = onSnapshot(
+      q,
+      (snap) => {
+        const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Project);
+        setProjects(docs);
+      },
+      (err) => {
+        console.error('Projects subscription error:', err);
+      }
+    );
 
     return unsubscribe;
   }, [userId]);

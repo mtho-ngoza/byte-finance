@@ -28,16 +28,23 @@ export function useCycles(): UseCyclesResult {
       limit(36) // 3 years of cycles
     );
 
-    return onSnapshot(q, (snap) => {
-      const docs = snap.docs
-          .map((d) => ({id: d.id, ...d.data()}) as Cycle)
-          .sort((a, b) => {
-            // Sort by id descending (format: YYYY-MM) as fallback
-            return b.id.localeCompare(a.id);
-          });
-      setCycles(docs);
-      setLoading(false);
-    });
+    return onSnapshot(
+      q,
+      (snap) => {
+        const docs = snap.docs
+            .map((d) => ({id: d.id, ...d.data()}) as Cycle)
+            .sort((a, b) => {
+              // Sort by id descending (format: YYYY-MM) as fallback
+              return b.id.localeCompare(a.id);
+            });
+        setCycles(docs);
+        setLoading(false);
+      },
+      (err) => {
+        console.error('Cycles subscription error:', err);
+        setLoading(false);
+      }
+    );
   }, [userId]);
 
   // Current cycle is the one with status 'active' or the most recent
@@ -67,14 +74,21 @@ export function useCurrentCycle() {
       limit(1)
     );
 
-    return onSnapshot(q, (snap) => {
-      if (snap.docs.length > 0) {
-        setCycle({id: snap.docs[0].id, ...snap.docs[0].data()} as Cycle);
-      } else {
-        setCycle(null);
+    return onSnapshot(
+      q,
+      (snap) => {
+        if (snap.docs.length > 0) {
+          setCycle({id: snap.docs[0].id, ...snap.docs[0].data()} as Cycle);
+        } else {
+          setCycle(null);
+        }
+        setLoading(false);
+      },
+      (err) => {
+        console.error('Current cycle subscription error:', err);
+        setLoading(false);
       }
-      setLoading(false);
-    });
+    );
   }, [userId]);
 
   return { cycle, loading };

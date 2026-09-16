@@ -36,12 +36,19 @@ export function useCommitments(): UseCommitmentsResult {
       orderBy('sortOrder')
     );
 
-    const unsubscribe = onSnapshot(q, (snap) => {
-      const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Commitment);
-      setAllCommitments(docs);
-      setCommitments(docs.filter((c) => c.isActive));
-      setLoading(false);
-    });
+    const unsubscribe = onSnapshot(
+      q,
+      (snap) => {
+        const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Commitment);
+        setAllCommitments(docs);
+        setCommitments(docs.filter((c) => c.isActive));
+        setLoading(false);
+      },
+      (err) => {
+        console.error('Commitments subscription error:', err);
+        setLoading(false);
+      }
+    );
 
     return unsubscribe;
   }, [userId]);
