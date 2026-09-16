@@ -244,6 +244,7 @@ export interface Event {
   linkedProjectId?: string;         // Optional link to funding project
   status: 'planning' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
   notes?: string;
+  shareToken?: string;              // Unique token for sharing (e.g., "abc123xyz")
   categories: EventCategory[];      // Embedded array
   items: EventItem[];               // Embedded array (includes payments)
   createdAt: Timestamp;

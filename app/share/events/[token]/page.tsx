@@ -1,183 +1,172 @@
 'use client';
 
 import { use, useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { AmountDisplay } from '@/components/shared/amount-display';
 import { CurrencyInput } from '@/components/shared/currency-input';
 import { DateInput } from '@/components/shared/date-input';
-import { useToast } from '@/components/shared/toast';
-import { generateEventPDF } from '@/lib/pdf-export';
-import type { Event, EventCategory, EventItem, EventPayment, Project } from '@/types';
+import type { EventCategory, EventItem, EventPayment } from '@/types';
 
-interface EventDetailPageProps {
-  params: Promise<{ id: string }>;
+interface SharedEventPageProps {
+  params: Promise<{ token: string }>;
 }
 
-export default function EventDetailPage({ params }: EventDetailPageProps) {
-  const { id } = use(params);
-  const router = useRouter();
-  const { toast } = useToast();
+interface SharedEvent {
+  id: string;
+  name: string;
+  description?: string;
+  eventDate?: any;
+  status: string;
+  categories: EventCategory[];
+  items: EventItem[];
+  totalQuoted: number;
+  totalPaid: number;
+  remaining: number;
+  itemCount: number;
+  paidCount: number;
+  isSharedView: boolean;
+}
 
-  const [event, setEvent] = useState<Event | null>(null);
-  const [projects, setProjects] = useState<Project[]>([]);
+export default function SharedEventPage({ params }: SharedEventPageProps) {
+  const { token } = use(params);
+
+  const [event, setEvent] = useState<SharedEvent | null>(null);
   const [loading, setLoading] = useState(true);
-  const [showEditEvent, setShowEditEvent] = useState(false);
-  const [showShareModal, setShowShareModal] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [showAddCategory, setShowAddCategory] = useState(false);
-  const [showAddItem, setShowAddItem] = useState<string | null>(null); // categoryId
-  const [showAddPayment, setShowAddPayment] = useState<string | null>(null); // itemId
+  const [showAddItem, setShowAddItem] = useState<string | null>(null);
+  const [showAddPayment, setShowAddPayment] = useState<string | null>(null);
   const [editingCategory, setEditingCategory] = useState<EventCategory | null>(null);
   const [editingItem, setEditingItem] = useState<EventItem | null>(null);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   useEffect(() => {
-    fetchData();
-  }, [id]);
+    fetchEvent();
+  }, [token]);
 
-  const fetchData = async () => {
+  const showToast = (message: string, type: 'success' | 'error') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const fetchEvent = async () => {
     try {
-      const [eventRes, projectsRes] = await Promise.all([
-        fetch(`/api/events/${id}`),
-        fetch('/api/projects'),
-      ]);
-      if (!eventRes.ok) throw new Error('Event not found');
-      const eventData = await eventRes.json();
-      setEvent(eventData);
-      // Expand all categories by default
-      setExpandedCategories(new Set((eventData.categories || []).map((c: EventCategory) => c.id)));
-
-      if (projectsRes.ok) {
-        const projectsData = await projectsRes.json();
-        setProjects(projectsData.projects || []);
+      const res = await fetch(`/api/share/events/${token}`);
+      if (!res.ok) {
+        if (res.status === 404) {
+          setError('This share link is invalid or has expired.');
+        } else {
+          setError('Failed to load event.');
+        }
+        return;
       }
-    } catch (error) {
-      console.error('Failed to fetch event:', error);
-      toast('Event not found', 'error');
-      router.push('/projects');
+      const data = await res.json();
+      setEvent(data);
+      setExpandedCategories(new Set((data.categories || []).map((c: EventCategory) => c.id)));
+    } catch (err) {
+      console.error('Failed to fetch event:', err);
+      setError('Failed to load event.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleUpdateEvent = async (data: any) => {
+  const handleAddCategory = async (data: { name: string }) => {
     try {
-      const res = await fetch(`/api/events/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      });
-      if (!res.ok) throw new Error('Failed to update');
-      await fetchData();
-      setShowEditEvent(false);
-      toast('Event updated', 'success');
-    } catch (error) {
-      console.error('Failed to update event:', error);
-      toast('Failed to update event', 'error');
-    }
-  };
-
-  const handleAddCategory = async (data: any) => {
-    try {
-      const res = await fetch(`/api/events/${id}/categories`, {
+      const res = await fetch(`/api/share/events/${token}/categories`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       });
       if (!res.ok) throw new Error('Failed to add category');
       const newCategory = await res.json();
-      await fetchData();
+      await fetchEvent();
       setShowAddCategory(false);
       setExpandedCategories(prev => new Set([...prev, newCategory.id]));
-      toast('Category added', 'success');
-    } catch (error) {
-      console.error('Failed to add category:', error);
-      toast('Failed to add category', 'error');
+      showToast('Category added', 'success');
+    } catch (err) {
+      console.error('Failed to add category:', err);
+      showToast('Failed to add category', 'error');
     }
   };
 
   const handleUpdateCategory = async (categoryId: string, data: any) => {
     try {
-      const res = await fetch(`/api/events/${id}/categories/${categoryId}`, {
+      const res = await fetch(`/api/share/events/${token}/categories/${categoryId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       });
       if (!res.ok) throw new Error('Failed to update');
-      await fetchData();
+      await fetchEvent();
       setEditingCategory(null);
-      toast('Category updated', 'success');
-    } catch (error) {
-      console.error('Failed to update category:', error);
-      toast('Failed to update category', 'error');
+      showToast('Category updated', 'success');
+    } catch (err) {
+      showToast('Failed to update category', 'error');
     }
   };
 
   const handleDeleteCategory = async (categoryId: string) => {
     try {
-      const res = await fetch(`/api/events/${id}/categories/${categoryId}`, {
+      const res = await fetch(`/api/share/events/${token}/categories/${categoryId}`, {
         method: 'DELETE',
       });
       if (!res.ok) throw new Error('Failed to delete');
-      await fetchData();
-      toast('Category deleted', 'success');
-    } catch (error) {
-      console.error('Failed to delete category:', error);
-      toast('Failed to delete category', 'error');
+      await fetchEvent();
+      showToast('Category deleted', 'success');
+    } catch (err) {
+      showToast('Failed to delete category', 'error');
     }
   };
 
   const handleAddItem = async (data: any) => {
     try {
-      const res = await fetch(`/api/events/${id}/items`, {
+      const res = await fetch(`/api/share/events/${token}/items`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       });
       if (!res.ok) throw new Error('Failed to add item');
-      await fetchData();
+      await fetchEvent();
       setShowAddItem(null);
-      toast('Item added', 'success');
-    } catch (error) {
-      console.error('Failed to add item:', error);
-      toast('Failed to add item', 'error');
+      showToast('Item added', 'success');
+    } catch (err) {
+      showToast('Failed to add item', 'error');
     }
   };
 
   const handleUpdateItem = async (itemId: string, data: any) => {
     try {
-      const res = await fetch(`/api/events/${id}/items/${itemId}`, {
+      const res = await fetch(`/api/share/events/${token}/items/${itemId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       });
       if (!res.ok) throw new Error('Failed to update');
-      await fetchData();
+      await fetchEvent();
       setEditingItem(null);
-      toast('Item updated', 'success');
-    } catch (error) {
-      console.error('Failed to update item:', error);
-      toast('Failed to update item', 'error');
+      showToast('Item updated', 'success');
+    } catch (err) {
+      showToast('Failed to update item', 'error');
     }
   };
 
   const handleDeleteItem = async (itemId: string) => {
     try {
-      const res = await fetch(`/api/events/${id}/items/${itemId}`, {
+      const res = await fetch(`/api/share/events/${token}/items/${itemId}`, {
         method: 'DELETE',
       });
       if (!res.ok) throw new Error('Failed to delete');
-      await fetchData();
-      toast('Item deleted', 'success');
-    } catch (error) {
-      console.error('Failed to delete item:', error);
-      toast('Failed to delete item', 'error');
+      await fetchEvent();
+      showToast('Item deleted', 'success');
+    } catch (err) {
+      showToast('Failed to delete item', 'error');
     }
   };
 
   const handleAddPayment = async (itemId: string, data: any) => {
     try {
-      const res = await fetch(`/api/events/${id}/items/${itemId}/payments`, {
+      const res = await fetch(`/api/share/events/${token}/items/${itemId}/payments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -186,26 +175,24 @@ export default function EventDetailPage({ params }: EventDetailPageProps) {
         const error = await res.json();
         throw new Error(error.error || 'Failed to add payment');
       }
-      await fetchData();
+      await fetchEvent();
       setShowAddPayment(null);
-      toast('Payment added', 'success');
-    } catch (error: any) {
-      console.error('Failed to add payment:', error);
-      toast(error.message || 'Failed to add payment', 'error');
+      showToast('Payment added', 'success');
+    } catch (err: any) {
+      showToast(err.message || 'Failed to add payment', 'error');
     }
   };
 
   const handleDeletePayment = async (itemId: string, paymentId: string) => {
     try {
-      const res = await fetch(`/api/events/${id}/items/${itemId}/payments/${paymentId}`, {
+      const res = await fetch(`/api/share/events/${token}/items/${itemId}/payments/${paymentId}`, {
         method: 'DELETE',
       });
       if (!res.ok) throw new Error('Failed to delete');
-      await fetchData();
-      toast('Payment deleted', 'success');
-    } catch (error) {
-      console.error('Failed to delete payment:', error);
-      toast('Failed to delete payment', 'error');
+      await fetchEvent();
+      showToast('Payment deleted', 'success');
+    } catch (err) {
+      showToast('Failed to delete payment', 'error');
     }
   };
 
@@ -221,31 +208,6 @@ export default function EventDetailPage({ params }: EventDetailPageProps) {
     });
   };
 
-  if (loading) {
-    return <div className="animate-pulse space-y-4"><div className="h-8 w-48 bg-surface rounded" /></div>;
-  }
-
-  if (!event) return null;
-
-  const categories = event.categories || [];
-  const items = event.items || [];
-
-  // Compute totals
-  let totalQuoted = 0;
-  let totalPaid = 0;
-  let paidCount = 0;
-
-  for (const item of items) {
-    const subtotal = item.unitPrice * item.quantity;
-    totalQuoted += subtotal;
-    const itemPaid = (item.payments || []).reduce((sum, p) => sum + p.amount, 0);
-    totalPaid += itemPaid;
-    if (item.status === 'paid') paidCount++;
-  }
-
-  const remaining = totalQuoted - totalPaid;
-  const progressPercent = totalQuoted > 0 ? Math.round((totalPaid / totalQuoted) * 100) : 0;
-
   const parseDate = (dateValue: unknown): Date => {
     if (!dateValue) return new Date();
     if (typeof dateValue === 'string') return new Date(dateValue);
@@ -253,14 +215,33 @@ export default function EventDetailPage({ params }: EventDetailPageProps) {
     if (typeof dateValue === 'object' && '_seconds' in (dateValue as object)) {
       return new Date((dateValue as { _seconds: number })._seconds * 1000);
     }
-    if (typeof dateValue === 'object' && 'toDate' in (dateValue as object)) {
-      return (dateValue as { toDate: () => Date }).toDate();
-    }
     return new Date();
   };
 
+  if (loading) {
+    return (
+      <div className="animate-pulse space-y-4">
+        <div className="h-8 w-48 bg-surface rounded" />
+        <div className="h-24 bg-surface rounded-xl" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-12">
+        <div className="text-4xl mb-4">🔗</div>
+        <h1 className="text-xl font-semibold text-text-primary mb-2">Link Not Found</h1>
+        <p className="text-sm text-text-secondary">{error}</p>
+      </div>
+    );
+  }
+
+  if (!event) return null;
+
+  const { totalQuoted, totalPaid, remaining, itemCount, paidCount } = event;
+  const progressPercent = totalQuoted > 0 ? Math.round((totalPaid / totalQuoted) * 100) : 0;
   const eventDate = event.eventDate ? parseDate(event.eventDate) : null;
-  const linkedProject = projects.find(p => p.id === event.linkedProjectId);
 
   const statusColors: Record<string, string> = {
     planning: 'bg-blue-500/10 text-blue-500',
@@ -271,56 +252,32 @@ export default function EventDetailPage({ params }: EventDetailPageProps) {
   };
 
   return (
-    <div className="space-y-4 pb-20">
+    <div className="space-y-4 pb-8">
+      {/* Toast */}
+      {toast && (
+        <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg text-sm font-medium ${
+          toast.type === 'success' ? 'bg-success text-white' : 'bg-error text-white'
+        }`}>
+          {toast.message}
+        </div>
+      )}
+
       {/* Header */}
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl font-semibold text-text-primary">{event.name}</h1>
-            <span className={`px-2 py-0.5 rounded text-xs font-medium ${statusColors[event.status]}`}>
-              {event.status.replace('_', ' ')}
-            </span>
-          </div>
-          {eventDate && (
-            <p className="text-sm text-text-secondary mt-0.5">
-              {eventDate.toLocaleDateString('en-ZA', { day: 'numeric', month: 'long', year: 'numeric' })}
-            </p>
-          )}
-          {linkedProject && (
-            <Link href={`/projects/${linkedProject.id}`} className="text-xs text-primary hover:underline">
-              Linked to: {linkedProject.name}
-            </Link>
-          )}
+      <div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <h1 className="text-xl font-semibold text-text-primary">{event.name}</h1>
+          <span className={`px-2 py-0.5 rounded text-xs font-medium ${statusColors[event.status] || statusColors.planning}`}>
+            {event.status.replace('_', ' ')}
+          </span>
         </div>
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => setShowShareModal(true)}
-            className={`p-2 rounded-lg hover:bg-surface ${event.shareToken ? 'text-primary' : 'text-text-secondary'}`}
-            title="Share event"
-          >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
-            </svg>
-          </button>
-          <button
-            onClick={() => generateEventPDF(event)}
-            className="p-2 rounded-lg hover:bg-surface text-text-secondary"
-            title="Export as PDF"
-          >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-          </button>
-          <button
-            onClick={() => setShowEditEvent(true)}
-            className="p-2 rounded-lg hover:bg-surface text-text-secondary"
-            title="Edit event"
-          >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-              <path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-            </svg>
-          </button>
-        </div>
+        {eventDate && (
+          <p className="text-sm text-text-secondary mt-0.5">
+            {eventDate.toLocaleDateString('en-ZA', { day: 'numeric', month: 'long', year: 'numeric' })}
+          </p>
+        )}
+        {event.description && (
+          <p className="text-sm text-text-secondary mt-1">{event.description}</p>
+        )}
       </div>
 
       {/* Summary Cards */}
@@ -344,7 +301,7 @@ export default function EventDetailPage({ params }: EventDetailPageProps) {
         <div className="bg-surface border border-border rounded-xl p-3">
           <div className="flex justify-between text-xs text-text-secondary mb-2">
             <span>Progress</span>
-            <span>{progressPercent}% ({paidCount}/{items.length} items paid)</span>
+            <span>{progressPercent}% ({paidCount}/{itemCount} items paid)</span>
           </div>
           <div className="h-2 bg-background rounded-full overflow-hidden">
             <div
@@ -357,8 +314,8 @@ export default function EventDetailPage({ params }: EventDetailPageProps) {
 
       {/* Categories */}
       <div className="space-y-3">
-        {categories.map((category) => {
-          const categoryItems = items
+        {event.categories.map((category) => {
+          const categoryItems = event.items
             .filter(i => i.categoryId === category.id)
             .sort((a, b) => a.sortOrder - b.sortOrder);
           const categoryTotal = categoryItems.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
@@ -402,7 +359,7 @@ export default function EventDetailPage({ params }: EventDetailPageProps) {
                 </div>
               </button>
 
-              {/* Category Items */}
+              {/* Items */}
               {isExpanded && (
                 <div className="border-t border-border">
                   {categoryItems.length === 0 ? (
@@ -442,16 +399,6 @@ export default function EventDetailPage({ params }: EventDetailPageProps) {
       </div>
 
       {/* Modals */}
-      {showEditEvent && (
-        <EditEventForm
-          event={event}
-          projects={projects}
-          parseDate={parseDate}
-          onSave={handleUpdateEvent}
-          onCancel={() => setShowEditEvent(false)}
-        />
-      )}
-
       {showAddCategory && (
         <CategoryForm
           onSave={handleAddCategory}
@@ -471,7 +418,7 @@ export default function EventDetailPage({ params }: EventDetailPageProps) {
       {showAddItem && (
         <ItemForm
           categoryId={showAddItem}
-          categories={categories}
+          categories={event.categories}
           onSave={handleAddItem}
           onCancel={() => setShowAddItem(null)}
         />
@@ -480,7 +427,7 @@ export default function EventDetailPage({ params }: EventDetailPageProps) {
       {editingItem && (
         <ItemForm
           item={editingItem}
-          categories={categories}
+          categories={event.categories}
           onSave={(data) => handleUpdateItem(editingItem.id, data)}
           onCancel={() => setEditingItem(null)}
         />
@@ -488,24 +435,16 @@ export default function EventDetailPage({ params }: EventDetailPageProps) {
 
       {showAddPayment && (
         <PaymentForm
-          item={items.find(i => i.id === showAddPayment)!}
+          item={event.items.find(i => i.id === showAddPayment)!}
           onSave={(data) => handleAddPayment(showAddPayment, data)}
           onCancel={() => setShowAddPayment(null)}
-        />
-      )}
-
-      {showShareModal && (
-        <ShareModal
-          eventId={id}
-          shareToken={event.shareToken}
-          onClose={() => setShowShareModal(false)}
-          onUpdate={fetchData}
         />
       )}
     </div>
   );
 }
 
+// Item Row Component
 function ItemRow({
   item,
   parseDate,
@@ -628,12 +567,13 @@ function ItemRow({
   );
 }
 
+// Payment Row Component
 function PaymentRow({
   payment,
   parseDate,
   onDelete,
 }: {
-  payment: EventPayment;
+  payment: EventPayment & { addedBy?: string };
   parseDate: (d: unknown) => Date;
   onDelete: () => void;
 }) {
@@ -665,6 +605,7 @@ function PaymentRow({
         <p className="text-xs text-text-secondary">
           {date.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })}
           {payment.note && ` - ${payment.note}`}
+          {(payment as any).addedBy && ` (by ${(payment as any).addedBy})`}
         </p>
       </div>
       <button onClick={() => setConfirmDelete(true)} className="p-1 rounded text-text-secondary/50 hover:text-error">
@@ -676,129 +617,7 @@ function PaymentRow({
   );
 }
 
-function EditEventForm({
-  event,
-  projects,
-  parseDate,
-  onSave,
-  onCancel,
-}: {
-  event: Event;
-  projects: Project[];
-  parseDate: (d: unknown) => Date;
-  onSave: (data: any) => Promise<void>;
-  onCancel: () => void;
-}) {
-  const [name, setName] = useState(event.name);
-  const [description, setDescription] = useState(event.description || '');
-  const [eventDate, setEventDate] = useState(event.eventDate ? parseDate(event.eventDate).toISOString().split('T')[0] : '');
-  const [linkedProjectId, setLinkedProjectId] = useState(event.linkedProjectId || '');
-  const [status, setStatus] = useState(event.status);
-  const [saving, setSaving] = useState(false);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSaving(true);
-    try {
-      await onSave({
-        name,
-        description,
-        eventDate: eventDate ? new Date(eventDate).toISOString() : null,
-        linkedProjectId: linkedProjectId || null,
-        status,
-      });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50">
-      <div className="bg-surface border border-border rounded-t-2xl sm:rounded-xl w-full sm:max-w-md max-h-[85vh] overflow-y-auto">
-        <form onSubmit={handleSubmit} className="p-4 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-base font-semibold text-text-primary">Edit Event</h3>
-            <button type="button" onClick={onCancel} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-background text-text-secondary">
-              ✕
-            </button>
-          </div>
-
-          <div>
-            <label className="block text-xs text-text-secondary mb-1">Event Name</label>
-            <input
-              required
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary text-sm focus:outline-none focus:border-primary"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs text-text-secondary mb-1">Description</label>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={2}
-              className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary text-sm focus:outline-none focus:border-primary resize-none"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs text-text-secondary mb-1">Event Date</label>
-              <input
-                type="date"
-                value={eventDate}
-                onChange={(e) => setEventDate(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary text-sm focus:outline-none focus:border-primary"
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-text-secondary mb-1">Status</label>
-              <select
-                value={status}
-                onChange={(e) => setStatus(e.target.value as typeof status)}
-                className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary text-sm focus:outline-none focus:border-primary"
-              >
-                <option value="planning">Planning</option>
-                <option value="confirmed">Confirmed</option>
-                <option value="in_progress">In Progress</option>
-                <option value="completed">Completed</option>
-                <option value="cancelled">Cancelled</option>
-              </select>
-            </div>
-          </div>
-
-          {projects.length > 0 && (
-            <div>
-              <label className="block text-xs text-text-secondary mb-1">Linked Project</label>
-              <select
-                value={linkedProjectId}
-                onChange={(e) => setLinkedProjectId(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary text-sm focus:outline-none focus:border-primary"
-              >
-                <option value="">No linked project</option>
-                {projects.filter(p => p.status === 'active').map((p) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          <div className="flex gap-2 pt-2">
-            <button type="button" onClick={onCancel} className="flex-1 py-2.5 rounded-lg border border-border text-text-secondary text-sm font-medium">
-              Cancel
-            </button>
-            <button type="submit" disabled={saving} className="flex-1 py-2.5 rounded-lg bg-primary text-background font-medium text-sm disabled:opacity-50">
-              {saving ? 'Saving...' : 'Save Changes'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
+// Category Form Modal
 function CategoryForm({
   category,
   onSave,
@@ -806,7 +625,7 @@ function CategoryForm({
   onDelete,
 }: {
   category?: EventCategory;
-  onSave: (data: any) => Promise<void>;
+  onSave: (data: { name: string }) => Promise<void>;
   onCancel: () => void;
   onDelete?: () => void;
 }) {
@@ -867,6 +686,7 @@ function CategoryForm({
   );
 }
 
+// Item Form Modal
 function ItemForm({
   item,
   categoryId,
@@ -987,7 +807,7 @@ function ItemForm({
               <label className="block text-xs text-text-secondary mb-1">Status</label>
               <select
                 value={status}
-                onChange={(e) => setStatus(e.target.value as typeof status)}
+                onChange={(e) => setStatus(e.target.value as any)}
                 className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary text-sm focus:outline-none focus:border-primary"
               >
                 <option value="quoted">Quoted</option>
@@ -1013,6 +833,7 @@ function ItemForm({
   );
 }
 
+// Payment Form Modal
 function PaymentForm({
   item,
   onSave,
@@ -1028,6 +849,7 @@ function PaymentForm({
 
   const [amount, setAmount] = useState(0);
   const [note, setNote] = useState('');
+  const [addedBy, setAddedBy] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [saving, setSaving] = useState(false);
 
@@ -1035,7 +857,7 @@ function PaymentForm({
     e.preventDefault();
     setSaving(true);
     try {
-      await onSave({ amount, note, date });
+      await onSave({ amount, note, addedBy, date });
     } finally {
       setSaving(false);
     }
@@ -1057,6 +879,16 @@ function PaymentForm({
             <p className="text-xs text-text-secondary">
               Remaining: <AmountDisplay amount={remaining} size="xs" /> of <AmountDisplay amount={subtotal} size="xs" />
             </p>
+          </div>
+
+          <div>
+            <label className="block text-xs text-text-secondary mb-1">Your Name (optional)</label>
+            <input
+              value={addedBy}
+              onChange={(e) => setAddedBy(e.target.value)}
+              placeholder="e.g., John"
+              className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary text-sm focus:outline-none focus:border-primary"
+            />
           </div>
 
           <div>
@@ -1096,146 +928,6 @@ function PaymentForm({
             </button>
           </div>
         </form>
-      </div>
-    </div>
-  );
-}
-
-function ShareModal({
-  eventId,
-  shareToken,
-  onClose,
-  onUpdate,
-}: {
-  eventId: string;
-  shareToken?: string;
-  onClose: () => void;
-  onUpdate: () => Promise<void>;
-}) {
-  const { toast } = useToast();
-  const [loading, setLoading] = useState(false);
-  const [copied, setCopied] = useState(false);
-
-  const shareUrl = shareToken ? `${window.location.origin}/share/events/${shareToken}` : null;
-
-  const handleGenerateLink = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/events/${eventId}/share`, {
-        method: 'POST',
-      });
-      if (!res.ok) throw new Error('Failed to generate share link');
-      await onUpdate();
-      toast('Share link created', 'success');
-    } catch (error) {
-      console.error('Failed to generate share link:', error);
-      toast('Failed to create share link', 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleRevokeLink = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/events/${eventId}/share`, {
-        method: 'DELETE',
-      });
-      if (!res.ok) throw new Error('Failed to revoke share link');
-      await onUpdate();
-      toast('Share link revoked', 'success');
-    } catch (error) {
-      console.error('Failed to revoke share link:', error);
-      toast('Failed to revoke share link', 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleCopy = async () => {
-    if (!shareUrl) return;
-    try {
-      await navigator.clipboard.writeText(shareUrl);
-      setCopied(true);
-      toast('Link copied to clipboard', 'success');
-      setTimeout(() => setCopied(false), 2000);
-    } catch (error) {
-      toast('Failed to copy link', 'error');
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50">
-      <div className="bg-surface border border-border rounded-t-2xl sm:rounded-xl w-full sm:max-w-md">
-        <div className="p-4 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-base font-semibold text-text-primary">Share Event</h3>
-            <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-background text-text-secondary">
-              ✕
-            </button>
-          </div>
-
-          {shareUrl ? (
-            <>
-              <div className="bg-background rounded-lg p-3">
-                <p className="text-xs text-text-secondary mb-2">Anyone with this link can view and edit this event</p>
-                <div className="flex items-center gap-2">
-                  <input
-                    readOnly
-                    value={shareUrl}
-                    className="flex-1 px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-xs focus:outline-none"
-                  />
-                  <button
-                    onClick={handleCopy}
-                    className="px-3 py-2 rounded-lg bg-primary text-background text-sm font-medium shrink-0"
-                  >
-                    {copied ? 'Copied!' : 'Copy'}
-                  </button>
-                </div>
-              </div>
-
-              <div className="border-t border-border pt-4">
-                <button
-                  onClick={handleRevokeLink}
-                  disabled={loading}
-                  className="w-full py-2.5 rounded-lg border border-error text-error text-sm font-medium hover:bg-error/10 disabled:opacity-50"
-                >
-                  {loading ? 'Revoking...' : 'Revoke Access'}
-                </button>
-                <p className="text-xs text-text-secondary text-center mt-2">
-                  Revoking will disable the link and prevent further access
-                </p>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="bg-background rounded-lg p-4 text-center">
-                <svg className="w-12 h-12 mx-auto mb-3 text-text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
-                </svg>
-                <h4 className="text-sm font-medium text-text-primary mb-1">Share with family & friends</h4>
-                <p className="text-xs text-text-secondary">
-                  Create a link to let others view and contribute to this event budget without needing an account
-                </p>
-              </div>
-
-              <button
-                onClick={handleGenerateLink}
-                disabled={loading}
-                className="w-full py-2.5 rounded-lg bg-primary text-background font-medium text-sm disabled:opacity-50"
-              >
-                {loading ? 'Creating...' : 'Create Share Link'}
-              </button>
-            </>
-          )}
-
-          <button
-            onClick={onClose}
-            className="w-full py-2.5 rounded-lg border border-border text-text-secondary text-sm font-medium"
-          >
-            Close
-          </button>
-        </div>
       </div>
     </div>
   );
