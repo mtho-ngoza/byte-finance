@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
-import { Providers } from "@/components/providers";
 import { ServiceWorkerRegistration } from "@/components/pwa/service-worker-registration";
 import { InstallPrompt } from "@/components/pwa/install-prompt";
 import { ToastProvider } from "@/components/shared/toast";
@@ -49,6 +48,13 @@ export const viewport: Viewport = {
   themeColor: "#22c55e",
 };
 
+/**
+ * Root layout - minimal wrapper for all pages.
+ * Auth providers are added at the route group level:
+ * - (dashboard) has full auth (SessionProvider + FirebaseAuthProvider + ThemeProvider)
+ * - (auth) has SessionProvider only (for login flow)
+ * - share has no auth providers (uses token-based API auth)
+ */
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -60,11 +66,9 @@ export default function RootLayout({
       className={`${inter.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-background text-text-primary">
-        <Providers>
-          <ToastProvider>
-            {children}
-          </ToastProvider>
-        </Providers>
+        <ToastProvider>
+          {children}
+        </ToastProvider>
         <ServiceWorkerRegistration />
         <InstallPrompt />
       </body>
