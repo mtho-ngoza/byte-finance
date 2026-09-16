@@ -1,6 +1,6 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import type { Project } from '@/types';
+import type { Project, Event, EventCategory, EventItem } from '@/types';
 import type { GoalWithComputed } from '@/hooks/use-goals';
 
 // Extend jsPDF type for autoTable
@@ -511,4 +511,298 @@ export function generateGoalPDF(goal: GoalWithComputed): void {
   // Save the PDF
   const fileName = `${goal.name.toLowerCase().replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.pdf`;
   doc.save(fileName);
+}
+
+/**
+ * Generate PDF for an event
+ */
+export function generateEventPDF(event: Event): void {
+  const doc = new jsPDF();
+  const pageWidth = doc.internal.pageSize.getWidth();
+
+  // Colors
+  const primaryColor: [number, number, number] = [16, 185, 129]; // emerald-500
+  const textColor: [number, number, number] = [31, 41, 55]; // gray-800
+  const mutedColor: [number, number, number] = [107, 114, 128]; // gray-500
+  const successColor: [number, number, number] = [16, 185, 129]; // green
+  const errorColor: [number, number, number] = [239, 68, 68]; // red
+
+  let yPos = 20;
+
+  // Header
+  doc.setFontSize(24);
+  doc.setTextColor(...textColor);
+  doc.text(event.name, 14, yPos);
+
+  yPos += 8;
+
+  // Event date and status
+  doc.setFontSize(10);
+  doc.setTextColor(...mutedColor);
+
+  const eventDate = event.eventDate ? formatDate(event.eventDate) : null;
+  if (eventDate) {
+    doc.text(eventDate, 14, yPos);
+    yPos += 6;
+  }
+
+  // Status badge
+  const statusColors: Record<string, [number, number, number]> = {
+    planning: [59, 130, 246], // blue
+    confirmed: [16, 185, 129], // green
+    in_progress: [245, 158, 11], // amber
+    completed: [107, 114, 128], // gray
+    cancelled: [107, 114, 128],
+  };
+  doc.setTextColor(...(statusColors[event.status] || mutedColor));
+  doc.text(event.status.toUpperCase().replace('_', ' '), 14, yPos);
+
+  if (event.description) {
+    yPos += 6;
+    doc.setTextColor(...mutedColor);
+    const splitDesc = doc.splitTextToSize(event.description, pageWidth - 28);
+    doc.text(splitDesc, 14, yPos);
+    yPos += splitDesc.length * 5;
+  }
+
+  yPos += 8;
+
+  // Calculate totals
+  const items = event.items || [];
+  const categories = event.categories || [];
+
+  let totalQuoted = 0;
+  let totalPaid = 0;
+  let paidCount = 0;
+
+  for (const item of items) {
+    const subtotal = item.unitPrice * item.quantity;
+    totalQuoted += subtotal;
+    const itemPaid = (item.payments || []).reduce((sum, p) => sum + p.amount, 0);
+    totalPaid += itemPaid;
+    if (item.status === 'paid') paidCount++;
+  }
+
+  const remaining = totalQuoted - totalPaid;
+  const progressPercent = totalQuoted > 0 ? Math.round((totalPaid / totalQuoted) * 100) : 0;
+
+  // Summary box
+  doc.setFillColor(249, 250, 251);
+  doc.roundedRect(14, yPos, pageWidth - 28, 45, 3, 3, 'F');
+
+  yPos += 10;
+
+  // Summary stats
+  doc.setFontSize(9);
+  doc.setTextColor(...mutedColor);
+  doc.text('Total Quoted', 20, yPos);
+  doc.text('Total Paid', pageWidth / 2 - 20, yPos);
+  doc.text('Remaining', pageWidth - 54, yPos);
+
+  yPos += 6;
+
+  doc.setFontSize(14);
+  doc.setTextColor(...textColor);
+  doc.text(formatAmount(totalQuoted), 20, yPos);
+  doc.setTextColor(...successColor);
+  doc.text(formatAmount(totalPaid), pageWidth / 2 - 20, yPos);
+  doc.setTextColor(...(remaining > 0 ? errorColor : successColor));
+  doc.text(formatAmount(remaining), pageWidth - 54, yPos);
+
+  yPos += 10;
+
+  // Progress bar
+  doc.setFontSize(9);
+  doc.setTextColor(...mutedColor);
+  doc.text(`Progress: ${progressPercent}% (${paidCount}/${items.length} items paid)`, 20, yPos);
+
+  yPos += 5;
+
+  const barWidth = pageWidth - 48;
+  const barHeight = 4;
+  doc.setFillColor(229, 231, 235);
+  doc.roundedRect(20, yPos, barWidth, barHeight, 1, 1, 'F');
+
+  if (progressPercent > 0) {
+    doc.setFillColor(...primaryColor);
+    doc.roundedRect(20, yPos, (barWidth * progressPercent) / 100, barHeight, 1, 1, 'F');
+  }
+
+  yPos += 18;
+
+  // Categories and Items
+  for (const category of categories) {
+    const categoryItems = items.filter(i => i.categoryId === category.id);
+    if (categoryItems.length === 0) continue;
+
+    const categoryTotal = categoryItems.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
+    const categoryPaid = categoryItems.reduce((sum, i) => {
+      return sum + (i.payments || []).reduce((s, p) => s + p.amount, 0);
+    }, 0);
+
+    // Category header
+    doc.setFontSize(12);
+    doc.setTextColor(...textColor);
+    doc.text(category.name, 14, yPos);
+
+    doc.setFontSize(9);
+    doc.setTextColor(...mutedColor);
+    const categoryStats = `${formatAmount(categoryPaid)} / ${formatAmount(categoryTotal)}`;
+    doc.text(categoryStats, pageWidth - 14 - doc.getTextWidth(categoryStats), yPos);
+
+    yPos += 6;
+
+    // Items table
+    autoTable(doc, {
+      startY: yPos,
+      head: [['Item', 'Vendor', 'Qty × Price', 'Status', 'Paid']],
+      body: categoryItems.map(item => {
+        const subtotal = item.unitPrice * item.quantity;
+        const itemPaid = (item.payments || []).reduce((sum, p) => sum + p.amount, 0);
+        return [
+          item.name,
+          item.vendor || '-',
+          `${item.quantity} × ${formatAmount(item.unitPrice)}`,
+          item.status,
+          formatAmount(itemPaid) + ' / ' + formatAmount(subtotal),
+        ];
+      }),
+      styles: {
+        fontSize: 8,
+        cellPadding: 3,
+      },
+      headStyles: {
+        fillColor: primaryColor,
+        textColor: [255, 255, 255],
+        fontStyle: 'bold',
+      },
+      columnStyles: {
+        0: { cellWidth: 'auto' },
+        1: { cellWidth: 35 },
+        2: { cellWidth: 30 },
+        3: { cellWidth: 20, halign: 'center' },
+        4: { cellWidth: 35, halign: 'right' },
+      },
+      alternateRowStyles: {
+        fillColor: [249, 250, 251],
+      },
+      didParseCell: (data) => {
+        // Color status column
+        if (data.column.index === 3 && data.section === 'body') {
+          const status = data.cell.raw as string;
+          if (status === 'paid') {
+            data.cell.styles.textColor = successColor;
+          } else if (status === 'partial') {
+            data.cell.styles.textColor = [245, 158, 11];
+          } else if (status === 'cancelled') {
+            data.cell.styles.textColor = mutedColor;
+          }
+        }
+      },
+    });
+
+    yPos = doc.lastAutoTable?.finalY ? doc.lastAutoTable.finalY + 10 : yPos + 20;
+
+    // Check for page break
+    if (yPos > doc.internal.pageSize.getHeight() - 40) {
+      doc.addPage();
+      yPos = 20;
+    }
+  }
+
+  // Payment History Section
+  const allPayments: { itemName: string; payment: { amount: number; date: unknown; note?: string } }[] = [];
+  for (const item of items) {
+    for (const payment of (item.payments || [])) {
+      allPayments.push({ itemName: item.name, payment });
+    }
+  }
+
+  if (allPayments.length > 0) {
+    // Sort by date (newest first)
+    allPayments.sort((a, b) => {
+      const dateA = parsePaymentDate(a.payment.date);
+      const dateB = parsePaymentDate(b.payment.date);
+      return dateB.getTime() - dateA.getTime();
+    });
+
+    doc.setFontSize(12);
+    doc.setTextColor(...textColor);
+    doc.text('Payment History', 14, yPos);
+
+    yPos += 6;
+
+    autoTable(doc, {
+      startY: yPos,
+      head: [['Date', 'Item', 'Note', 'Amount']],
+      body: allPayments.map(({ itemName, payment }) => [
+        formatDate(payment.date),
+        itemName,
+        payment.note || '-',
+        formatAmount(payment.amount),
+      ]),
+      styles: {
+        fontSize: 8,
+        cellPadding: 3,
+      },
+      headStyles: {
+        fillColor: primaryColor,
+        textColor: [255, 255, 255],
+        fontStyle: 'bold',
+      },
+      columnStyles: {
+        0: { cellWidth: 25 },
+        1: { cellWidth: 'auto' },
+        2: { cellWidth: 40 },
+        3: { cellWidth: 30, halign: 'right' },
+      },
+      alternateRowStyles: {
+        fillColor: [249, 250, 251],
+      },
+      didParseCell: (data) => {
+        if (data.column.index === 3 && data.section === 'body') {
+          data.cell.styles.textColor = successColor;
+          data.cell.styles.fontStyle = 'bold';
+        }
+      },
+    });
+  }
+
+  // Footer
+  const finalY = doc.lastAutoTable?.finalY || yPos + 20;
+  const footerY = Math.max(finalY + 20, doc.internal.pageSize.getHeight() - 20);
+
+  doc.setFontSize(8);
+  doc.setTextColor(...mutedColor);
+  doc.text(
+    `Generated by Byte Finance on ${new Date().toLocaleDateString('en-ZA', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })}`,
+    14,
+    footerY
+  );
+
+  // Save the PDF
+  const fileName = `${event.name.toLowerCase().replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.pdf`;
+  doc.save(fileName);
+}
+
+/**
+ * Helper to parse payment date
+ */
+function parsePaymentDate(dateValue: unknown): Date {
+  if (!dateValue) return new Date(0);
+  if (typeof dateValue === 'string') return new Date(dateValue);
+  if (dateValue instanceof Date) return dateValue;
+  if (typeof dateValue === 'object' && '_seconds' in (dateValue as object)) {
+    return new Date((dateValue as { _seconds: number })._seconds * 1000);
+  }
+  if (typeof dateValue === 'object' && 'toDate' in (dateValue as object)) {
+    return (dateValue as { toDate: () => Date }).toDate();
+  }
+  return new Date(0);
 }

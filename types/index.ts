@@ -233,6 +233,63 @@ export interface ProjectTransaction {
 }
 
 /**
+ * Event - A function/party/event being planned with budget tracking
+ * Separate from Projects but can optionally link to a Project as funding source
+ */
+export interface Event {
+  id: string;
+  name: string;                     // "John's Wedding"
+  description?: string;
+  eventDate?: Timestamp;            // When the function takes place
+  linkedProjectId?: string;         // Optional link to funding project
+  status: 'planning' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
+  notes?: string;
+  categories: EventCategory[];      // Embedded array
+  items: EventItem[];               // Embedded array (includes payments)
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+/**
+ * EventCategory - Grouping of related items within an event
+ */
+export interface EventCategory {
+  id: string;                       // Auto-generated: cat-{timestamp}-{random}
+  name: string;                     // "Alcohol", "Catering", "Photography"
+  sortOrder: number;
+}
+
+/**
+ * EventItem - Individual quoted item with price × quantity
+ */
+export interface EventItem {
+  id: string;                       // Auto-generated: item-{timestamp}-{random}
+  categoryId: string;               // Reference to category
+  name: string;                     // "Whiskey", "Cameraman Day Rate"
+  vendor?: string;                  // "ABC Liquors", "John's Photography"
+  unitPrice: number;                // cents (e.g., 50000 = R500)
+  quantity: number;                 // e.g., 5
+  // Computed: subtotal = unitPrice * quantity
+  status: 'quoted' | 'confirmed' | 'partial' | 'paid' | 'cancelled';
+  payments: EventPayment[];         // Embedded payment history
+  sortOrder: number;
+  notes?: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+/**
+ * EventPayment - Partial or full payment against an item
+ */
+export interface EventPayment {
+  id: string;                       // Auto-generated
+  amount: number;                   // cents
+  date: Timestamp;
+  note?: string;                    // "Deposit", "Final payment"
+  receiptId?: string;               // Optional link to receipt
+}
+
+/**
  * Cycle - A calendar month period for tracking finances
  */
 export interface Cycle {
@@ -477,6 +534,7 @@ export type CreateCycleItem = Omit<CycleItem, 'id' | 'createdAt' | 'updatedAt'>;
 export type CreateReceipt = Omit<Receipt, 'id' | 'createdAt' | 'updatedAt'>;
 export type CreateWishlistItem = Omit<WishlistItem, 'id' | 'createdAt' | 'updatedAt' | 'completedAt' | 'progress' | 'currentAmount'>;
 export type CreateVendorRule = Omit<VendorRule, 'id' | 'createdAt' | 'updatedAt' | 'matchCount'>;
+export type CreateEvent = Omit<Event, 'id' | 'createdAt' | 'updatedAt' | 'categories' | 'items'>;
 
 /**
  * Health Score - Gamified 0-100 score based on 4 pillars

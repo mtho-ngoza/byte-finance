@@ -5,32 +5,43 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { AmountDisplay } from '@/components/shared/amount-display';
 import { useToast } from '@/components/shared/toast';
-import type { Project } from '@/types';
+import type { Project, Event } from '@/types';
+
+type TabType = 'projects' | 'events';
 
 export default function ProjectsPage() {
   const router = useRouter();
   const { toast } = useToast();
+  const [activeTab, setActiveTab] = useState<TabType>('projects');
   const [projects, setProjects] = useState<Project[]>([]);
+  const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [showCreateProjectForm, setShowCreateProjectForm] = useState(false);
+  const [showCreateEventForm, setShowCreateEventForm] = useState(false);
   const [search, setSearch] = useState('');
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchProjects();
+    fetchData();
   }, []);
 
-  const fetchProjects = async () => {
+  const fetchData = async () => {
     try {
-      setError(null);
-      const res = await fetch('/api/projects');
-      if (!res.ok) throw new Error('Failed to load projects');
-      const data = await res.json();
-      setProjects(data.projects || []);
+      const [projectsRes, eventsRes] = await Promise.all([
+        fetch('/api/projects'),
+        fetch('/api/events'),
+      ]);
+
+      if (projectsRes.ok) {
+        const data = await projectsRes.json();
+        setProjects(data.projects || []);
+      }
+      if (eventsRes.ok) {
+        const data = await eventsRes.json();
+        setEvents(data.events || []);
+      }
     } catch (err) {
-      console.error('Failed to fetch projects:', err);
-      setError('Failed to load projects. Please try again.');
-      toast('Failed to load projects', 'error');
+      console.error('Failed to fetch data:', err);
+      toast('Failed to load data', 'error');
     } finally {
       setLoading(false);
     }
@@ -50,6 +61,23 @@ export default function ProjectsPage() {
     } catch (err) {
       console.error('Failed to create project:', err);
       toast('Failed to create project', 'error');
+    }
+  };
+
+  const handleCreateEvent = async (eventData: any) => {
+    try {
+      const res = await fetch('/api/events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(eventData),
+      });
+      if (!res.ok) throw new Error('Failed to create event');
+      const newEvent = await res.json();
+      toast('Event created', 'success');
+      router.push(`/events/${newEvent.id}`);
+    } catch (err) {
+      console.error('Failed to create event:', err);
+      toast('Failed to create event', 'error');
     }
   };
 
@@ -75,21 +103,58 @@ export default function ProjectsPage() {
   const activeProjects = filteredProjects.filter(p => p.status === 'active');
   const completedProjects = filteredProjects.filter(p => p.status === 'completed');
 
+  // Filter events
+  const nonCancelledEvents = events.filter(e => e.status !== 'cancelled');
+  const filteredEvents = nonCancelledEvents.filter(e => {
+    if (search && !e.name.toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
+  const activeEvents = filteredEvents.filter(e => e.status !== 'completed');
+  const completedEvents = filteredEvents.filter(e => e.status === 'completed');
+
   return (
     <div className="space-y-4 pb-20">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-text-primary">Family Projects</h1>
+          <h1 className="text-xl font-semibold text-text-primary">
+            {activeTab === 'projects' ? 'Family Projects' : 'Events'}
+          </h1>
           <p className="text-sm text-text-secondary">
-            {activeProjects.length} active project{activeProjects.length !== 1 ? 's' : ''}
+            {activeTab === 'projects'
+              ? `${activeProjects.length} active project${activeProjects.length !== 1 ? 's' : ''}`
+              : `${activeEvents.length} active event${activeEvents.length !== 1 ? 's' : ''}`}
           </p>
         </div>
         <button
-          onClick={() => setShowCreateForm(true)}
+          onClick={() => activeTab === 'projects' ? setShowCreateProjectForm(true) : setShowCreateEventForm(true)}
           className="px-4 py-2 rounded-lg bg-primary text-background font-medium text-sm hover:bg-primary/90 transition-colors"
         >
-          + New Project
+          + New {activeTab === 'projects' ? 'Project' : 'Event'}
+        </button>
+      </div>
+
+      {/* Tab Switcher */}
+      <div className="flex gap-1 p-1 bg-surface rounded-lg border border-border">
+        <button
+          onClick={() => setActiveTab('projects')}
+          className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
+            activeTab === 'projects'
+              ? 'bg-primary text-background'
+              : 'text-text-secondary hover:text-text-primary'
+          }`}
+        >
+          Projects
+        </button>
+        <button
+          onClick={() => setActiveTab('events')}
+          className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
+            activeTab === 'events'
+              ? 'bg-primary text-background'
+              : 'text-text-secondary hover:text-text-primary'
+          }`}
+        >
+          Events
         </button>
       </div>
 
@@ -97,7 +162,7 @@ export default function ProjectsPage() {
       <div className="relative">
         <input
           type="text"
-          placeholder="Search projects..."
+          placeholder={`Search ${activeTab}...`}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="w-full px-4 py-2 pl-10 rounded-lg border border-border bg-surface text-text-primary text-sm focus:outline-none focus:border-primary"
@@ -117,45 +182,89 @@ export default function ProjectsPage() {
         </svg>
       </div>
 
-      {/* Create form modal */}
-      {showCreateForm && (
+      {/* Modals */}
+      {showCreateProjectForm && (
         <CreateProjectForm
           onSave={handleCreateProject}
-          onCancel={() => setShowCreateForm(false)}
+          onCancel={() => setShowCreateProjectForm(false)}
+        />
+      )}
+      {showCreateEventForm && (
+        <CreateEventForm
+          projects={activeProjects}
+          onSave={handleCreateEvent}
+          onCancel={() => setShowCreateEventForm(false)}
         />
       )}
 
-      {/* Active projects */}
-      {activeProjects.length > 0 && (
-        <div className="space-y-3">
-          <h2 className="text-sm font-medium text-text-secondary">Active</h2>
-          {activeProjects.map((project) => (
-            <ProjectCard key={project.id} project={project} />
-          ))}
-        </div>
+      {/* Projects Tab Content */}
+      {activeTab === 'projects' && (
+        <>
+          {activeProjects.length > 0 && (
+            <div className="space-y-3">
+              <h2 className="text-sm font-medium text-text-secondary">Active</h2>
+              {activeProjects.map((project) => (
+                <ProjectCard key={project.id} project={project} />
+              ))}
+            </div>
+          )}
+
+          {completedProjects.length > 0 && (
+            <div className="space-y-3 mt-6">
+              <h2 className="text-sm font-medium text-text-secondary">Completed</h2>
+              {completedProjects.map((project) => (
+                <ProjectCard key={project.id} project={project} />
+              ))}
+            </div>
+          )}
+
+          {projects.length === 0 && (
+            <div className="text-center py-12">
+              <p className="text-text-secondary text-sm mb-4">No projects yet</p>
+              <button
+                onClick={() => setShowCreateProjectForm(true)}
+                className="px-4 py-2 rounded-lg bg-primary text-background font-medium text-sm"
+              >
+                Create Your First Project
+              </button>
+            </div>
+          )}
+        </>
       )}
 
-      {/* Completed projects */}
-      {completedProjects.length > 0 && (
-        <div className="space-y-3 mt-6">
-          <h2 className="text-sm font-medium text-text-secondary">Completed</h2>
-          {completedProjects.map((project) => (
-            <ProjectCard key={project.id} project={project} />
-          ))}
-        </div>
-      )}
+      {/* Events Tab Content */}
+      {activeTab === 'events' && (
+        <>
+          {activeEvents.length > 0 && (
+            <div className="space-y-3">
+              <h2 className="text-sm font-medium text-text-secondary">Active</h2>
+              {activeEvents.map((event) => (
+                <EventCard key={event.id} event={event} />
+              ))}
+            </div>
+          )}
 
-      {/* Empty state */}
-      {projects.length === 0 && (
-        <div className="text-center py-12">
-          <p className="text-text-secondary text-sm mb-4">No projects yet</p>
-          <button
-            onClick={() => setShowCreateForm(true)}
-            className="px-4 py-2 rounded-lg bg-primary text-background font-medium text-sm"
-          >
-            Create Your First Project
-          </button>
-        </div>
+          {completedEvents.length > 0 && (
+            <div className="space-y-3 mt-6">
+              <h2 className="text-sm font-medium text-text-secondary">Completed</h2>
+              {completedEvents.map((event) => (
+                <EventCard key={event.id} event={event} />
+              ))}
+            </div>
+          )}
+
+          {events.length === 0 && (
+            <div className="text-center py-12">
+              <p className="text-text-secondary text-sm mb-4">No events yet</p>
+              <button
+                onClick={() => setShowCreateEventForm(true)}
+                className="px-4 py-2 rounded-lg bg-primary text-background font-medium text-sm"
+              >
+                Plan Your First Event
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
@@ -169,7 +278,6 @@ function ProjectCard({ project }: { project: Project }) {
     other: '📁',
   };
 
-  // Calculate balance from transactions for accuracy
   const calculatedBalance = (project.transactions || []).reduce((sum, txn) => {
     return sum + (txn.type === 'contribution' ? txn.amount : -txn.amount);
   }, 0);
@@ -205,6 +313,81 @@ function ProjectCard({ project }: { project: Project }) {
           'bg-text-secondary/10 text-text-secondary'
         }`}>
           {project.status}
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+function EventCard({ event }: { event: Event }) {
+  const items = event.items || [];
+
+  // Calculate totals
+  let totalQuoted = 0;
+  let totalPaid = 0;
+
+  for (const item of items) {
+    const subtotal = (item.unitPrice || 0) * (item.quantity || 1);
+    totalQuoted += subtotal;
+    const itemPaid = (item.payments || []).reduce((sum, p) => sum + (p.amount || 0), 0);
+    totalPaid += itemPaid;
+  }
+
+  const progressPercent = totalQuoted > 0 ? Math.round((totalPaid / totalQuoted) * 100) : 0;
+
+  const statusColors: Record<string, string> = {
+    planning: 'bg-blue-500/10 text-blue-500',
+    confirmed: 'bg-primary/10 text-primary',
+    in_progress: 'bg-yellow-500/10 text-yellow-500',
+    completed: 'bg-success/10 text-success',
+    cancelled: 'bg-text-secondary/10 text-text-secondary',
+  };
+
+  const eventDate = event.eventDate?.toDate?.() ?? (event.eventDate ? new Date(event.eventDate as unknown as string) : null);
+
+  return (
+    <Link
+      href={`/events/${event.id}`}
+      className="block bg-surface border border-border rounded-xl p-4 hover:border-primary transition-colors"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-lg">📅</span>
+            <h3 className="text-base font-semibold text-text-primary truncate">
+              {event.name}
+            </h3>
+          </div>
+          {event.description && (
+            <p className="text-sm text-text-secondary line-clamp-1 mb-2">
+              {event.description}
+            </p>
+          )}
+
+          {/* Progress bar */}
+          {totalQuoted > 0 && (
+            <div className="mb-2">
+              <div className="h-1.5 bg-border rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-primary rounded-full transition-all"
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center gap-4 text-xs text-text-secondary">
+            {eventDate && (
+              <span>{eventDate.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+            )}
+            <span>
+              <AmountDisplay amount={totalPaid} size="xs" /> / <AmountDisplay amount={totalQuoted} size="xs" />
+            </span>
+            <span>{progressPercent}%</span>
+          </div>
+        </div>
+        <div className={`px-2 py-1 rounded text-xs font-medium ${statusColors[event.status] || statusColors.planning}`}>
+          {event.status.replace('_', ' ')}
         </div>
       </div>
     </Link>
@@ -295,6 +478,118 @@ function CreateProjectForm({ onSave, onCancel }: {
               className="flex-1 py-2.5 rounded-lg bg-primary text-background font-medium text-sm disabled:opacity-50"
             >
               {saving ? 'Creating...' : 'Create Project'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function CreateEventForm({ projects, onSave, onCancel }: {
+  projects: Project[];
+  onSave: (data: any) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [eventDate, setEventDate] = useState('');
+  const [linkedProjectId, setLinkedProjectId] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await onSave({
+        name,
+        description,
+        eventDate: eventDate ? new Date(eventDate).toISOString() : null,
+        linkedProjectId: linkedProjectId || null,
+        status: 'planning',
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50">
+      <div className="bg-surface border border-border rounded-t-2xl sm:rounded-xl w-full sm:max-w-md">
+        <form onSubmit={handleSubmit} className="p-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-base font-semibold text-text-primary">New Event</h3>
+            <button
+              type="button"
+              onClick={onCancel}
+              className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-background text-text-secondary"
+            >
+              ✕
+            </button>
+          </div>
+
+          <div>
+            <label className="block text-xs text-text-secondary mb-1">Event Name</label>
+            <input
+              required
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g., John's Wedding, Birthday Party"
+              className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary text-sm focus:outline-none focus:border-primary"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs text-text-secondary mb-1">Description (optional)</label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="What's this event about?"
+              rows={2}
+              className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary text-sm focus:outline-none focus:border-primary resize-none"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs text-text-secondary mb-1">Event Date (optional)</label>
+            <input
+              type="date"
+              value={eventDate}
+              onChange={(e) => setEventDate(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary text-sm focus:outline-none focus:border-primary"
+            />
+          </div>
+
+          {projects.length > 0 && (
+            <div>
+              <label className="block text-xs text-text-secondary mb-1">Link to Project (optional)</label>
+              <select
+                value={linkedProjectId}
+                onChange={(e) => setLinkedProjectId(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary text-sm focus:outline-none focus:border-primary"
+              >
+                <option value="">No linked project</option>
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <div className="flex gap-2 pt-2">
+            <button
+              type="button"
+              onClick={onCancel}
+              className="flex-1 py-2.5 rounded-lg border border-border text-text-secondary text-sm font-medium"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="flex-1 py-2.5 rounded-lg bg-primary text-background font-medium text-sm disabled:opacity-50"
+            >
+              {saving ? 'Creating...' : 'Create Event'}
             </button>
           </div>
         </form>
