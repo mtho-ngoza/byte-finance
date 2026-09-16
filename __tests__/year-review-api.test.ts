@@ -31,6 +31,7 @@ function createRequest(method: string, body?: unknown, url = 'http://localhost/a
 
 describe('Year Review API', () => {
   beforeEach(() => {
+    vi.resetModules();
     mockDb = createMockFirestore();
     vi.clearAllMocks();
   });
@@ -318,6 +319,79 @@ describe('Year Review API', () => {
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.year).toBe(new Date().getFullYear());
+    });
+
+    it('should handle items with multiple payments array', async () => {
+      mockDb._setDoc('users', TEST_USER_ID, {
+        preferences: { payDayType: 'last_working_day' },
+      });
+
+      // Add cycles for April AND May to prevent calculated range overlap
+      mockDb._setDoc(`users/${TEST_USER_ID}/cycles`, '2026-04', {
+        startDate: { toDate: () => new Date('2026-03-25') },
+        endDate: { toDate: () => new Date('2026-04-24') },
+      });
+      mockDb._setDoc(`users/${TEST_USER_ID}/cycles`, '2026-05', {
+        startDate: { toDate: () => new Date('2026-04-25') },
+        endDate: { toDate: () => new Date('2026-05-24') },
+      });
+
+      // Item with multiple payments (partial payments) - no amount field
+      mockDb._setDoc(`users/${TEST_USER_ID}/cycleItems`, 'item-multi-pay', {
+        cycleId: '2026-05',
+        category: 'education', // Use unique category
+        status: 'paid',
+        payments: [
+          { date: { toDate: () => new Date('2026-05-01') }, amount: 30000 },
+          { date: { toDate: () => new Date('2026-05-10') }, amount: 40000 },
+          { date: { toDate: () => new Date('2026-05-15') }, amount: 30000 },
+        ],
+      });
+
+      const { GET } = await import('@/app/api/year-review/route');
+      const response = await GET(createRequest('GET', null, 'http://localhost/api/year-review?year=2026') as never);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      // Find education category specifically - payments sum to 100000
+      const eduCategory = data.topCategories.find((c: { category: string }) => c.category === 'education');
+      expect(eduCategory?.amount).toBe(100000);
+    });
+
+    it('should handle payments with string dates', async () => {
+      mockDb._setDoc('users', TEST_USER_ID, {
+        preferences: { payDayType: 'last_working_day' },
+      });
+
+      // Add cycles for June AND July to prevent calculated range overlap
+      mockDb._setDoc(`users/${TEST_USER_ID}/cycles`, '2026-06', {
+        startDate: { toDate: () => new Date('2026-05-25') },
+        endDate: { toDate: () => new Date('2026-06-24') },
+      });
+      mockDb._setDoc(`users/${TEST_USER_ID}/cycles`, '2026-07', {
+        startDate: { toDate: () => new Date('2026-06-25') },
+        endDate: { toDate: () => new Date('2026-07-24') },
+      });
+
+      // Item with payments using string dates - no amount field
+      mockDb._setDoc(`users/${TEST_USER_ID}/cycleItems`, 'item-string-dates', {
+        cycleId: '2026-07',
+        category: 'savings', // Use unique category
+        status: 'paid',
+        payments: [
+          { date: '2026-07-05', amount: 25000 },
+          { date: '2026-07-10', amount: 25000 },
+        ],
+      });
+
+      const { GET } = await import('@/app/api/year-review/route');
+      const response = await GET(createRequest('GET', null, 'http://localhost/api/year-review?year=2026') as never);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      // Find savings category specifically - payments sum to 50000
+      const savingsCategory = data.topCategories.find((c: { category: string }) => c.category === 'savings');
+      expect(savingsCategory?.amount).toBe(50000);
     });
   });
 });
