@@ -2,10 +2,12 @@ import { Header } from '@/components/layout/header';
 import { Nav } from '@/components/layout/nav';
 import { MobileNav } from '@/components/layout/mobile-nav';
 import { Providers } from '@/components/providers';
+import { PendingShareHandler } from '@/components/shared/pending-share-handler';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
     <Providers>
+      <PendingShareHandler />
       <div className="min-h-screen flex flex-col bg-background">
         <Header />
 

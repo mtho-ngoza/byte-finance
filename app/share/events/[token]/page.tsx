@@ -55,13 +55,21 @@ export default function SharedEventPage({ params }: SharedEventPageProps) {
     fetchEvent();
   }, [token]);
 
-  // Check membership status when event loads and user is logged in
+  // Store share token for PWA install scenario
+  useEffect(() => {
+    if (token) {
+      localStorage.setItem('pending_share_token', token);
+    }
+  }, [token]);
+
+  // Auto-join when logged in user views share page
   useEffect(() => {
     if (!isLoggedIn || !event) return;
-    checkMembership();
+    autoJoinIfNeeded();
   }, [isLoggedIn, event?.id]);
 
-  const checkMembership = async () => {
+  const autoJoinIfNeeded = async () => {
+    // Check if already a member
     try {
       const res = await fetch('/api/memberships');
       if (!res.ok) return;
@@ -70,9 +78,16 @@ export default function SharedEventPage({ params }: SharedEventPageProps) {
       if (found) {
         setMembershipStatus('member');
         setJoinedEventId({ ownerId: found.ownerId, eventId: found.eventId });
+        // Clear pending token since we're already a member
+        localStorage.removeItem('pending_share_token');
+      } else {
+        // Auto-join since they have access via share link
+        await handleJoin();
+        // Clear pending token after joining
+        localStorage.removeItem('pending_share_token');
       }
     } catch (err) {
-      console.error('Failed to check membership:', err);
+      console.error('Failed to check/join membership:', err);
     }
   };
 
@@ -321,7 +336,7 @@ export default function SharedEventPage({ params }: SharedEventPageProps) {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="text-success">✓</span>
-              <span className="text-sm text-text-primary">You&apos;ve joined this event</span>
+              <span className="text-sm text-text-primary">Saved to your account</span>
             </div>
             <Link
               href={`/shared/${joinedEventId.ownerId}/${joinedEventId.eventId}`}
@@ -331,23 +346,17 @@ export default function SharedEventPage({ params }: SharedEventPageProps) {
             </Link>
           </div>
         </div>
-      ) : isLoggedIn ? (
+      ) : isLoggedIn && membershipStatus === 'joining' ? (
         <div className="bg-primary/10 border border-primary/20 rounded-xl p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-text-primary">Want to access this event from your account?</p>
-              <p className="text-xs text-text-secondary">Join to view it anytime from the app</p>
-            </div>
-            <button
-              onClick={handleJoin}
-              disabled={membershipStatus === 'joining'}
-              className="px-4 py-2 bg-primary text-background text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
-            >
-              {membershipStatus === 'joining' ? 'Joining...' : 'Join Event'}
-            </button>
+          <div className="flex items-center gap-2">
+            <svg className="w-4 h-4 animate-spin text-primary" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+            <span className="text-sm text-text-primary">Saving to your account...</span>
           </div>
         </div>
-      ) : sessionStatus !== 'loading' ? (
+      ) : sessionStatus !== 'loading' && !isLoggedIn ? (
         <div className="bg-surface border border-border rounded-xl p-4">
           <div className="flex items-center justify-between">
             <div>
