@@ -283,10 +283,12 @@ export interface EventMembership {
 
 /**
  * EventCategory - Grouping of related items within an event
+ * Supports nested categories via parentId
  */
 export interface EventCategory {
   id: string;                       // Auto-generated: cat-{timestamp}-{random}
   name: string;                     // "Alcohol", "Catering", "Photography"
+  parentId?: string;                // Parent category ID for nesting (e.g., "Beer" under "Alcohol")
   sortOrder: number;
 }
 
