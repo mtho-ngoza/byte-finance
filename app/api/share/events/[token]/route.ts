@@ -17,7 +17,7 @@ export async function GET(
     return NextResponse.json({ error: 'Event not found or share link expired' }, { status: 404 });
   }
 
-  const { eventId, eventData } = result;
+  const { userId, eventId, eventData } = result;
   const items = eventData.items || [];
 
   // Compute totals
@@ -43,6 +43,7 @@ export async function GET(
   // Return event without sensitive fields
   return NextResponse.json({
     id: eventId,
+    ownerId: userId, // Event owner's user ID (for join/membership)
     name: eventData.name,
     description: eventData.description,
     eventDate: eventData.eventDate,

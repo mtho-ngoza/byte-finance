@@ -5,13 +5,15 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { AmountDisplay } from '@/components/shared/amount-display';
 import { useToast } from '@/components/shared/toast';
-import type { Project, Event } from '@/types';
+import { useMemberships } from '@/hooks/use-memberships';
+import type { Project, Event, EventMembership } from '@/types';
 
 type TabType = 'projects' | 'events';
 
 export default function ProjectsPage() {
   const router = useRouter();
   const { toast } = useToast();
+  const { memberships, loading: membershipsLoading } = useMemberships();
   const [activeTab, setActiveTab] = useState<TabType>('projects');
   const [projects, setProjects] = useState<Project[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
@@ -262,6 +264,21 @@ export default function ProjectsPage() {
               >
                 Plan Your First Event
               </button>
+            </div>
+          )}
+
+          {/* Shared with me */}
+          {memberships.length > 0 && (
+            <div className="space-y-3 mt-6">
+              <h2 className="text-sm font-medium text-text-secondary flex items-center gap-2">
+                <span>Shared with me</span>
+                <span className="px-1.5 py-0.5 bg-primary/10 text-primary text-xs rounded-full">
+                  {memberships.length}
+                </span>
+              </h2>
+              {memberships.map((membership) => (
+                <SharedEventCard key={membership.id} membership={membership} />
+              ))}
             </div>
           )}
         </>
@@ -595,5 +612,36 @@ function CreateEventForm({ projects, onSave, onCancel }: {
         </form>
       </div>
     </div>
+  );
+}
+
+function SharedEventCard({ membership }: { membership: EventMembership }) {
+  const joinedAt = membership.joinedAt?.toDate?.()
+    ?? (membership.joinedAt ? new Date((membership.joinedAt as unknown as { _seconds: number })._seconds * 1000) : null);
+
+  return (
+    <Link
+      href={`/shared/${membership.ownerId}/${membership.eventId}`}
+      className="block bg-surface border border-border rounded-xl p-4 hover:border-primary transition-colors"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-lg">🔗</span>
+            <h3 className="text-base font-semibold text-text-primary truncate">
+              {membership.eventName}
+            </h3>
+          </div>
+          <div className="flex items-center gap-3 text-xs text-text-secondary">
+            {joinedAt && (
+              <span>Joined {joinedAt.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })}</span>
+            )}
+          </div>
+        </div>
+        <div className="px-2 py-1 rounded text-xs font-medium bg-primary/10 text-primary">
+          {membership.role}
+        </div>
+      </div>
+    </Link>
   );
 }

@@ -1,6 +1,8 @@
 'use client';
 
 import { use, useEffect, useState } from 'react';
+import { useSession } from 'next-auth/react';
+import Link from 'next/link';
 import { AmountDisplay } from '@/components/shared/amount-display';
 import { CurrencyInput } from '@/components/shared/currency-input';
 import { DateInput } from '@/components/shared/date-input';
@@ -12,6 +14,7 @@ interface SharedEventPageProps {
 
 interface SharedEvent {
   id: string;
+  ownerId?: string;
   name: string;
   description?: string;
   eventDate?: any;
@@ -28,6 +31,7 @@ interface SharedEvent {
 
 export default function SharedEventPage({ params }: SharedEventPageProps) {
   const { token } = use(params);
+  const { data: session, status: sessionStatus } = useSession();
 
   const [event, setEvent] = useState<SharedEvent | null>(null);
   const [loading, setLoading] = useState(true);
@@ -40,9 +44,58 @@ export default function SharedEventPage({ params }: SharedEventPageProps) {
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
+  // Membership state
+  const [membershipStatus, setMembershipStatus] = useState<'none' | 'joining' | 'member'>('none');
+  const [joinedEventId, setJoinedEventId] = useState<{ ownerId: string; eventId: string } | null>(null);
+
+  // Check if user is logged in
+  const isLoggedIn = sessionStatus === 'authenticated' && !!session?.user?.id;
+
   useEffect(() => {
     fetchEvent();
   }, [token]);
+
+  // Check membership status when event loads and user is logged in
+  useEffect(() => {
+    if (!isLoggedIn || !event) return;
+    checkMembership();
+  }, [isLoggedIn, event?.id]);
+
+  const checkMembership = async () => {
+    try {
+      const res = await fetch('/api/memberships');
+      if (!res.ok) return;
+      const memberships = await res.json();
+      const found = memberships.find((m: any) => m.eventId === event?.id);
+      if (found) {
+        setMembershipStatus('member');
+        setJoinedEventId({ ownerId: found.ownerId, eventId: found.eventId });
+      }
+    } catch (err) {
+      console.error('Failed to check membership:', err);
+    }
+  };
+
+  const handleJoin = async () => {
+    setMembershipStatus('joining');
+    try {
+      const res = await fetch(`/api/share/events/${token}/join`, {
+        method: 'POST',
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to join');
+      }
+      const data = await res.json();
+      setMembershipStatus('member');
+      setJoinedEventId({ ownerId: data.ownerId, eventId: data.eventId });
+      showToast('Joined event successfully!', 'success');
+    } catch (err: any) {
+      console.error('Failed to join:', err);
+      showToast(err.message || 'Failed to join event', 'error');
+      setMembershipStatus('none');
+    }
+  };
 
   const showToast = (message: string, type: 'success' | 'error') => {
     setToast({ message, type });
@@ -261,6 +314,55 @@ export default function SharedEventPage({ params }: SharedEventPageProps) {
           {toast.message}
         </div>
       )}
+
+      {/* Membership Banner */}
+      {membershipStatus === 'member' && joinedEventId ? (
+        <div className="bg-success/10 border border-success/20 rounded-xl p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-success">✓</span>
+              <span className="text-sm text-text-primary">You&apos;ve joined this event</span>
+            </div>
+            <Link
+              href={`/shared/${joinedEventId.ownerId}/${joinedEventId.eventId}`}
+              className="px-3 py-1.5 bg-primary text-background text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors"
+            >
+              Open in App
+            </Link>
+          </div>
+        </div>
+      ) : isLoggedIn ? (
+        <div className="bg-primary/10 border border-primary/20 rounded-xl p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-text-primary">Want to access this event from your account?</p>
+              <p className="text-xs text-text-secondary">Join to view it anytime from the app</p>
+            </div>
+            <button
+              onClick={handleJoin}
+              disabled={membershipStatus === 'joining'}
+              className="px-4 py-2 bg-primary text-background text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
+            >
+              {membershipStatus === 'joining' ? 'Joining...' : 'Join Event'}
+            </button>
+          </div>
+        </div>
+      ) : sessionStatus !== 'loading' ? (
+        <div className="bg-surface border border-border rounded-xl p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-text-primary">Save this event to your account</p>
+              <p className="text-xs text-text-secondary">Sign in to access it anytime from the app</p>
+            </div>
+            <Link
+              href={`/login?callbackUrl=${encodeURIComponent(`/share/events/${token}`)}`}
+              className="px-4 py-2 bg-primary text-background text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors"
+            >
+              Sign In
+            </Link>
+          </div>
+        </div>
+      ) : null}
 
       {/* Header */}
       <div>

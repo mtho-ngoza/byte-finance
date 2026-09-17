@@ -247,8 +247,36 @@ export interface Event {
   shareToken?: string;              // Unique token for sharing (e.g., "abc123xyz")
   categories: EventCategory[];      // Embedded array
   items: EventItem[];               // Embedded array (includes payments)
+  // Membership
+  ownerId?: string;                 // Creator's user ID (for shared events)
+  members?: EventMember[];          // Collaborators who joined via share link
   createdAt: Timestamp;
   updatedAt: Timestamp;
+}
+
+/**
+ * EventMember - A collaborator on an event (joined via share link or invite)
+ */
+export interface EventMember {
+  userId: string;                   // Firebase Auth UID
+  email: string;                    // For display
+  name?: string;                    // Display name
+  role: 'editor' | 'viewer';        // Permissions
+  joinedAt: Timestamp;
+  joinedVia: 'share_link' | 'invite';
+}
+
+/**
+ * EventMembership - User's reference to a shared event (for querying)
+ * Stored in: users/{userId}/memberships/{membershipId}
+ */
+export interface EventMembership {
+  id: string;
+  ownerId: string;                  // Event owner's user ID
+  eventId: string;                  // Event ID
+  eventName: string;                // Cached for list display
+  role: 'editor' | 'viewer';
+  joinedAt: Timestamp;
 }
 
 /**
