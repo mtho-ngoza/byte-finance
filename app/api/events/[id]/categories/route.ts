@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/auth';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
+import { createActivityEntry } from '@/lib/event-activity';
 import type { EventCategory } from '@/types';
 
 /**
@@ -43,8 +44,16 @@ export async function POST(
     sortOrder: existingCategories.length,
   };
 
+  const activity = createActivityEntry({
+    type: 'category_added',
+    actorId: userId,
+    targetId: categoryId,
+    targetName: body.name.trim(),
+  });
+
   await docRef.update({
     categories: FieldValue.arrayUnion(newCategory),
+    activities: FieldValue.arrayUnion(activity),
     updatedAt: FieldValue.serverTimestamp(),
   });
 

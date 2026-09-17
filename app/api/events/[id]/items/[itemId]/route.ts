@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/auth';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
+import { createActivityEntry } from '@/lib/event-activity';
 
 /**
  * PATCH /api/events/[id]/items/[itemId]
@@ -47,8 +48,17 @@ export async function PATCH(
 
   item.updatedAt = new Date();
 
+  const activity = createActivityEntry({
+    type: 'item_updated',
+    actorId: userId,
+    targetId: itemId,
+    targetName: item.name,
+    details: body,
+  });
+
   await docRef.update({
     items,
+    activities: FieldValue.arrayUnion(activity),
     updatedAt: FieldValue.serverTimestamp(),
   });
 
@@ -78,14 +88,23 @@ export async function DELETE(
   }
 
   const items = doc.data()?.items || [];
+  const deletedItem = items.find((i: any) => i.id === itemId);
   const updatedItems = items.filter((i: any) => i.id !== itemId);
 
   if (items.length === updatedItems.length) {
     return NextResponse.json({ error: 'Item not found' }, { status: 404 });
   }
 
+  const activity = createActivityEntry({
+    type: 'item_deleted',
+    actorId: userId,
+    targetId: itemId,
+    targetName: deletedItem?.name,
+  });
+
   await docRef.update({
     items: updatedItems,
+    activities: FieldValue.arrayUnion(activity),
     updatedAt: FieldValue.serverTimestamp(),
   });
 

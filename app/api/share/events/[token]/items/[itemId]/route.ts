@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { findEventByShareToken } from '@/lib/share-auth';
 import { FieldValue } from 'firebase-admin/firestore';
+import { createActivityEntry } from '@/lib/event-activity';
 
 /**
  * PATCH /api/share/events/[token]/items/[itemId]
@@ -41,8 +42,17 @@ export async function PATCH(
 
   item.updatedAt = new Date();
 
+  const activity = createActivityEntry({
+    type: 'item_updated',
+    actorName: 'Shared User',
+    targetId: itemId,
+    targetName: item.name,
+    details: body,
+  });
+
   await eventRef.update({
     items,
+    activities: FieldValue.arrayUnion(activity),
     updatedAt: FieldValue.serverTimestamp(),
   });
 
@@ -67,14 +77,23 @@ export async function DELETE(
 
   const { eventRef, eventData } = result;
   const items = eventData.items || [];
+  const deletedItem = items.find((i: any) => i.id === itemId);
   const updatedItems = items.filter((i: any) => i.id !== itemId);
 
   if (items.length === updatedItems.length) {
     return NextResponse.json({ error: 'Item not found' }, { status: 404 });
   }
 
+  const activity = createActivityEntry({
+    type: 'item_deleted',
+    actorName: 'Shared User',
+    targetId: itemId,
+    targetName: deletedItem?.name,
+  });
+
   await eventRef.update({
     items: updatedItems,
+    activities: FieldValue.arrayUnion(activity),
     updatedAt: FieldValue.serverTimestamp(),
   });
 

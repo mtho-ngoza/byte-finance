@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/auth';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
+import { createActivityEntry } from '@/lib/event-activity';
 import type { EventCategory } from '@/types';
 
 /**
@@ -69,8 +70,17 @@ export async function POST(
     updatedAt: now,
   };
 
+  const activity = createActivityEntry({
+    type: 'item_added',
+    actorId: userId,
+    targetId: itemId,
+    targetName: body.name.trim(),
+    details: { unitPrice: body.unitPrice, quantity: body.quantity },
+  });
+
   await docRef.update({
     items: FieldValue.arrayUnion(newItem),
+    activities: FieldValue.arrayUnion(activity),
     updatedAt: FieldValue.serverTimestamp(),
   });
 

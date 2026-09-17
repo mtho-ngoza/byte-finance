@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { findEventByShareToken } from '@/lib/share-auth';
 import { FieldValue } from 'firebase-admin/firestore';
+import { createActivityEntry } from '@/lib/event-activity';
 import type { EventCategory } from '@/types';
 
 /**
@@ -63,8 +64,17 @@ export async function POST(
     updatedAt: now,
   };
 
+  const activity = createActivityEntry({
+    type: 'item_added',
+    actorName: 'Shared User',
+    targetId: itemId,
+    targetName: body.name.trim(),
+    details: { unitPrice: body.unitPrice, quantity: body.quantity },
+  });
+
   await eventRef.update({
     items: FieldValue.arrayUnion(newItem),
+    activities: FieldValue.arrayUnion(activity),
     updatedAt: FieldValue.serverTimestamp(),
   });
 

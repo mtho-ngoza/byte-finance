@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { findEventByShareToken } from '@/lib/share-auth';
 import { FieldValue } from 'firebase-admin/firestore';
+import { createActivityEntry } from '@/lib/event-activity';
 
 /**
  * POST /api/share/events/[token]/join
@@ -72,12 +73,20 @@ export async function POST(
     joinedAt: now,
   };
 
+  const activity = createActivityEntry({
+    type: 'member_joined',
+    actorId: userId,
+    actorName: userName || userEmail,
+    details: { email: userEmail, role: 'editor' },
+  });
+
   // Use batch write for atomicity
   const batch = db.batch();
 
   // Add member to event
   batch.update(eventRef, {
     members: FieldValue.arrayUnion(newMember),
+    activities: FieldValue.arrayUnion(activity),
     // Ensure ownerId is set (for existing events without it)
     ownerId: ownerId,
     updatedAt: now,

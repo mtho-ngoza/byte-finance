@@ -247,6 +247,8 @@ export interface Event {
   shareToken?: string;              // Unique token for sharing (e.g., "abc123xyz")
   categories: EventCategory[];      // Embedded array
   items: EventItem[];               // Embedded array (includes payments)
+  todos?: EventTodo[];              // Checklist items
+  activities?: EventActivity[];     // Activity log (most recent first)
   // Membership
   ownerId?: string;                 // Creator's user ID (for shared events)
   members?: EventMember[];          // Collaborators who joined via share link
@@ -316,6 +318,38 @@ export interface EventPayment {
   date: Timestamp;
   note?: string;                    // "Deposit", "Final payment"
   receiptId?: string;               // Optional link to receipt
+}
+
+/**
+ * EventActivity - Activity log entry for tracking changes
+ */
+export interface EventActivity {
+  id: string;
+  type:
+    | 'payment_added' | 'payment_deleted'
+    | 'item_added' | 'item_updated' | 'item_deleted'
+    | 'category_added' | 'category_updated' | 'category_deleted'
+    | 'member_joined' | 'member_left'
+    | 'notes_updated' | 'event_updated' | 'event_created';
+  actorId?: string;                 // User ID (null for anonymous via share link)
+  actorName?: string;               // Display name
+  targetId?: string;                // Item/category/payment ID
+  targetName?: string;              // For display: "Whiskey", "Catering"
+  details?: Record<string, unknown>; // Additional data (amount, old/new values)
+  createdAt: Timestamp;
+}
+
+/**
+ * EventTodo - Checklist item for event tasks
+ */
+export interface EventTodo {
+  id: string;
+  title: string;                    // "Book venue", "Send invitations"
+  completed: boolean;
+  completedAt?: Timestamp;
+  completedBy?: string;             // User ID
+  sortOrder: number;
+  createdAt: Timestamp;
 }
 
 /**

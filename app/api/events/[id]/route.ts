@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/auth';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
+import { createActivityEntry } from '@/lib/event-activity';
 
 /**
  * GET /api/events/[id]
@@ -25,11 +26,23 @@ export async function GET(
 
   const data = doc.data()!;
   const items = data.items || [];
+  const categories = data.categories || [];
+  const todos = data.todos || [];
 
   // Compute totals
   let totalQuoted = 0;
   let totalPaid = 0;
   let paidCount = 0;
+  let partialCount = 0;
+  let quotedCount = 0;
+  let confirmedCount = 0;
+  let cancelledCount = 0;
+
+  // Category breakdown
+  const categoryBreakdown: Record<string, { name: string; quoted: number; paid: number; itemCount: number }> = {};
+  for (const cat of categories) {
+    categoryBreakdown[cat.id] = { name: cat.name, quoted: 0, paid: 0, itemCount: 0 };
+  }
 
   for (const item of items) {
     const subtotal = (item.unitPrice || 0) * (item.quantity || 1);
@@ -41,20 +54,63 @@ export async function GET(
     );
     totalPaid += itemPaid;
 
-    if (item.status === 'paid') {
-      paidCount++;
+    // Status counts
+    switch (item.status) {
+      case 'paid': paidCount++; break;
+      case 'partial': partialCount++; break;
+      case 'quoted': quotedCount++; break;
+      case 'confirmed': confirmedCount++; break;
+      case 'cancelled': cancelledCount++; break;
+    }
+
+    // Category breakdown
+    if (categoryBreakdown[item.categoryId]) {
+      categoryBreakdown[item.categoryId].quoted += subtotal;
+      categoryBreakdown[item.categoryId].paid += itemPaid;
+      categoryBreakdown[item.categoryId].itemCount++;
     }
   }
+
+  // Todo stats
+  const todoTotal = todos.length;
+  const todoCompleted = todos.filter((t: any) => t.completed).length;
+
+  // Summary object
+  const summary = {
+    totals: {
+      quoted: totalQuoted,
+      paid: totalPaid,
+      remaining: totalQuoted - totalPaid,
+      progressPercent: totalQuoted > 0 ? Math.round((totalPaid / totalQuoted) * 100) : 0,
+    },
+    items: {
+      total: items.length,
+      paid: paidCount,
+      partial: partialCount,
+      quoted: quotedCount,
+      confirmed: confirmedCount,
+      cancelled: cancelledCount,
+    },
+    categories: Object.values(categoryBreakdown),
+    todos: {
+      total: todoTotal,
+      completed: todoCompleted,
+      pending: todoTotal - todoCompleted,
+      progressPercent: todoTotal > 0 ? Math.round((todoCompleted / todoTotal) * 100) : 0,
+    },
+  };
 
   return NextResponse.json({
     id: doc.id,
     ...data,
-    // Computed values
+    // Computed values (legacy)
     totalQuoted,
     totalPaid,
     remaining: totalQuoted - totalPaid,
     itemCount: items.length,
     paidCount,
+    // New summary object
+    summary,
   });
 }
 
@@ -97,6 +153,13 @@ export async function PATCH(
     }
   }
   if (body.notes !== undefined) updateData.notes = body.notes?.trim() || null;
+
+  const activity = createActivityEntry({
+    type: 'event_updated',
+    actorId: userId,
+    details: body,
+  });
+  updateData.activities = FieldValue.arrayUnion(activity);
 
   await docRef.update(updateData);
 

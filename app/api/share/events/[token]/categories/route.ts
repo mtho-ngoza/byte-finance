@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { findEventByShareToken } from '@/lib/share-auth';
 import { FieldValue } from 'firebase-admin/firestore';
+import { createActivityEntry } from '@/lib/event-activity';
 import type { EventCategory } from '@/types';
 
 /**
@@ -37,8 +38,16 @@ export async function POST(
     sortOrder: existingCategories.length,
   };
 
+  const activity = createActivityEntry({
+    type: 'category_added',
+    actorName: 'Shared User',
+    targetId: categoryId,
+    targetName: body.name.trim(),
+  });
+
   await eventRef.update({
     categories: FieldValue.arrayUnion(newCategory),
+    activities: FieldValue.arrayUnion(activity),
     updatedAt: FieldValue.serverTimestamp(),
   });
 

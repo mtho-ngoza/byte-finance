@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/auth';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
+import { createActivityEntry } from '@/lib/event-activity';
 
 /**
  * DELETE /api/events/[id]/items/[itemId]/payments/[paymentId]
@@ -39,6 +40,9 @@ export async function DELETE(
     return NextResponse.json({ error: 'Payment not found' }, { status: 404 });
   }
 
+  // Get payment amount before removing
+  const deletedPayment = item.payments[paymentIndex];
+
   // Remove payment
   item.payments.splice(paymentIndex, 1);
 
@@ -57,8 +61,17 @@ export async function DELETE(
 
   item.updatedAt = new Date();
 
+  const activity = createActivityEntry({
+    type: 'payment_deleted',
+    actorId: userId,
+    targetId: itemId,
+    targetName: item.name,
+    details: { amount: deletedPayment.amount, paymentId },
+  });
+
   await docRef.update({
     items,
+    activities: FieldValue.arrayUnion(activity),
     updatedAt: FieldValue.serverTimestamp(),
   });
 

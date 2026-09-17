@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/auth';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
+import { createActivityEntry } from '@/lib/event-activity';
 import type { CreateEvent } from '@/types';
 
 /**
@@ -47,6 +48,12 @@ export async function POST(request: NextRequest) {
   const db = getAdminDb();
   const now = FieldValue.serverTimestamp();
 
+  const activity = createActivityEntry({
+    type: 'event_created',
+    actorId: userId,
+    details: { name: body.name.trim() },
+  });
+
   const eventData = {
     name: body.name.trim(),
     description: body.description?.trim() || null,
@@ -54,8 +61,12 @@ export async function POST(request: NextRequest) {
     linkedProjectId: body.linkedProjectId || null,
     status: body.status || 'planning',
     notes: body.notes?.trim() || null,
+    ownerId: userId,
     categories: [],
     items: [],
+    todos: [],
+    activities: [activity],
+    members: [],
     createdAt: now,
     updatedAt: now,
   };

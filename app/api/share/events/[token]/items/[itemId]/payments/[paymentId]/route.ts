@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { findEventByShareToken } from '@/lib/share-auth';
 import { FieldValue } from 'firebase-admin/firestore';
+import { createActivityEntry } from '@/lib/event-activity';
 
 /**
  * DELETE /api/share/events/[token]/items/[itemId]/payments/[paymentId]
@@ -33,6 +34,9 @@ export async function DELETE(
     return NextResponse.json({ error: 'Payment not found' }, { status: 404 });
   }
 
+  // Get payment amount before removing
+  const deletedPayment = item.payments[paymentIndex];
+
   // Remove payment
   item.payments.splice(paymentIndex, 1);
 
@@ -50,8 +54,17 @@ export async function DELETE(
 
   item.updatedAt = new Date();
 
+  const activity = createActivityEntry({
+    type: 'payment_deleted',
+    actorName: 'Shared User',
+    targetId: itemId,
+    targetName: item.name,
+    details: { amount: deletedPayment.amount, paymentId },
+  });
+
   await eventRef.update({
     items,
+    activities: FieldValue.arrayUnion(activity),
     updatedAt: FieldValue.serverTimestamp(),
   });
 

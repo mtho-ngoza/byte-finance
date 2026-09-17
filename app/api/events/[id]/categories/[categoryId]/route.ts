@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/auth';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
+import { createActivityEntry } from '@/lib/event-activity';
 import type { EventCategory, EventItem } from '@/types';
 
 /**
@@ -42,8 +43,17 @@ export async function PATCH(
     categories[categoryIndex].sortOrder = body.sortOrder;
   }
 
+  const activity = createActivityEntry({
+    type: 'category_updated',
+    actorId: userId,
+    targetId: categoryId,
+    targetName: categories[categoryIndex].name,
+    details: body,
+  });
+
   await docRef.update({
     categories,
+    activities: FieldValue.arrayUnion(activity),
     updatedAt: FieldValue.serverTimestamp(),
   });
 
@@ -81,13 +91,25 @@ export async function DELETE(
     return NextResponse.json({ error: 'Category not found' }, { status: 404 });
   }
 
+  // Get category name before removing
+  const deletedCategory = categories[categoryIndex];
+
   // Remove category and all its items
   const updatedCategories = categories.filter((c) => c.id !== categoryId);
   const updatedItems = items.filter((i) => i.categoryId !== categoryId);
 
+  const activity = createActivityEntry({
+    type: 'category_deleted',
+    actorId: userId,
+    targetId: categoryId,
+    targetName: deletedCategory.name,
+    details: { itemsDeleted: items.length - updatedItems.length },
+  });
+
   await docRef.update({
     categories: updatedCategories,
     items: updatedItems,
+    activities: FieldValue.arrayUnion(activity),
     updatedAt: FieldValue.serverTimestamp(),
   });
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { findEventByShareToken } from '@/lib/share-auth';
 import { FieldValue } from 'firebase-admin/firestore';
+import { createActivityEntry } from '@/lib/event-activity';
 
 /**
  * POST /api/share/events/[token]/items/[itemId]/payments
@@ -73,8 +74,17 @@ export async function POST(
 
   item.updatedAt = new Date();
 
+  const activity = createActivityEntry({
+    type: 'payment_added',
+    actorName: body.addedBy?.trim() || 'Shared User',
+    targetId: itemId,
+    targetName: item.name,
+    details: { amount: body.amount, paymentId },
+  });
+
   await eventRef.update({
     items,
+    activities: FieldValue.arrayUnion(activity),
     updatedAt: FieldValue.serverTimestamp(),
   });
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/auth';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
+import { createActivityEntry } from '@/lib/event-activity';
 
 /**
  * POST /api/events/[id]/items/[itemId]/payments
@@ -78,8 +79,17 @@ export async function POST(
 
   item.updatedAt = new Date();
 
+  const activity = createActivityEntry({
+    type: 'payment_added',
+    actorId: userId,
+    targetId: itemId,
+    targetName: item.name,
+    details: { amount: body.amount, paymentId },
+  });
+
   await docRef.update({
     items,
+    activities: FieldValue.arrayUnion(activity),
     updatedAt: FieldValue.serverTimestamp(),
   });
 
