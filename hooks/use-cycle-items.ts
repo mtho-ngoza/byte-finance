@@ -77,19 +77,28 @@ export function useCycleItems(cycleId: string | null, cycle?: Cycle | null): Use
     return unsubscribe;
   }, [userId, cycleId]);
 
-  // Also fetch recent paid items (to catch items paid within this cycle's date range but spawned elsewhere)
+  // Also fetch paid items that might belong to this cycle's date range
+  // Note: Firestore doesn't support range queries on multiple fields, so we fetch
+  // items from a reasonable window and filter client-side
   useEffect(() => {
-    if (!userId || !cycle?.startDate) {
+    if (!userId || !cycle?.startDate || !cycle?.endDate) {
       setAllRecentItems([]);
       return;
     }
 
-    // Get start date from cycle
+    // Get date range from cycle
     const startDate = cycle.startDate.toDate ? cycle.startDate.toDate() : new Date(cycle.startDate as unknown as string);
+    const endDate = cycle.endDate.toDate ? cycle.endDate.toDate() : new Date(cycle.endDate as unknown as string);
 
+    // Add a day buffer to endDate for the query (we'll filter precisely client-side)
+    const queryEndDate = new Date(endDate);
+    queryEndDate.setDate(queryEndDate.getDate() + 1);
+
+    // Query items with paidDate in the cycle's range
     const q = query(
       collection(db, `users/${userId}/cycleItems`),
-      where('paidDate', '>=', Timestamp.fromDate(startDate))
+      where('paidDate', '>=', Timestamp.fromDate(startDate)),
+      where('paidDate', '<=', Timestamp.fromDate(queryEndDate))
     );
 
     const unsubscribe = onSnapshot(
@@ -104,7 +113,7 @@ export function useCycleItems(cycleId: string | null, cycle?: Cycle | null): Use
     );
 
     return unsubscribe;
-  }, [userId, cycle?.startDate]);
+  }, [userId, cycle?.startDate, cycle?.endDate]);
 
   // Helper to get earliest payment date from an item
   const getEarliestPaymentDate = (item: CycleItem): Date | null => {
@@ -126,7 +135,15 @@ export function useCycleItems(cycleId: string | null, cycle?: Cycle | null): Use
     return null;
   };
 
+  // Helper to check if an item's payment falls within a date range
+  const isPaymentInRange = (item: CycleItem, startDate: Date, endDate: Date): boolean => {
+    const paymentDate = getEarliestPaymentDate(item);
+    if (!paymentDate) return false;
+    return paymentDate >= startDate && paymentDate <= endDate;
+  };
+
   // Combine and filter items based on date range
+  // Key rule: paid items appear in the cycle where they were PAID, not where they were planned
   const filteredItems = useMemo(() => {
     if (!cycle?.startDate || !cycle?.endDate) {
       return rawItems; // Fallback to cycleId-based filtering
@@ -136,42 +153,41 @@ export function useCycleItems(cycleId: string | null, cycle?: Cycle | null): Use
     startDate.setHours(0, 0, 0, 0); // Start of day
 
     const endDate = cycle.endDate.toDate ? cycle.endDate.toDate() : new Date(cycle.endDate as unknown as string);
-    endDate.setHours(23, 59, 59, 999); // End of day - include items paid anytime on the last day
+    endDate.setHours(23, 59, 59, 999); // End of day
 
-    // Collect all unique items
+    // Use a Map to deduplicate by item ID
     const itemMap = new Map<string, CycleItem>();
 
-    // Add unpaid items from this cycle (planned items)
+    // 1. Add UNPAID items from this cycle (planned items that haven't been paid yet)
     for (const item of rawItems) {
-      if (item.status === 'upcoming' || item.status === 'due') {
+      if (item.status === 'upcoming' || item.status === 'due' || item.status === 'skipped') {
         itemMap.set(item.id, item);
       }
     }
 
-    // Add paid/partial items from this cycle (always include if they have the right cycleId)
+    // 2. Add PAID/PARTIAL items ONLY if their payment date is within this cycle's range
+    // This includes items from rawItems (same cycleId) AND allRecentItems (different cycleId)
+    // The payment date determines which cycle the item appears in, not the cycleId
+
+    // First, collect all paid/partial items from both sources
+    const allPaidItems = new Map<string, CycleItem>();
+
     for (const item of rawItems) {
       if (item.status === 'paid' || item.status === 'partial') {
-        itemMap.set(item.id, item);
+        allPaidItems.set(item.id, item);
       }
     }
 
-    // Add paid/partial items from OTHER cycles that fall within this cycle's date range
-    // (items paid during this cycle but spawned in a different cycle)
     for (const item of allRecentItems) {
       if (item.status === 'paid' || item.status === 'partial') {
-        // Skip if already added from rawItems
-        if (itemMap.has(item.id)) continue;
-
-        const paymentDate = getEarliestPaymentDate(item);
-        if (paymentDate && paymentDate >= startDate && paymentDate <= endDate) {
-          itemMap.set(item.id, item);
-        }
+        // allRecentItems may have fresher data, prefer it
+        allPaidItems.set(item.id, item);
       }
     }
 
-    // Add skipped items from this cycle
-    for (const item of rawItems) {
-      if (item.status === 'skipped') {
+    // Now filter to only include items paid within this cycle's date range
+    for (const item of allPaidItems.values()) {
+      if (isPaymentInRange(item, startDate, endDate)) {
         itemMap.set(item.id, item);
       }
     }
