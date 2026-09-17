@@ -44,8 +44,7 @@ export default function EventDetailPage({ params }: EventDetailPageProps) {
       if (!eventRes.ok) throw new Error('Event not found');
       const eventData = await eventRes.json();
       setEvent(eventData);
-      // Expand all categories by default
-      setExpandedCategories(new Set((eventData.categories || []).map((c: EventCategory) => c.id)));
+      // Categories collapsed by default (empty set)
 
       if (projectsRes.ok) {
         const projectsData = await projectsRes.json();
@@ -206,6 +205,22 @@ export default function EventDetailPage({ params }: EventDetailPageProps) {
     } catch (error) {
       console.error('Failed to delete payment:', error);
       toast('Failed to delete payment', 'error');
+    }
+  };
+
+  const handleUpdateItemNotes = async (itemId: string, notes: string) => {
+    try {
+      const res = await fetch(`/api/events/${id}/items/${itemId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes }),
+      });
+      if (!res.ok) throw new Error('Failed to update');
+      await fetchData();
+      toast('Notes saved', 'success');
+    } catch (error) {
+      console.error('Failed to save notes:', error);
+      toast('Failed to save notes', 'error');
     }
   };
 
@@ -417,6 +432,7 @@ export default function EventDetailPage({ params }: EventDetailPageProps) {
                         onDelete={() => handleDeleteItem(item.id)}
                         onAddPayment={() => setShowAddPayment(item.id)}
                         onDeletePayment={(paymentId) => handleDeletePayment(item.id, paymentId)}
+                        onUpdateNotes={(notes) => handleUpdateItemNotes(item.id, notes)}
                       />
                     ))
                   )}
@@ -513,6 +529,7 @@ function ItemRow({
   onDelete,
   onAddPayment,
   onDeletePayment,
+  onUpdateNotes,
 }: {
   item: EventItem;
   parseDate: (d: unknown) => Date;
@@ -520,9 +537,25 @@ function ItemRow({
   onDelete: () => void;
   onAddPayment: () => void;
   onDeletePayment: (paymentId: string) => void;
+  onUpdateNotes: (notes: string) => void;
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showPayments, setShowPayments] = useState(false);
+  const [showNotes, setShowNotes] = useState(false);
+  const [notesValue, setNotesValue] = useState(item.notes || '');
+  const [savingNotes, setSavingNotes] = useState(false);
+
+  const hasNotes = !!item.notes && item.notes.trim().length > 0;
+
+  const handleSaveNotes = async () => {
+    setSavingNotes(true);
+    try {
+      await onUpdateNotes(notesValue);
+      setShowNotes(false);
+    } finally {
+      setSavingNotes(false);
+    }
+  };
 
   const subtotal = item.unitPrice * item.quantity;
   const totalPaid = (item.payments || []).reduce((sum, p) => sum + p.amount, 0);
@@ -576,6 +609,18 @@ function ItemRow({
                 + Pay
               </button>
             )}
+            <button
+              onClick={() => setShowNotes(!showNotes)}
+              className={`p-1 rounded relative ${hasNotes ? 'text-primary' : 'text-text-secondary/50 hover:text-text-secondary'}`}
+              title={hasNotes ? 'View notes' : 'Add notes'}
+            >
+              <svg className="w-4 h-4" fill={hasNotes ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
+              </svg>
+              {hasNotes && (
+                <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-primary rounded-full" />
+              )}
+            </button>
             <button onClick={onEdit} className="p-1 rounded text-text-secondary/50 hover:text-text-secondary">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                 <path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -588,6 +633,34 @@ function ItemRow({
             </button>
           </div>
         </div>
+
+        {/* Notes popover */}
+        {showNotes && (
+          <div className="mt-2 p-2 bg-background rounded-lg border border-border">
+            <textarea
+              value={notesValue}
+              onChange={(e) => setNotesValue(e.target.value)}
+              placeholder="Add a note..."
+              rows={2}
+              className="w-full px-2 py-1 text-xs bg-surface border border-border rounded resize-none focus:outline-none focus:border-primary"
+            />
+            <div className="flex justify-end gap-2 mt-2">
+              <button
+                onClick={() => { setShowNotes(false); setNotesValue(item.notes || ''); }}
+                className="px-2 py-1 text-xs text-text-secondary"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveNotes}
+                disabled={savingNotes}
+                className="px-2 py-1 text-xs bg-primary text-background rounded disabled:opacity-50"
+              >
+                {savingNotes ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Progress */}
         {subtotal > 0 && totalPaid > 0 && (

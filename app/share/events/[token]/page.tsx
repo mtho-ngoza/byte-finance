@@ -130,7 +130,7 @@ export default function SharedEventPage({ params }: SharedEventPageProps) {
       }
       const data = await res.json();
       setEvent(data);
-      setExpandedCategories(new Set((data.categories || []).map((c: EventCategory) => c.id)));
+      // Categories collapsed by default
     } catch (err) {
       console.error('Failed to fetch event:', err);
       setError('Failed to load event.');
