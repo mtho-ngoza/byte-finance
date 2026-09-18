@@ -457,82 +457,53 @@ export default function SharedEventPage({ params }: SharedEventPageProps) {
         </div>
       )}
 
-      {/* Categories */}
+      {/* Categories - Recursive Tree */}
       <div className="space-y-3">
-        {event.categories.map((category) => {
-          const categoryItems = event.items
-            .filter(i => i.categoryId === category.id)
-            .sort((a, b) => a.sortOrder - b.sortOrder);
-          const categoryTotal = categoryItems.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
-          const categoryPaid = categoryItems.reduce((sum, i) => {
-            return sum + (i.payments || []).reduce((s, p) => s + p.amount, 0);
-          }, 0);
-          const isExpanded = expandedCategories.has(category.id);
+        {(() => {
+          const allCategories = event.categories || [];
+          const rootCategories = allCategories.filter(c => !c.parentId).sort((a, b) => a.sortOrder - b.sortOrder);
+          const getChildren = (parentId: string) =>
+            allCategories.filter(c => c.parentId === parentId).sort((a, b) => a.sortOrder - b.sortOrder);
+          const hasChildren = (categoryId: string) => allCategories.some(c => c.parentId === categoryId);
+          const getDescendantIds = (categoryId: string): string[] => {
+            const children = getChildren(categoryId);
+            return children.flatMap(c => [c.id, ...getDescendantIds(c.id)]);
+          };
+          const getCategoryTotals = (categoryId: string) => {
+            const descendantIds = [categoryId, ...getDescendantIds(categoryId)];
+            const categoryItems = event.items.filter(i => descendantIds.includes(i.categoryId));
+            const total = categoryItems.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
+            const paid = categoryItems.reduce((sum, i) => sum + (i.payments || []).reduce((s, p) => s + p.amount, 0), 0);
+            return { total, paid, itemCount: categoryItems.length };
+          };
+          // Leaf categories only (for dropdowns)
+          const leafCategories = allCategories.filter(c => !hasChildren(c.id));
 
           return (
-            <div key={category.id} className="bg-surface border border-border rounded-xl overflow-hidden">
-              {/* Category Header */}
-              <button
-                onClick={() => toggleCategory(category.id)}
-                className="w-full flex items-center justify-between p-3 hover:bg-background/50 transition-colors"
-              >
-                <div className="flex items-center gap-2">
-                  <svg
-                    className={`w-4 h-4 text-text-secondary transition-transform ${isExpanded ? 'rotate-90' : ''}`}
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                  </svg>
-                  <span className="font-medium text-text-primary">{category.name}</span>
-                  <span className="text-xs text-text-secondary">({categoryItems.length})</span>
-                </div>
-                <div className="flex items-center gap-2 text-xs">
-                  <span className="text-text-secondary">
-                    <AmountDisplay amount={categoryPaid} size="xs" /> / <AmountDisplay amount={categoryTotal} size="xs" />
-                  </span>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setEditingCategory(category); }}
-                    className="p-1 rounded text-text-secondary/50 hover:text-text-secondary hover:bg-background"
-                  >
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                      <path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                    </svg>
-                  </button>
-                </div>
-              </button>
-
-              {/* Items */}
-              {isExpanded && (
-                <div className="border-t border-border">
-                  {categoryItems.length === 0 ? (
-                    <p className="text-sm text-text-secondary text-center py-4">No items yet</p>
-                  ) : (
-                    categoryItems.map((item) => (
-                      <ItemRow
-                        key={item.id}
-                        item={item}
-                        parseDate={parseDate}
-                        onEdit={() => setEditingItem(item)}
-                        onDelete={() => handleDeleteItem(item.id)}
-                        onAddPayment={() => setShowAddPayment(item.id)}
-                        onDeletePayment={(paymentId) => handleDeletePayment(item.id, paymentId)}
-                      />
-                    ))
-                  )}
-                  <button
-                    onClick={() => setShowAddItem(category.id)}
-                    className="w-full p-2 text-sm text-primary hover:bg-background/50 flex items-center justify-center gap-1"
-                  >
-                    <span>+</span> Add Item
-                  </button>
-                </div>
-              )}
-            </div>
+            <>
+              {rootCategories.map((category) => (
+                <ShareCategoryNode
+                  key={category.id}
+                  category={category}
+                  depth={0}
+                  items={event.items}
+                  getChildren={getChildren}
+                  hasChildren={hasChildren}
+                  getCategoryTotals={getCategoryTotals}
+                  expandedCategories={expandedCategories}
+                  toggleCategory={toggleCategory}
+                  parseDate={parseDate}
+                  onEditCategory={setEditingCategory}
+                  onEditItem={setEditingItem}
+                  onDeleteItem={handleDeleteItem}
+                  onAddPayment={setShowAddPayment}
+                  onDeletePayment={handleDeletePayment}
+                  onAddItem={setShowAddItem}
+                />
+              ))}
+            </>
           );
-        })}
+        })()}
 
         {/* Add Category Button */}
         <button
@@ -560,23 +531,35 @@ export default function SharedEventPage({ params }: SharedEventPageProps) {
         />
       )}
 
-      {showAddItem && (
-        <ItemForm
-          categoryId={showAddItem}
-          categories={event.categories}
-          onSave={handleAddItem}
-          onCancel={() => setShowAddItem(null)}
-        />
-      )}
+      {showAddItem && (() => {
+        // Only show leaf categories (no children) in dropdown
+        const leafCategories = event.categories.filter(c =>
+          !event.categories.some(child => child.parentId === c.id)
+        );
+        return (
+          <ItemForm
+            categoryId={showAddItem}
+            categories={leafCategories}
+            onSave={handleAddItem}
+            onCancel={() => setShowAddItem(null)}
+          />
+        );
+      })()}
 
-      {editingItem && (
-        <ItemForm
-          item={editingItem}
-          categories={event.categories}
-          onSave={(data) => handleUpdateItem(editingItem.id, data)}
-          onCancel={() => setEditingItem(null)}
-        />
-      )}
+      {editingItem && (() => {
+        // Only show leaf categories (no children) in dropdown
+        const leafCategories = event.categories.filter(c =>
+          !event.categories.some(child => child.parentId === c.id)
+        );
+        return (
+          <ItemForm
+            item={editingItem}
+            categories={leafCategories}
+            onSave={(data) => handleUpdateItem(editingItem.id, data)}
+            onCancel={() => setEditingItem(null)}
+          />
+        );
+      })()}
 
       {showAddPayment && (
         <PaymentForm
@@ -974,6 +957,151 @@ function ItemForm({
           </div>
         </form>
       </div>
+    </div>
+  );
+}
+
+// Recursive Category Node for nested categories
+function ShareCategoryNode({
+  category,
+  depth,
+  items,
+  getChildren,
+  hasChildren: checkHasChildren,
+  getCategoryTotals,
+  expandedCategories,
+  toggleCategory,
+  parseDate,
+  onEditCategory,
+  onEditItem,
+  onDeleteItem,
+  onAddPayment,
+  onDeletePayment,
+  onAddItem,
+}: {
+  category: EventCategory;
+  depth: number;
+  items: EventItem[];
+  getChildren: (parentId: string) => EventCategory[];
+  hasChildren: (categoryId: string) => boolean;
+  getCategoryTotals: (categoryId: string) => { total: number; paid: number; itemCount: number };
+  expandedCategories: Set<string>;
+  toggleCategory: (id: string) => void;
+  parseDate: (d: unknown) => Date;
+  onEditCategory: (cat: EventCategory) => void;
+  onEditItem: (item: EventItem) => void;
+  onDeleteItem: (id: string) => void;
+  onAddPayment: (id: string) => void;
+  onDeletePayment: (itemId: string, paymentId: string) => void;
+  onAddItem: (categoryId: string) => void;
+}) {
+  const isExpanded = expandedCategories.has(category.id);
+  const children = getChildren(category.id);
+  const isParent = children.length > 0;
+  const { total, paid, itemCount } = getCategoryTotals(category.id);
+
+  // Direct items (only for leaf categories)
+  const directItems = items
+    .filter(i => i.categoryId === category.id)
+    .sort((a, b) => a.sortOrder - b.sortOrder);
+
+  const isRoot = depth === 0;
+
+  return (
+    <div className={isRoot ? 'bg-surface border border-border rounded-xl overflow-hidden' : 'border-b border-border last:border-b-0'}>
+      {/* Category Header */}
+      <button
+        onClick={() => toggleCategory(category.id)}
+        className={`w-full flex items-center justify-between p-3 hover:bg-background/50 transition-colors`}
+        style={{ paddingLeft: `${12 + depth * 12}px` }}
+      >
+        <div className="flex items-center gap-2">
+          <svg
+            className={`w-4 h-4 text-text-secondary transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+          </svg>
+          <span className={`${isParent ? 'font-semibold' : 'font-medium'} text-text-primary`}>{category.name}</span>
+          <span className="text-xs text-text-secondary">
+            {isParent ? `(${children.length})` : `(${directItems.length})`}
+          </span>
+        </div>
+        <div className="flex items-center gap-2 text-xs">
+          <span className="text-text-secondary">
+            <AmountDisplay amount={paid} size="xs" /> / <AmountDisplay amount={total} size="xs" />
+          </span>
+          {!isParent && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onEditCategory(category); }}
+              className="p-1 rounded text-text-secondary/50 hover:text-text-secondary hover:bg-background"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+            </button>
+          )}
+        </div>
+      </button>
+
+      {/* Expanded Content */}
+      {isExpanded && (
+        <div className={isRoot ? 'border-t border-border' : 'bg-background/20'}>
+          {/* Render child categories recursively */}
+          {children.map((child) => (
+            <ShareCategoryNode
+              key={child.id}
+              category={child}
+              depth={depth + 1}
+              items={items}
+              getChildren={getChildren}
+              hasChildren={checkHasChildren}
+              getCategoryTotals={getCategoryTotals}
+              expandedCategories={expandedCategories}
+              toggleCategory={toggleCategory}
+              parseDate={parseDate}
+              onEditCategory={onEditCategory}
+              onEditItem={onEditItem}
+              onDeleteItem={onDeleteItem}
+              onAddPayment={onAddPayment}
+              onDeletePayment={onDeletePayment}
+              onAddItem={onAddItem}
+            />
+          ))}
+
+          {/* Render items for leaf categories */}
+          {!isParent && (
+            <>
+              {directItems.length === 0 ? (
+                <p className="text-sm text-text-secondary text-center py-4" style={{ paddingLeft: `${depth * 12}px` }}>No items yet</p>
+              ) : (
+                directItems.map((item) => (
+                  <div key={item.id} style={{ paddingLeft: `${depth * 12}px` }}>
+                    <ItemRow
+                      item={item}
+                      parseDate={parseDate}
+                      onEdit={() => onEditItem(item)}
+                      onDelete={() => onDeleteItem(item.id)}
+                      onAddPayment={() => onAddPayment(item.id)}
+                      onDeletePayment={(paymentId) => onDeletePayment(item.id, paymentId)}
+                    />
+                  </div>
+                ))
+              )}
+              <button
+                onClick={() => onAddItem(category.id)}
+                className="w-full p-2 text-sm text-primary hover:bg-background/50 flex items-center justify-center gap-1"
+                style={{ paddingLeft: `${(depth + 1) * 12}px` }}
+              >
+                <span>+</span> Add Item
+              </button>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
