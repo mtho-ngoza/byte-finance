@@ -16,20 +16,25 @@ interface LogActivityParams {
  * Creates an activity log entry object.
  * Use with FieldValue.arrayUnion() to add to event's activities array.
  * Uses Date which Firestore serializes as Timestamp.
+ * Filters out undefined values since Firestore doesn't accept them.
  */
 export function createActivityEntry(params: LogActivityParams) {
   const id = `act-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 
-  return {
+  const entry: Record<string, unknown> = {
     id,
     type: params.type,
-    actorId: params.actorId,
-    actorName: params.actorName,
-    targetId: params.targetId,
-    targetName: params.targetName,
-    details: params.details,
     createdAt: new Date(),
   };
+
+  // Only add defined values (Firestore rejects undefined)
+  if (params.actorId !== undefined) entry.actorId = params.actorId;
+  if (params.actorName !== undefined) entry.actorName = params.actorName;
+  if (params.targetId !== undefined) entry.targetId = params.targetId;
+  if (params.targetName !== undefined) entry.targetName = params.targetName;
+  if (params.details !== undefined) entry.details = params.details;
+
+  return entry;
 }
 
 /**
