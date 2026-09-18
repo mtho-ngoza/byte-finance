@@ -93,26 +93,34 @@ export async function GET(
     },
   };
 
-  // Return event without sensitive fields
-  return NextResponse.json({
-    id: eventId,
-    ownerId: userId, // Event owner's user ID (for join/membership)
-    name: eventData.name,
-    description: eventData.description,
-    eventDate: eventData.eventDate,
-    status: eventData.status,
-    categories,
-    items,
-    todos,
-    // Computed values (legacy)
-    totalQuoted,
-    totalPaid,
-    remaining: totalQuoted - totalPaid,
-    itemCount: items.length,
-    paidCount,
-    // New summary object
-    summary,
-    // Flag to indicate this is a shared view
-    isSharedView: true,
-  });
+  // Return event without sensitive fields (with no-cache headers)
+  return NextResponse.json(
+    {
+      id: eventId,
+      ownerId: userId, // Event owner's user ID (for join/membership)
+      name: eventData.name,
+      description: eventData.description,
+      eventDate: eventData.eventDate,
+      status: eventData.status,
+      categories,
+      items,
+      todos,
+      // Computed values (legacy)
+      totalQuoted,
+      totalPaid,
+      remaining: totalQuoted - totalPaid,
+      itemCount: items.length,
+      paidCount,
+      // New summary object
+      summary,
+      // Flag to indicate this is a shared view
+      isSharedView: true,
+    },
+    {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+        'Pragma': 'no-cache',
+      },
+    }
+  );
 }
