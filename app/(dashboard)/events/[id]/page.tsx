@@ -929,11 +929,12 @@ function ItemForm({
   const [name, setName] = useState(item?.name || '');
   const [vendor, setVendor] = useState(item?.vendor || '');
   const [unitPrice, setUnitPrice] = useState(item?.unitPrice || 0);
-  const [quantity, setQuantity] = useState(item?.quantity || 1);
+  const [quantityStr, setQuantityStr] = useState(String(item?.quantity || 1));
   const [selectedCategoryId, setSelectedCategoryId] = useState(item?.categoryId || categoryId || '');
   const [status, setStatus] = useState(item?.status || 'quoted');
   const [saving, setSaving] = useState(false);
 
+  const quantity = parseInt(quantityStr) || 0;
   const subtotal = unitPrice * quantity;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -944,7 +945,7 @@ function ItemForm({
         name,
         vendor,
         unitPrice,
-        quantity,
+        quantity: parseInt(quantityStr) || 1,
         categoryId: selectedCategoryId,
         status,
       });
@@ -998,8 +999,8 @@ function ItemForm({
                 type="number"
                 required
                 min={1}
-                value={quantity}
-                onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
+                value={quantityStr}
+                onChange={(e) => setQuantityStr(e.target.value)}
                 className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary text-sm focus:outline-none focus:border-primary"
               />
             </div>
