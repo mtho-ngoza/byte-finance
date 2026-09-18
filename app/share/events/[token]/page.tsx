@@ -117,9 +117,19 @@ export default function SharedEventPage({ params }: SharedEventPageProps) {
     setTimeout(() => setToast(null), 3000);
   };
 
-  const fetchEvent = async () => {
+  const [refreshing, setRefreshing] = useState(false);
+
+  const fetchEvent = async (forceRefresh = false) => {
+    if (forceRefresh) setRefreshing(true);
     try {
-      const res = await fetch(`/api/share/events/${token}`);
+      // Add cache-busting param for force refresh
+      const url = forceRefresh
+        ? `/api/share/events/${token}?_t=${Date.now()}`
+        : `/api/share/events/${token}`;
+      const res = await fetch(url, {
+        cache: 'no-store',
+        headers: forceRefresh ? { 'Cache-Control': 'no-cache' } : {},
+      });
       if (!res.ok) {
         if (res.status === 404) {
           setError('This share link is invalid or has expired.');
@@ -136,6 +146,7 @@ export default function SharedEventPage({ params }: SharedEventPageProps) {
       setError('Failed to load event.');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -374,21 +385,44 @@ export default function SharedEventPage({ params }: SharedEventPageProps) {
       ) : null}
 
       {/* Header */}
-      <div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <h1 className="text-xl font-semibold text-text-primary">{event.name}</h1>
-          <span className={`px-2 py-0.5 rounded text-xs font-medium ${statusColors[event.status] || statusColors.planning}`}>
-            {event.status.replace('_', ' ')}
-          </span>
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-xl font-semibold text-text-primary">{event.name}</h1>
+            <span className={`px-2 py-0.5 rounded text-xs font-medium ${statusColors[event.status] || statusColors.planning}`}>
+              {event.status.replace('_', ' ')}
+            </span>
+          </div>
+          {eventDate && (
+            <p className="text-sm text-text-secondary mt-0.5">
+              {eventDate.toLocaleDateString('en-ZA', { day: 'numeric', month: 'long', year: 'numeric' })}
+            </p>
+          )}
+          {event.description && (
+            <p className="text-sm text-text-secondary mt-1">{event.description}</p>
+          )}
         </div>
-        {eventDate && (
-          <p className="text-sm text-text-secondary mt-0.5">
-            {eventDate.toLocaleDateString('en-ZA', { day: 'numeric', month: 'long', year: 'numeric' })}
-          </p>
-        )}
-        {event.description && (
-          <p className="text-sm text-text-secondary mt-1">{event.description}</p>
-        )}
+        {/* Refresh button */}
+        <button
+          onClick={() => fetchEvent(true)}
+          disabled={refreshing}
+          className="p-2 rounded-lg hover:bg-surface text-text-secondary shrink-0"
+          title="Refresh"
+        >
+          <svg
+            className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+            />
+          </svg>
+        </button>
       </div>
 
       {/* Summary Cards */}
