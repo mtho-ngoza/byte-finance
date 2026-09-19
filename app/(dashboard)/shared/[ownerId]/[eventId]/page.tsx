@@ -261,7 +261,7 @@ export default function SharedEventPage({ params }: SharedEventPageProps) {
         {event.categories.map((category) => {
           const categoryItems = event.items
             .filter(i => i.categoryId === category.id)
-            .sort((a, b) => a.sortOrder - b.sortOrder);
+            .sort((a, b) => a.name.localeCompare(b.name));
           const categoryTotal = categoryItems.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
           const categoryPaid = categoryItems.reduce((sum, i) => {
             return sum + (i.payments || []).reduce((s, p) => s + p.amount, 0);

@@ -210,10 +210,12 @@ export function useGoals(): UseGoalsResult {
     });
   }, [rawGoals, commitments]);
 
-  // Filter out archived goals
-  const nonArchivedGoals = goals.filter((g) => g.status !== 'archived');
+  // Filter out archived goals and sort alphabetically
+  const nonArchivedGoals = goals
+    .filter((g) => g.status !== 'archived')
+    .sort((a, b) => a.name.localeCompare(b.name));
 
-  // Filter active goals only
+  // Filter active goals only (already sorted)
   const activeGoals = nonArchivedGoals.filter((g) => g.status === 'active');
 
   // Group by type

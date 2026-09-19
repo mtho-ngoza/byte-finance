@@ -35,11 +35,13 @@ export default function ProjectsPage() {
 
       if (projectsRes.ok) {
         const data = await projectsRes.json();
-        setProjects(data.projects || []);
+        const sortedProjects = (data.projects || []).sort((a: Project, b: Project) => a.name.localeCompare(b.name));
+        setProjects(sortedProjects);
       }
       if (eventsRes.ok) {
         const data = await eventsRes.json();
-        setEvents(data.events || []);
+        const sortedEvents = (data.events || []).sort((a: Event, b: Event) => a.name.localeCompare(b.name));
+        setEvents(sortedEvents);
       }
     } catch (err) {
       console.error('Failed to fetch data:', err);

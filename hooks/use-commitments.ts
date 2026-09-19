@@ -39,7 +39,9 @@ export function useCommitments(): UseCommitmentsResult {
     const unsubscribe = onSnapshot(
       q,
       (snap) => {
-        const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Commitment);
+        const docs = snap.docs
+          .map((d) => ({ id: d.id, ...d.data() }) as Commitment)
+          .sort((a, b) => a.label.localeCompare(b.label)); // Sort alphabetically
         setAllCommitments(docs);
         setCommitments(docs.filter((c) => c.isActive));
         setLoading(false);

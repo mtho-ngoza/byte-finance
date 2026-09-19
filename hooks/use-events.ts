@@ -101,7 +101,7 @@ function computeCategorySummary(
   const categoryItems = items
     .filter((i) => i.categoryId === category.id)
     .map(computeItemTotals)
-    .sort((a, b) => a.sortOrder - b.sortOrder);
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   const subtotal = categoryItems.reduce((sum, i) => sum + i.subtotal, 0);
   const totalPaid = categoryItems.reduce((sum, i) => sum + i.totalPaid, 0);
@@ -178,10 +178,10 @@ export function useEvents(): UseEventsResult {
       const items = event.items || [];
       const categories = event.categories || [];
 
-      // Compute category summaries
+      // Compute category summaries (sorted alphabetically)
       const categorySummaries = categories
         .map((cat) => computeCategorySummary(cat, items))
-        .sort((a, b) => a.sortOrder - b.sortOrder);
+        .sort((a, b) => a.name.localeCompare(b.name));
 
       // Compute event totals
       const itemsWithTotals = items.map(computeItemTotals);

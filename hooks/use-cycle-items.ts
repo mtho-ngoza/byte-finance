@@ -192,7 +192,7 @@ export function useCycleItems(cycleId: string | null, cycle?: Cycle | null): Use
       }
     }
 
-    return Array.from(itemMap.values()).sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+    return Array.from(itemMap.values()).sort((a, b) => a.label.localeCompare(b.label));
   }, [rawItems, allRecentItems, cycle?.startDate, cycle?.endDate]);
 
   // Merge optimistic updates
