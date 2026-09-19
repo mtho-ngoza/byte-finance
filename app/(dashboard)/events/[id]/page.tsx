@@ -908,21 +908,22 @@ function CategoryForm({
             />
           </div>
 
-          {parentOptions.length > 0 && (
-            <div>
-              <label className="block text-xs text-text-secondary mb-1">Parent Category (optional)</label>
-              <select
-                value={parentId}
-                onChange={(e) => setParentId(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary text-sm focus:outline-none focus:border-primary"
-              >
-                <option value="">None (top-level)</option>
-                {parentOptions.map((cat) => (
-                  <option key={cat.id} value={cat.id}>{cat.name}</option>
-                ))}
-              </select>
-            </div>
-          )}
+          <div>
+            <label className="block text-xs text-text-secondary mb-1">Parent Category (optional)</label>
+            <select
+              value={parentId}
+              onChange={(e) => setParentId(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary text-sm focus:outline-none focus:border-primary"
+            >
+              <option value="">None (top-level)</option>
+              {parentOptions.map((cat) => (
+                <option key={cat.id} value={cat.id}>{cat.name}</option>
+              ))}
+            </select>
+            {parentOptions.length === 0 && (
+              <p className="text-xs text-text-secondary mt-1">Create more categories to enable nesting</p>
+            )}
+          </div>
 
           <div className="flex gap-2 pt-2">
             {onDelete && (
