@@ -461,9 +461,9 @@ export default function SharedEventPage({ params }: SharedEventPageProps) {
       <div className="space-y-3">
         {(() => {
           const allCategories = event.categories || [];
-          const rootCategories = allCategories.filter(c => !c.parentId).sort((a, b) => a.sortOrder - b.sortOrder);
+          const rootCategories = allCategories.filter(c => !c.parentId).sort((a, b) => a.name.localeCompare(b.name));
           const getChildren = (parentId: string) =>
-            allCategories.filter(c => c.parentId === parentId).sort((a, b) => a.sortOrder - b.sortOrder);
+            allCategories.filter(c => c.parentId === parentId).sort((a, b) => a.name.localeCompare(b.name));
           const hasChildren = (categoryId: string) => allCategories.some(c => c.parentId === categoryId);
           const getDescendantIds = (categoryId: string): string[] => {
             const children = getChildren(categoryId);
@@ -517,6 +517,7 @@ export default function SharedEventPage({ params }: SharedEventPageProps) {
       {/* Modals */}
       {showAddCategory && (
         <CategoryForm
+          allCategories={event.categories}
           onSave={handleAddCategory}
           onCancel={() => setShowAddCategory(false)}
         />
@@ -525,6 +526,7 @@ export default function SharedEventPage({ params }: SharedEventPageProps) {
       {editingCategory && (
         <CategoryForm
           category={editingCategory}
+          allCategories={event.categories}
           onSave={(data) => handleUpdateCategory(editingCategory.id, data)}
           onCancel={() => setEditingCategory(null)}
           onDelete={() => { handleDeleteCategory(editingCategory.id); setEditingCategory(null); }}
@@ -748,23 +750,36 @@ function PaymentRow({
 // Category Form Modal
 function CategoryForm({
   category,
+  allCategories = [],
   onSave,
   onCancel,
   onDelete,
 }: {
   category?: EventCategory;
-  onSave: (data: { name: string }) => Promise<void>;
+  allCategories?: EventCategory[];
+  onSave: (data: { name: string; parentId?: string | null }) => Promise<void>;
   onCancel: () => void;
   onDelete?: () => void;
 }) {
   const [name, setName] = useState(category?.name || '');
+  const [parentId, setParentId] = useState(category?.parentId || '');
   const [saving, setSaving] = useState(false);
+
+  // Get valid parent options (exclude self and descendants to prevent cycles)
+  const getDescendantIds = (catId: string): string[] => {
+    const children = allCategories.filter(c => c.parentId === catId);
+    return children.flatMap(c => [c.id, ...getDescendantIds(c.id)]);
+  };
+  const excludeIds = category ? [category.id, ...getDescendantIds(category.id)] : [];
+  const parentOptions = allCategories
+    .filter(c => !excludeIds.includes(c.id))
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
     try {
-      await onSave({ name });
+      await onSave({ name, parentId: parentId || null });
     } finally {
       setSaving(false);
     }
@@ -793,6 +808,22 @@ function CategoryForm({
               className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary text-sm focus:outline-none focus:border-primary"
             />
           </div>
+
+          {parentOptions.length > 0 && (
+            <div>
+              <label className="block text-xs text-text-secondary mb-1">Parent Category (optional)</label>
+              <select
+                value={parentId}
+                onChange={(e) => setParentId(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary text-sm focus:outline-none focus:border-primary"
+              >
+                <option value="">None (top-level)</option>
+                {parentOptions.map((cat) => (
+                  <option key={cat.id} value={cat.id}>{cat.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div className="flex gap-2 pt-2">
             {onDelete && (
@@ -1001,10 +1032,10 @@ function ShareCategoryNode({
   const isParent = children.length > 0;
   const { total, paid, itemCount } = getCategoryTotals(category.id);
 
-  // Direct items (only for leaf categories)
+  // Direct items (only for leaf categories) - sorted alphabetically
   const directItems = items
     .filter(i => i.categoryId === category.id)
-    .sort((a, b) => a.sortOrder - b.sortOrder);
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   const isRoot = depth === 0;
 

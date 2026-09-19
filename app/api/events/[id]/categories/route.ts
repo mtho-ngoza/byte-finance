@@ -42,6 +42,7 @@ export async function POST(
     id: categoryId,
     name: body.name.trim(),
     sortOrder: existingCategories.length,
+    ...(body.parentId ? { parentId: body.parentId } : {}),
   };
 
   const activity = createActivityEntry({

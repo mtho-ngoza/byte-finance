@@ -37,6 +37,22 @@ export async function PATCH(
     if (body.sortOrder !== undefined) {
       categories[categoryIndex].sortOrder = body.sortOrder;
     }
+    if (body.parentId !== undefined) {
+      // Validate: can't be own parent or create a cycle
+      if (body.parentId === categoryId) {
+        return NextResponse.json({ error: 'Category cannot be its own parent' }, { status: 400 });
+      }
+      // Check for cycles - parentId can't be a descendant
+      const getDescendantIds = (parentId: string): string[] => {
+        const children = categories.filter((c) => c.parentId === parentId);
+        return children.flatMap((c) => [c.id, ...getDescendantIds(c.id)]);
+      };
+      const descendants = getDescendantIds(categoryId);
+      if (body.parentId && descendants.includes(body.parentId)) {
+        return NextResponse.json({ error: 'Cannot set parent to a descendant category' }, { status: 400 });
+      }
+      categories[categoryIndex].parentId = body.parentId || undefined;
+    }
 
     const activity = createActivityEntry({
       type: 'category_updated',
