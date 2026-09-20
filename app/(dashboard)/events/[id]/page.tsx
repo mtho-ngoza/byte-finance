@@ -269,8 +269,8 @@ export default function EventDetailPage({ params }: EventDetailPageProps) {
     return { total, paid, itemCount };
   };
 
-  // For modal dropdowns - flat list of leaf categories only (can add items to)
-  const categories = allCategories.filter(c => !hasChildren(c.id));
+  // For modal dropdowns - all categories can have items
+  const categories = allCategories;
 
   // Compute totals
   let totalQuoted = 0;
@@ -1389,23 +1389,21 @@ function CategoryNode({
           </svg>
           <span className={`${isParent ? 'font-semibold' : 'font-medium'} text-text-primary`}>{category.name}</span>
           <span className="text-xs text-text-secondary">
-            {isParent ? `(${children.length})` : `(${directItems.length})`}
+            ({itemCount} items{isParent ? `, ${children.length} sub` : ''})
           </span>
         </div>
         <div className="flex items-center gap-2 text-xs">
           <span className="text-text-secondary">
             <AmountDisplay amount={paid} size="xs" /> / <AmountDisplay amount={total} size="xs" />
           </span>
-          {!isParent && (
-            <button
-              onClick={(e) => { e.stopPropagation(); onEditCategory(category); }}
-              className="p-1 rounded text-text-secondary/50 hover:text-text-secondary hover:bg-background"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-              </svg>
-            </button>
-          )}
+          <button
+            onClick={(e) => { e.stopPropagation(); onEditCategory(category); }}
+            className="p-1 rounded text-text-secondary/50 hover:text-text-secondary hover:bg-background"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+          </button>
         </div>
       </button>
 
@@ -1435,35 +1433,38 @@ function CategoryNode({
             />
           ))}
 
-          {/* Render items for leaf categories */}
-          {!isParent && (
-            <>
-              {directItems.length === 0 ? (
-                <p className={`text-sm text-text-secondary text-center py-4 ${paddingLeft}`}>No items yet</p>
-              ) : (
-                directItems.map((item) => (
-                  <div key={item.id} style={{ paddingLeft: `${depth * 12}px` }}>
-                    <ItemRow
-                      item={item}
-                      parseDate={parseDate}
-                      onEdit={() => onEditItem(item)}
-                      onDelete={() => onDeleteItem(item.id)}
-                      onAddPayment={() => onAddPayment(item.id)}
-                      onDeletePayment={(paymentId) => onDeletePayment(item.id, paymentId)}
-                      onUpdateNotes={(notes) => onUpdateNotes(item.id, notes)}
-                    />
-                  </div>
-                ))
-              )}
-              <button
-                onClick={() => onAddItem(category.id)}
-                className="w-full p-2 text-sm text-primary hover:bg-background/50 flex items-center justify-center gap-1"
-                style={{ paddingLeft: `${(depth + 1) * 12}px` }}
-              >
-                <span>+</span> Add Item
-              </button>
-            </>
+          {/* Render direct items for this category */}
+          {directItems.length > 0 && (
+            <div className={isParent ? 'border-b border-border' : ''}>
+              {directItems.map((item) => (
+                <div key={item.id} style={{ paddingLeft: `${depth * 12}px` }}>
+                  <ItemRow
+                    item={item}
+                    parseDate={parseDate}
+                    onEdit={() => onEditItem(item)}
+                    onDelete={() => onDeleteItem(item.id)}
+                    onAddPayment={() => onAddPayment(item.id)}
+                    onDeletePayment={(paymentId) => onDeletePayment(item.id, paymentId)}
+                    onUpdateNotes={(notes) => onUpdateNotes(item.id, notes)}
+                  />
+                </div>
+              ))}
+            </div>
           )}
+
+          {/* Show empty state only for leaf categories with no items */}
+          {!isParent && directItems.length === 0 && (
+            <p className={`text-sm text-text-secondary text-center py-4 ${paddingLeft}`}>No items yet</p>
+          )}
+
+          {/* Add Item button */}
+          <button
+            onClick={() => onAddItem(category.id)}
+            className="w-full p-2 text-sm text-primary hover:bg-background/50 flex items-center justify-center gap-1"
+            style={{ paddingLeft: `${(depth + 1) * 12}px` }}
+          >
+            <span>+</span> Add Item
+          </button>
         </div>
       )}
     </div>

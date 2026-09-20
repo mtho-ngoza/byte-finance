@@ -533,35 +533,23 @@ export default function SharedEventPage({ params }: SharedEventPageProps) {
         />
       )}
 
-      {showAddItem && (() => {
-        // Only show leaf categories (no children) in dropdown
-        const leafCategories = event.categories.filter(c =>
-          !event.categories.some(child => child.parentId === c.id)
-        );
-        return (
-          <ItemForm
-            categoryId={showAddItem}
-            categories={leafCategories}
-            onSave={handleAddItem}
-            onCancel={() => setShowAddItem(null)}
-          />
-        );
-      })()}
+      {showAddItem && (
+        <ItemForm
+          categoryId={showAddItem}
+          categories={event.categories}
+          onSave={handleAddItem}
+          onCancel={() => setShowAddItem(null)}
+        />
+      )}
 
-      {editingItem && (() => {
-        // Only show leaf categories (no children) in dropdown
-        const leafCategories = event.categories.filter(c =>
-          !event.categories.some(child => child.parentId === c.id)
-        );
-        return (
-          <ItemForm
-            item={editingItem}
-            categories={leafCategories}
-            onSave={(data) => handleUpdateItem(editingItem.id, data)}
-            onCancel={() => setEditingItem(null)}
-          />
-        );
-      })()}
+      {editingItem && (
+        <ItemForm
+          item={editingItem}
+          categories={event.categories}
+          onSave={(data) => handleUpdateItem(editingItem.id, data)}
+          onCancel={() => setEditingItem(null)}
+        />
+      )}
 
       {showAddPayment && (
         <PaymentForm
@@ -1060,23 +1048,21 @@ function ShareCategoryNode({
           </svg>
           <span className={`${isParent ? 'font-semibold' : 'font-medium'} text-text-primary`}>{category.name}</span>
           <span className="text-xs text-text-secondary">
-            {isParent ? `(${children.length})` : `(${directItems.length})`}
+            ({itemCount} items{isParent ? `, ${children.length} sub` : ''})
           </span>
         </div>
         <div className="flex items-center gap-2 text-xs">
           <span className="text-text-secondary">
             <AmountDisplay amount={paid} size="xs" /> / <AmountDisplay amount={total} size="xs" />
           </span>
-          {!isParent && (
-            <button
-              onClick={(e) => { e.stopPropagation(); onEditCategory(category); }}
-              className="p-1 rounded text-text-secondary/50 hover:text-text-secondary hover:bg-background"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-              </svg>
-            </button>
-          )}
+          <button
+            onClick={(e) => { e.stopPropagation(); onEditCategory(category); }}
+            className="p-1 rounded text-text-secondary/50 hover:text-text-secondary hover:bg-background"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+          </button>
         </div>
       </button>
 
@@ -1105,34 +1091,37 @@ function ShareCategoryNode({
             />
           ))}
 
-          {/* Render items for leaf categories */}
-          {!isParent && (
-            <>
-              {directItems.length === 0 ? (
-                <p className="text-sm text-text-secondary text-center py-4" style={{ paddingLeft: `${depth * 12}px` }}>No items yet</p>
-              ) : (
-                directItems.map((item) => (
-                  <div key={item.id} style={{ paddingLeft: `${depth * 12}px` }}>
-                    <ItemRow
-                      item={item}
-                      parseDate={parseDate}
-                      onEdit={() => onEditItem(item)}
-                      onDelete={() => onDeleteItem(item.id)}
-                      onAddPayment={() => onAddPayment(item.id)}
-                      onDeletePayment={(paymentId) => onDeletePayment(item.id, paymentId)}
-                    />
-                  </div>
-                ))
-              )}
-              <button
-                onClick={() => onAddItem(category.id)}
-                className="w-full p-2 text-sm text-primary hover:bg-background/50 flex items-center justify-center gap-1"
-                style={{ paddingLeft: `${(depth + 1) * 12}px` }}
-              >
-                <span>+</span> Add Item
-              </button>
-            </>
+          {/* Render direct items for this category */}
+          {directItems.length > 0 && (
+            <div className={isParent ? 'border-b border-border' : ''}>
+              {directItems.map((item) => (
+                <div key={item.id} style={{ paddingLeft: `${depth * 12}px` }}>
+                  <ItemRow
+                    item={item}
+                    parseDate={parseDate}
+                    onEdit={() => onEditItem(item)}
+                    onDelete={() => onDeleteItem(item.id)}
+                    onAddPayment={() => onAddPayment(item.id)}
+                    onDeletePayment={(paymentId) => onDeletePayment(item.id, paymentId)}
+                  />
+                </div>
+              ))}
+            </div>
           )}
+
+          {/* Show empty state only for leaf categories with no items */}
+          {!isParent && directItems.length === 0 && (
+            <p className="text-sm text-text-secondary text-center py-4" style={{ paddingLeft: `${depth * 12}px` }}>No items yet</p>
+          )}
+
+          {/* Add Item button */}
+          <button
+            onClick={() => onAddItem(category.id)}
+            className="w-full p-2 text-sm text-primary hover:bg-background/50 flex items-center justify-center gap-1"
+            style={{ paddingLeft: `${(depth + 1) * 12}px` }}
+          >
+            <span>+</span> Add Item
+          </button>
         </div>
       )}
     </div>
