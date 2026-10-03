@@ -701,6 +701,14 @@ function ReceiptCapture({ onClose }: { onClose: () => void }) {
     setImageBlob(file);
     stopCamera();
     setStep('form');
+    // Reset input value to allow selecting same file again
+    e.target.value = '';
+  }, [stopCamera]);
+
+  const triggerFileUpload = useCallback(() => {
+    // Stop camera first to free resources
+    stopCamera();
+    fileInputRef.current?.click();
   }, [stopCamera]);
 
   const handleSave = async () => {
@@ -722,7 +730,13 @@ function ReceiptCapture({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 bg-black z-50 flex flex-col">
-      <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*,.jpg,.jpeg,.png,.heic,.heif"
+        className="absolute -top-[9999px] -left-[9999px]"
+        onChange={handleFileChange}
+      />
 
       {step === 'camera' ? (
         <>
@@ -731,7 +745,7 @@ function ReceiptCapture({ onClose }: { onClose: () => void }) {
           <div className="absolute bottom-0 left-0 right-0 p-6 flex items-center justify-center gap-6">
             <button onClick={handleClose} className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center text-white" aria-label="Close">✕</button>
             <button onClick={capturePhoto} className="w-16 h-16 rounded-full bg-white border-4 border-white/50" aria-label="Take photo" />
-            <button onClick={() => fileInputRef.current?.click()} className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center text-white" aria-label="Upload from gallery">
+            <button onClick={triggerFileUpload} className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center text-white" aria-label="Upload from gallery">
               <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" /></svg>
             </button>
           </div>
