@@ -740,14 +740,25 @@ function ReceiptCapture({ onClose }: { onClose: () => void }) {
 
       {step === 'camera' ? (
         <>
+          {/* Top header with upload option */}
+          <div className="absolute top-0 left-0 right-0 z-10 bg-gradient-to-b from-black/80 to-transparent p-4 pt-[max(1rem,env(safe-area-inset-top))] flex items-center justify-between">
+            <button onClick={handleClose} className="px-4 py-2 text-white text-sm">Cancel</button>
+            <span className="text-white font-medium">Capture Receipt</span>
+            <button onClick={triggerFileUpload} className="px-4 py-2 text-primary text-sm font-medium">Upload</button>
+          </div>
+
           <video ref={videoRef} autoPlay playsInline className="flex-1 object-cover" onLoadedMetadata={() => videoRef.current?.play()} />
           <canvas ref={canvasRef} className="hidden" />
-          <div className="absolute bottom-0 left-0 right-0 p-6 flex items-center justify-center gap-6">
-            <button onClick={handleClose} className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center text-white" aria-label="Close">✕</button>
-            <button onClick={capturePhoto} className="w-16 h-16 rounded-full bg-white border-4 border-white/50" aria-label="Take photo" />
-            <button onClick={triggerFileUpload} className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center text-white" aria-label="Upload from gallery">
-              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" /></svg>
-            </button>
+
+          {/* Bottom control bar with safe area padding */}
+          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent pt-12 pb-[max(1.5rem,env(safe-area-inset-bottom))] px-6">
+            <div className="flex items-center justify-center gap-8">
+              <button onClick={triggerFileUpload} className="w-14 h-14 rounded-full bg-white/20 backdrop-blur flex items-center justify-center text-white" aria-label="Upload from gallery">
+                <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" /></svg>
+              </button>
+              <button onClick={capturePhoto} className="w-20 h-20 rounded-full bg-white border-4 border-white/50 shadow-lg" aria-label="Take photo" />
+              <div className="w-14 h-14" /> {/* Spacer for balance */}
+            </div>
           </div>
         </>
       ) : (
