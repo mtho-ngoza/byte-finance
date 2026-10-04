@@ -73,22 +73,22 @@ export function InlineReceiptCapture({ onCaptured, onError }: InlineReceiptCaptu
   }
 
   return (
-    <div className="flex gap-2">
-      {/* Camera input */}
+    <div className="relative flex gap-2">
+      {/* Camera input - positioned off-screen for better mobile compatibility */}
       <input
         ref={cameraInputRef}
         type="file"
         accept="image/*"
         capture="environment"
-        className="hidden"
+        className="absolute -top-[9999px] -left-[9999px]"
         onChange={handleInputChange}
       />
-      {/* Gallery input */}
+      {/* Gallery input - positioned off-screen for better mobile compatibility */}
       <input
         ref={galleryInputRef}
         type="file"
         accept="image/*,.jpg,.jpeg,.png,.heic,.heif"
-        className="hidden"
+        className="absolute -top-[9999px] -left-[9999px]"
         onChange={handleInputChange}
       />
 
