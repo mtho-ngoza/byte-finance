@@ -68,6 +68,43 @@ export default function EmailImportPage() {
   };
 
   const selectedCount = invoices.filter((i) => i.selected).length;
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<{ count: number; errors?: string[] } | null>(null);
+
+  const handleImport = async () => {
+    const selectedIds = invoices.filter((i) => i.selected).map((i) => i.messageId);
+    if (selectedIds.length === 0) return;
+
+    setImporting(true);
+    setError(null);
+    setImportResult(null);
+
+    try {
+      const res = await fetch('/api/import/email/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          host,
+          port: parseInt(port),
+          user,
+          password,
+          messageIds: selectedIds,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? 'Import failed');
+        return;
+      }
+      setImportResult({ count: data.count, errors: data.errors });
+      // Clear imported invoices from the list
+      setInvoices((prev) => prev.filter((inv) => !selectedIds.includes(inv.messageId)));
+    } catch {
+      setError('Network error during import. Please try again.');
+    } finally {
+      setImporting(false);
+    }
+  };
 
   return (
     <div className="space-y-6 max-w-2xl pb-8">
@@ -190,15 +227,48 @@ export default function EmailImportPage() {
           </p>
 
           <button
-            disabled={selectedCount === 0}
-            className="w-full py-2.5 rounded-lg bg-primary text-background font-medium text-sm disabled:opacity-50 hover:bg-primary/90 transition-colors"
-            onClick={() => {
-              // TODO: implement confirm endpoint that downloads PDFs and creates receipt docs
-              alert(`Import of ${selectedCount} invoice(s) — full PDF download + receipt creation coming soon.`);
-            }}
+            disabled={selectedCount === 0 || importing}
+            className="w-full py-2.5 rounded-lg bg-primary text-background font-medium text-sm disabled:opacity-50 hover:bg-primary/90 transition-colors flex items-center justify-center gap-2"
+            onClick={handleImport}
           >
-            Import {selectedCount} Invoice{selectedCount !== 1 ? 's' : ''}
+            {importing ? (
+              <>
+                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                Importing...
+              </>
+            ) : (
+              `Import ${selectedCount} Invoice${selectedCount !== 1 ? 's' : ''}`
+            )}
           </button>
+        </div>
+      )}
+
+      {/* Import Result */}
+      {importResult && (
+        <div className="p-4 rounded-xl border border-primary/30 bg-primary/5 space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">✅</span>
+            <p className="text-sm font-medium text-text-primary">
+              Successfully imported {importResult.count} invoice{importResult.count !== 1 ? 's' : ''}
+            </p>
+          </div>
+          <p className="text-xs text-text-secondary">
+            Invoices are now in your <a href="/receipts" className="text-primary hover:underline">Receipts</a>.
+            Review them to add amounts and verify vendors.
+          </p>
+          {importResult.errors && importResult.errors.length > 0 && (
+            <div className="mt-2 p-2 rounded bg-warning/10 border border-warning/30">
+              <p className="text-xs font-medium text-warning mb-1">Some items had issues:</p>
+              <ul className="text-xs text-text-secondary space-y-0.5">
+                {importResult.errors.map((err, i) => (
+                  <li key={i}>• {err}</li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
 
