@@ -639,7 +639,7 @@ function ReceiptCapture({ onClose }: { onClose: () => void }) {
   const { upload, status: uploadStatus, isUploading: saving } = useReceiptUpload();
   const { toast } = useToast();
 
-  const [step, setStep] = useState<'camera' | 'form'>('camera');
+  const [step, setStep] = useState<'choose' | 'camera' | 'form'>('choose');
   const [imageData, setImageData] = useState<string | null>(null);
   const [imageBlob, setImageBlob] = useState<Blob | null>(null);
   const [amount, setAmount] = useState(0);
@@ -724,7 +724,21 @@ function ReceiptCapture({ onClose }: { onClose: () => void }) {
     onClose();
   };
 
-  useEffect(() => { startCamera(); return stopCamera; }, [startCamera, stopCamera]);
+  // Only start camera when entering camera step
+  useEffect(() => {
+    if (step === 'camera') {
+      startCamera();
+    }
+    return stopCamera;
+  }, [step, startCamera, stopCamera]);
+
+  const handleChooseCamera = () => {
+    setStep('camera');
+  };
+
+  const handleChooseUpload = () => {
+    fileInputRef.current?.click();
+  };
 
   const handleClose = () => { stopCamera(); onClose(); };
 
@@ -738,26 +752,66 @@ function ReceiptCapture({ onClose }: { onClose: () => void }) {
         onChange={handleFileChange}
       />
 
-      {step === 'camera' ? (
+      {step === 'choose' ? (
+        <div className="flex-1 flex flex-col items-center justify-center p-6 bg-background">
+          {/* Header */}
+          <div className="absolute top-0 left-0 right-0 p-4 pt-[max(1rem,env(safe-area-inset-top))] flex items-center justify-between bg-surface border-b border-border">
+            <button onClick={handleClose} className="px-4 py-2 text-text-secondary text-sm">Cancel</button>
+            <span className="text-text-primary font-medium">Add Receipt</span>
+            <div className="w-16" />
+          </div>
+
+          <div className="space-y-4 w-full max-w-sm mt-16">
+            <button
+              onClick={handleChooseCamera}
+              className="w-full p-6 rounded-xl bg-surface border border-border flex items-center gap-4 hover:border-primary transition-colors"
+            >
+              <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center">
+                <svg className="w-7 h-7 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+              </div>
+              <div className="text-left">
+                <p className="text-text-primary font-medium">Take Photo</p>
+                <p className="text-text-secondary text-sm">Use camera to capture receipt</p>
+              </div>
+            </button>
+
+            <button
+              onClick={handleChooseUpload}
+              className="w-full p-6 rounded-xl bg-surface border border-border flex items-center gap-4 hover:border-primary transition-colors"
+            >
+              <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center">
+                <svg className="w-7 h-7 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                  <circle cx="8.5" cy="8.5" r="1.5" />
+                  <path d="M21 15l-5-5L5 21" />
+                </svg>
+              </div>
+              <div className="text-left">
+                <p className="text-text-primary font-medium">Upload from Gallery</p>
+                <p className="text-text-secondary text-sm">Choose an existing photo</p>
+              </div>
+            </button>
+          </div>
+        </div>
+      ) : step === 'camera' ? (
         <>
-          {/* Top header with upload option */}
+          {/* Top header */}
           <div className="absolute top-0 left-0 right-0 z-10 bg-gradient-to-b from-black/80 to-transparent p-4 pt-[max(1rem,env(safe-area-inset-top))] flex items-center justify-between">
-            <button onClick={handleClose} className="px-4 py-2 text-white text-sm">Cancel</button>
-            <span className="text-white font-medium">Capture Receipt</span>
-            <button onClick={triggerFileUpload} className="px-4 py-2 text-primary text-sm font-medium">Upload</button>
+            <button onClick={() => setStep('choose')} className="px-4 py-2 text-white text-sm">Back</button>
+            <span className="text-white font-medium">Take Photo</span>
+            <div className="w-16" />
           </div>
 
           <video ref={videoRef} autoPlay playsInline className="flex-1 object-cover" onLoadedMetadata={() => videoRef.current?.play()} />
           <canvas ref={canvasRef} className="hidden" />
 
-          {/* Bottom control bar with safe area padding */}
+          {/* Bottom control bar */}
           <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent pt-12 pb-[max(1.5rem,env(safe-area-inset-bottom))] px-6">
-            <div className="flex items-center justify-center gap-8">
-              <button onClick={triggerFileUpload} className="w-14 h-14 rounded-full bg-white/20 backdrop-blur flex items-center justify-center text-white" aria-label="Upload from gallery">
-                <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" /></svg>
-              </button>
+            <div className="flex items-center justify-center">
               <button onClick={capturePhoto} className="w-20 h-20 rounded-full bg-white border-4 border-white/50 shadow-lg" aria-label="Take photo" />
-              <div className="w-14 h-14" /> {/* Spacer for balance */}
             </div>
           </div>
         </>
