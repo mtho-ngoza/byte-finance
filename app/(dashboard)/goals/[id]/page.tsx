@@ -1268,7 +1268,7 @@ function ProjectGoalDetail({ goal }: ProjectGoalDetailProps) {
                       onClick={() => setShowReceiptCapture(true)}
                       className="flex-1 px-3 py-2 text-sm rounded-lg border border-border bg-surface text-text-primary hover:border-primary"
                     >
-                      📸 Take/Upload Photo
+                      📸 Add Photo
                     </button>
                     <button
                       type="button"
