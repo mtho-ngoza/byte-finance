@@ -224,6 +224,90 @@ export default function EventDetailPage({ params }: EventDetailPageProps) {
     }
   };
 
+  const handleMoveCategory = async (categoryId: string, direction: 'up' | 'down') => {
+    if (!event) return;
+    const allCategories = event.categories || [];
+    const category = allCategories.find(c => c.id === categoryId);
+    if (!category) return;
+
+    // Get siblings (same parent level)
+    const siblings = allCategories
+      .filter(c => c.parentId === category.parentId)
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+
+    const currentIndex = siblings.findIndex(c => c.id === categoryId);
+    const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+
+    if (targetIndex < 0 || targetIndex >= siblings.length) return;
+
+    // Swap sortOrders
+    const targetCategory = siblings[targetIndex];
+    const currentSortOrder = category.sortOrder ?? currentIndex;
+    const targetSortOrder = targetCategory.sortOrder ?? targetIndex;
+
+    try {
+      // Update both categories
+      await Promise.all([
+        fetch(`/api/events/${id}/categories/${categoryId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sortOrder: targetSortOrder }),
+        }),
+        fetch(`/api/events/${id}/categories/${targetCategory.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sortOrder: currentSortOrder }),
+        }),
+      ]);
+      await fetchData();
+    } catch (error) {
+      console.error('Failed to reorder category:', error);
+      toast('Failed to reorder', 'error');
+    }
+  };
+
+  const handleMoveItem = async (itemId: string, direction: 'up' | 'down') => {
+    if (!event) return;
+    const allItems = event.items || [];
+    const item = allItems.find(i => i.id === itemId);
+    if (!item) return;
+
+    // Get siblings (same category)
+    const siblings = allItems
+      .filter(i => i.categoryId === item.categoryId)
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+
+    const currentIndex = siblings.findIndex(i => i.id === itemId);
+    const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+
+    if (targetIndex < 0 || targetIndex >= siblings.length) return;
+
+    // Swap sortOrders
+    const targetItem = siblings[targetIndex];
+    const currentSortOrder = item.sortOrder ?? currentIndex;
+    const targetSortOrder = targetItem.sortOrder ?? targetIndex;
+
+    try {
+      // Update both items
+      await Promise.all([
+        fetch(`/api/events/${id}/items/${itemId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sortOrder: targetSortOrder }),
+        }),
+        fetch(`/api/events/${id}/items/${targetItem.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sortOrder: currentSortOrder }),
+        }),
+      ]);
+      await fetchData();
+    } catch (error) {
+      console.error('Failed to reorder item:', error);
+      toast('Failed to reorder', 'error');
+    }
+  };
+
   const toggleCategory = (categoryId: string) => {
     setExpandedCategories(prev => {
       const next = new Set(prev);
@@ -245,10 +329,21 @@ export default function EventDetailPage({ params }: EventDetailPageProps) {
   const allCategories = event.categories || [];
   const items = event.items || [];
 
-  // Get root categories (no parent) and helper to get children - sorted alphabetically
-  const rootCategories = allCategories.filter(c => !c.parentId).sort((a, b) => a.name.localeCompare(b.name));
+  // Get root categories (no parent) and helper to get children - sorted by sortOrder
+  const rootCategories = allCategories
+    .filter(c => !c.parentId)
+    .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
   const getChildren = (parentId: string) =>
-    allCategories.filter(c => c.parentId === parentId).sort((a, b) => a.name.localeCompare(b.name));
+    allCategories
+      .filter(c => c.parentId === parentId)
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+
+  // Get sibling count for reorder buttons
+  const getSiblingInfo = (categoryId: string, parentId: string | undefined) => {
+    const siblings = allCategories.filter(c => c.parentId === parentId);
+    const index = siblings.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)).findIndex(c => c.id === categoryId);
+    return { index, total: siblings.length };
+  };
 
   // Check if category has children (is a parent/group)
   const hasChildren = (categoryId: string) => allCategories.some(c => c.parentId === categoryId);
@@ -399,7 +494,7 @@ export default function EventDetailPage({ params }: EventDetailPageProps) {
 
       {/* Categories - Recursive Tree */}
       <div className="space-y-3">
-        {rootCategories.map((category) => (
+        {rootCategories.map((category, index) => (
           <CategoryNode
             key={category.id}
             category={category}
@@ -418,6 +513,10 @@ export default function EventDetailPage({ params }: EventDetailPageProps) {
             onDeletePayment={handleDeletePayment}
             onUpdateNotes={handleUpdateItemNotes}
             onAddItem={setShowAddItem}
+            onMoveCategory={handleMoveCategory}
+            onMoveItem={handleMoveItem}
+            siblingIndex={index}
+            siblingTotal={rootCategories.length}
           />
         ))}
 
@@ -505,6 +604,9 @@ function ItemRow({
   onAddPayment,
   onDeletePayment,
   onUpdateNotes,
+  onMove,
+  siblingIndex,
+  siblingTotal,
 }: {
   item: EventItem;
   parseDate: (d: unknown) => Date;
@@ -513,6 +615,9 @@ function ItemRow({
   onAddPayment: () => void;
   onDeletePayment: (paymentId: string) => void;
   onUpdateNotes: (notes: string) => void;
+  onMove: (direction: 'up' | 'down') => void;
+  siblingIndex: number;
+  siblingTotal: number;
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showPayments, setShowPayments] = useState(false);
@@ -584,6 +689,27 @@ function ItemRow({
                 + Pay
               </button>
             )}
+            {/* Reorder buttons */}
+            <button
+              onClick={() => onMove('up')}
+              disabled={siblingIndex === 0}
+              className="p-1 rounded text-text-secondary/50 hover:text-text-secondary disabled:opacity-30 disabled:cursor-not-allowed"
+              title="Move up"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+              </svg>
+            </button>
+            <button
+              onClick={() => onMove('down')}
+              disabled={siblingIndex === siblingTotal - 1}
+              className="p-1 rounded text-text-secondary/50 hover:text-text-secondary disabled:opacity-30 disabled:cursor-not-allowed"
+              title="Move down"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
             <button
               onClick={() => setShowNotes(!showNotes)}
               className={`p-1 rounded relative ${hasNotes ? 'text-primary' : 'text-text-secondary/50 hover:text-text-secondary'}`}
@@ -1338,6 +1464,10 @@ function CategoryNode({
   onDeletePayment,
   onUpdateNotes,
   onAddItem,
+  onMoveCategory,
+  onMoveItem,
+  siblingIndex,
+  siblingTotal,
 }: {
   category: EventCategory;
   depth: number;
@@ -1355,16 +1485,20 @@ function CategoryNode({
   onDeletePayment: (itemId: string, paymentId: string) => void;
   onUpdateNotes: (itemId: string, notes: string) => void;
   onAddItem: (categoryId: string) => void;
+  onMoveCategory: (categoryId: string, direction: 'up' | 'down') => void;
+  onMoveItem: (itemId: string, direction: 'up' | 'down') => void;
+  siblingIndex: number;
+  siblingTotal: number;
 }) {
   const isExpanded = expandedCategories.has(category.id);
   const children = getChildren(category.id);
   const isParent = children.length > 0;
   const { total, paid, itemCount } = getCategoryTotals(category.id);
 
-  // Direct items (only for leaf categories) - sorted alphabetically
+  // Direct items for this category - sorted by sortOrder
   const directItems = items
     .filter(i => i.categoryId === category.id)
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
 
   // Indentation based on depth
   const paddingLeft = depth === 0 ? 'pl-3' : `pl-${3 + depth * 3}`;
@@ -1392,13 +1526,35 @@ function CategoryNode({
             ({itemCount} items{isParent ? `, ${children.length} sub` : ''})
           </span>
         </div>
-        <div className="flex items-center gap-2 text-xs">
-          <span className="text-text-secondary">
+        <div className="flex items-center gap-1 text-xs">
+          <span className="text-text-secondary mr-1">
             <AmountDisplay amount={paid} size="xs" /> / <AmountDisplay amount={total} size="xs" />
           </span>
+          {/* Reorder buttons */}
+          <button
+            onClick={(e) => { e.stopPropagation(); onMoveCategory(category.id, 'up'); }}
+            disabled={siblingIndex === 0}
+            className="p-1 rounded text-text-secondary/50 hover:text-text-secondary hover:bg-background disabled:opacity-30 disabled:cursor-not-allowed"
+            title="Move up"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+            </svg>
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onMoveCategory(category.id, 'down'); }}
+            disabled={siblingIndex === siblingTotal - 1}
+            className="p-1 rounded text-text-secondary/50 hover:text-text-secondary hover:bg-background disabled:opacity-30 disabled:cursor-not-allowed"
+            title="Move down"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
           <button
             onClick={(e) => { e.stopPropagation(); onEditCategory(category); }}
             className="p-1 rounded text-text-secondary/50 hover:text-text-secondary hover:bg-background"
+            title="Edit"
           >
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
               <path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -1411,7 +1567,7 @@ function CategoryNode({
       {isExpanded && (
         <div className={isRoot ? 'border-t border-border' : 'bg-background/20'}>
           {/* Render child categories recursively */}
-          {children.map((child) => (
+          {children.map((child, childIndex) => (
             <CategoryNode
               key={child.id}
               category={child}
@@ -1430,13 +1586,17 @@ function CategoryNode({
               onDeletePayment={onDeletePayment}
               onUpdateNotes={onUpdateNotes}
               onAddItem={onAddItem}
+              onMoveCategory={onMoveCategory}
+              onMoveItem={onMoveItem}
+              siblingIndex={childIndex}
+              siblingTotal={children.length}
             />
           ))}
 
           {/* Render direct items for this category */}
           {directItems.length > 0 && (
             <div className={isParent ? 'border-b border-border' : ''}>
-              {directItems.map((item) => (
+              {directItems.map((item, itemIndex) => (
                 <div key={item.id} style={{ paddingLeft: `${depth * 12}px` }}>
                   <ItemRow
                     item={item}
@@ -1446,6 +1606,9 @@ function CategoryNode({
                     onAddPayment={() => onAddPayment(item.id)}
                     onDeletePayment={(paymentId) => onDeletePayment(item.id, paymentId)}
                     onUpdateNotes={(notes) => onUpdateNotes(item.id, notes)}
+                    onMove={(direction) => onMoveItem(item.id, direction)}
+                    siblingIndex={itemIndex}
+                    siblingTotal={directItems.length}
                   />
                 </div>
               ))}
