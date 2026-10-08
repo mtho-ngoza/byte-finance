@@ -9,10 +9,19 @@ import { DateInput } from '@/components/shared/date-input';
 import { InlineReceiptCapture } from '@/components/shared/inline-receipt-capture';
 import { useToast } from '@/components/shared/toast';
 import { generateProjectPDF } from '@/lib/pdf-export';
-import type { Project } from '@/types';
+import type { Project, Event } from '@/types';
 
 interface ProjectDetailPageProps {
   params: Promise<{ id: string }>;
+}
+
+interface LinkedEvent {
+  id: string;
+  name: string;
+  status: string;
+  eventDate?: any;
+  totalQuoted: number;
+  totalPaid: number;
 }
 
 export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
@@ -21,6 +30,7 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
   const { toast } = useToast();
 
   const [project, setProject] = useState<Project | null>(null);
+  const [linkedEvents, setLinkedEvents] = useState<LinkedEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddTransaction, setShowAddTransaction] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<any | null>(null);
@@ -28,6 +38,7 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
 
   useEffect(() => {
     fetchProject();
+    fetchLinkedEvents();
   }, [id]);
 
   const fetchProject = async () => {
@@ -42,6 +53,17 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
       router.push('/projects');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchLinkedEvents = async () => {
+    try {
+      const res = await fetch(`/api/events?linkedProjectId=${id}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setLinkedEvents(data.events || []);
+    } catch (error) {
+      console.error('Failed to fetch linked events:', error);
     }
   };
 
@@ -233,6 +255,56 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
           </div>
         </div>
       </div>
+
+      {/* Linked Events */}
+      {linkedEvents.length > 0 && (
+        <div className="space-y-2">
+          <h2 className="text-sm font-medium text-text-secondary">Linked Events</h2>
+          <div className="space-y-2">
+            {linkedEvents.map((event) => {
+              const progressPercent = event.totalQuoted > 0
+                ? Math.round((event.totalPaid / event.totalQuoted) * 100)
+                : 0;
+              const remaining = event.totalQuoted - event.totalPaid;
+
+              return (
+                <Link
+                  key={event.id}
+                  href={`/events/${event.id}`}
+                  className="block bg-surface border border-border rounded-xl p-3 hover:border-primary/50 transition-colors"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-text-primary truncate">{event.name}</p>
+                      <p className="text-xs text-text-secondary capitalize">{event.status.replace('_', ' ')}</p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-sm font-medium text-text-primary">
+                        <AmountDisplay amount={event.totalPaid} size="sm" />
+                      </p>
+                      <p className="text-xs text-text-secondary">
+                        of <AmountDisplay amount={event.totalQuoted} size="xs" />
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-2">
+                    <div className="flex justify-between text-xs text-text-secondary mb-1">
+                      <span>{progressPercent}% paid</span>
+                      <span><AmountDisplay amount={remaining} size="xs" /> remaining</span>
+                    </div>
+                    <div className="h-1.5 bg-background rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-primary rounded-full transition-all"
+                        style={{ width: `${progressPercent}%` }}
+                      />
+                    </div>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Add transaction button */}
       <button

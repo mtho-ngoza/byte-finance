@@ -8,19 +8,46 @@ import type { CreateEvent } from '@/types';
 /**
  * GET /api/events
  * List all events for the authenticated user
+ * Query params:
+ *   - linkedProjectId: filter by linked project
  */
 export async function GET(request: NextRequest) {
   const auth = await withAuth(request);
   if (auth instanceof NextResponse) return auth;
   const { userId } = auth;
 
-  const db = getAdminDb();
-  const snapshot = await db.collection(`users/${userId}/events`).orderBy('createdAt', 'desc').get();
+  const { searchParams } = new URL(request.url);
+  const linkedProjectId = searchParams.get('linkedProjectId');
 
-  const events = snapshot.docs.map((doc) => ({
-    id: doc.id,
-    ...doc.data(),
-  }));
+  const db = getAdminDb();
+  let query = db.collection(`users/${userId}/events`).orderBy('createdAt', 'desc');
+
+  // Note: Firestore requires an index for compound queries, so we filter in memory
+  const snapshot = await query.get();
+
+  let events = snapshot.docs.map((doc) => {
+    const data = doc.data();
+    const items = data.items || [];
+
+    // Calculate totals
+    const totalQuoted = items.reduce((sum: number, item: any) => sum + (item.unitPrice * item.quantity), 0);
+    const totalPaid = items.reduce((sum: number, item: any) => {
+      const payments = item.payments || [];
+      return sum + payments.reduce((s: number, p: any) => s + p.amount, 0);
+    }, 0);
+
+    return {
+      id: doc.id,
+      ...data,
+      totalQuoted,
+      totalPaid,
+    } as { id: string; linkedProjectId?: string; [key: string]: any };
+  });
+
+  // Filter by linkedProjectId if provided
+  if (linkedProjectId) {
+    events = events.filter((e) => e.linkedProjectId === linkedProjectId);
+  }
 
   return NextResponse.json({ events });
 }

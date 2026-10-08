@@ -36,7 +36,8 @@
       "Bash(npm run test:coverage:*)",
       "Bash(git diff:*)",
       "Bash(sort:*)",
-      "Bash(npx tsx:*)"
+      "Bash(npx tsx:*)",
+      "Bash(npm run lint)"
     ]
   }
 }
