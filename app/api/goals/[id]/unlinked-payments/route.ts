@@ -5,8 +5,11 @@ import { getAdminDb } from '@/lib/firebase-admin';
 /**
  * GET /api/goals/[id]/unlinked-payments
  *
- * Returns all payments from cycle items that aren't already linked to this goal.
+ * Returns payments from cycle items that aren't already linked to this goal.
  * Used to let users retroactively link past payments to a goal.
+ * Query params:
+ *   - limit: max items to return (default 50, max 100)
+ *   - offset: number of items to skip (default 0)
  */
 export async function GET(
   request: NextRequest,
@@ -17,6 +20,13 @@ export async function GET(
   const { userId } = auth;
 
   const { id: goalId } = await params;
+
+  const { searchParams } = new URL(request.url);
+  const limitParam = parseInt(searchParams.get('limit') || '50');
+  const offset = parseInt(searchParams.get('offset') || '0');
+
+  // Clamp limit between 1 and 100
+  const limit = Math.min(Math.max(limitParam, 1), 100);
 
   const db = getAdminDb();
 
@@ -41,10 +51,10 @@ export async function GET(
       })
   );
 
-  // Get all cycles
+  // Get recent cycles (limit to 6 for performance)
   const cyclesSnap = await db.collection(`users/${userId}/cycles`)
     .orderBy('startDate', 'desc')
-    .limit(12) // Last 12 cycles
+    .limit(6)
     .get();
 
   const unlinkedPayments: Array<{
@@ -63,9 +73,10 @@ export async function GET(
     const cycleId = cycleDoc.id;
     const cycleName = cycle.label || `Cycle ${cycleId.slice(0, 6)}`;
 
-    // Get all cycle items for this cycle
+    // Get cycle items with limit
     const itemsSnap = await db.collection(`users/${userId}/cycleItems`)
       .where('cycleId', '==', cycleId)
+      .limit(100)
       .get();
 
     for (const itemDoc of itemsSnap.docs) {
@@ -101,5 +112,16 @@ export async function GET(
   // Sort by date descending
   unlinkedPayments.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-  return NextResponse.json({ payments: unlinkedPayments }, { status: 200 });
+  // Apply pagination
+  const total = unlinkedPayments.length;
+  const paginatedPayments = unlinkedPayments.slice(offset, offset + limit);
+  const hasMore = offset + paginatedPayments.length < total;
+
+  return NextResponse.json({
+    payments: paginatedPayments,
+    total,
+    offset,
+    limit,
+    hasMore,
+  }, { status: 200 });
 }

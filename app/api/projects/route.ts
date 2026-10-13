@@ -6,7 +6,7 @@ import type { CreateProject } from '@/types';
 
 /**
  * GET /api/projects
- * List all projects for the authenticated user
+ * List projects for the authenticated user (limit 100)
  */
 export async function GET(request: NextRequest) {
   const auth = await withAuth(request);
@@ -14,7 +14,11 @@ export async function GET(request: NextRequest) {
   const { userId } = auth;
 
   const db = getAdminDb();
-  const snapshot = await db.collection(`users/${userId}/projects`).orderBy('createdAt', 'desc').get();
+  const snapshot = await db
+    .collection(`users/${userId}/projects`)
+    .orderBy('createdAt', 'desc')
+    .limit(100)
+    .get();
 
   const projects = snapshot.docs.map((doc) => ({
     id: doc.id,

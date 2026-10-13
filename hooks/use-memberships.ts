@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, limit as fbLimit } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useUserId } from './use-user-id';
 import type { EventMembership } from '@/types';
@@ -38,7 +38,7 @@ export function useMemberships(): UseMembershipsResult {
     setError(null);
 
     const membershipsRef = collection(db, 'users', userId, 'memberships');
-    const q = query(membershipsRef, orderBy('joinedAt', 'desc'));
+    const q = query(membershipsRef, orderBy('joinedAt', 'desc'), fbLimit(100));
 
     const unsubscribe = onSnapshot(
       q,

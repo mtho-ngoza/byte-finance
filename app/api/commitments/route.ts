@@ -12,6 +12,7 @@ export async function GET(request: NextRequest) {
   const snap = await db
     .collection(`users/${userId}/commitments`)
     .orderBy('sortOrder')
+    .limit(200)
     .get();
 
   const commitments = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));

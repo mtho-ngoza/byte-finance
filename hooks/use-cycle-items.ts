@@ -12,6 +12,7 @@ import {
   Timestamp,
   arrayUnion,
   increment,
+  limit as fbLimit,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useUserId } from './use-user-id';
@@ -58,7 +59,8 @@ export function useCycleItems(cycleId: string | null, cycle?: Cycle | null): Use
     const q = query(
       collection(db, `users/${userId}/cycleItems`),
       where('cycleId', '==', cycleId),
-      orderBy('sortOrder')
+      orderBy('sortOrder'),
+      fbLimit(200) // Reasonable limit per cycle
     );
 
     const unsubscribe = onSnapshot(
@@ -98,7 +100,8 @@ export function useCycleItems(cycleId: string | null, cycle?: Cycle | null): Use
     const q = query(
       collection(db, `users/${userId}/cycleItems`),
       where('paidDate', '>=', Timestamp.fromDate(startDate)),
-      where('paidDate', '<=', Timestamp.fromDate(queryEndDate))
+      where('paidDate', '<=', Timestamp.fromDate(queryEndDate)),
+      fbLimit(200) // Reasonable limit per cycle
     );
 
     const unsubscribe = onSnapshot(

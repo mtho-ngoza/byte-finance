@@ -5,7 +5,11 @@ import { FieldValue } from 'firebase-admin/firestore';
 
 /**
  * GET /api/receipts
- * Returns all receipts, optionally filtered by needsAttention
+ * Returns receipts with pagination support
+ * Query params:
+ *   - needsAttention: filter to only receipts needing attention
+ *   - limit: max items to return (default 50, max 100)
+ *   - cursor: ISO date string to paginate after
  */
 export async function GET(request: NextRequest) {
   const auth = await withAuth(request);
@@ -14,50 +18,63 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
   const needsAttention = searchParams.get('needsAttention');
+  const limitParam = parseInt(searchParams.get('limit') || '50');
+  const cursor = searchParams.get('cursor');
+
+  // Clamp limit between 1 and 100
+  const limit = Math.min(Math.max(limitParam, 1), 100);
 
   const db = getAdminDb();
 
   try {
-    let snap;
+    let queryRef = db
+      .collection(`users/${userId}/receipts`)
+      .orderBy('capturedAt', 'desc');
 
-    if (needsAttention === 'true') {
-      // Query without orderBy to avoid composite index requirement
-      // Sort in memory instead
-      snap = await db
-        .collection(`users/${userId}/receipts`)
-        .where('needsAttention', '==', true)
-        .limit(500)
-        .get();
-    } else {
-      snap = await db
-        .collection(`users/${userId}/receipts`)
-        .orderBy('capturedAt', 'desc')
-        .limit(500)
-        .get();
+    // Apply cursor if provided
+    if (cursor) {
+      const cursorDate = new Date(cursor);
+      queryRef = queryRef.startAfter(cursorDate);
     }
 
-    const receipts = snap.docs
-      .map((doc) => {
-        const data = doc.data();
-        return {
-          id: doc.id,
-          ...data,
-          cycleItemId: data.cycleItemId ?? null,
-          cycleId: data.cycleId ?? null,
-          capturedAt: data.capturedAt?.toDate?.()?.toISOString() ?? null,
-          createdAt: data.createdAt?.toDate?.()?.toISOString() ?? null,
-          updatedAt: data.updatedAt?.toDate?.()?.toISOString() ?? null,
-        };
-      })
-      // Sort by capturedAt descending in memory
-      .sort((a, b) => {
-        if (!a.capturedAt && !b.capturedAt) return 0;
-        if (!a.capturedAt) return 1;
-        if (!b.capturedAt) return -1;
-        return new Date(b.capturedAt).getTime() - new Date(a.capturedAt).getTime();
-      });
+    // Fetch one extra to check if there are more
+    const snap = await queryRef.limit(limit + 1).get();
 
-    return NextResponse.json({ receipts });
+    let receipts = snap.docs.map((doc) => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        ...data,
+        cycleItemId: data.cycleItemId ?? null,
+        cycleId: data.cycleId ?? null,
+        needsAttention: data.needsAttention ?? false,
+        capturedAt: data.capturedAt?.toDate?.()?.toISOString() ?? null,
+        createdAt: data.createdAt?.toDate?.()?.toISOString() ?? null,
+        updatedAt: data.updatedAt?.toDate?.()?.toISOString() ?? null,
+      };
+    });
+
+    // Check if there are more items
+    const hasMore = receipts.length > limit;
+    if (hasMore) {
+      receipts = receipts.slice(0, limit);
+    }
+
+    // Filter by needsAttention in memory if requested
+    if (needsAttention === 'true') {
+      receipts = receipts.filter((r) => r.needsAttention);
+    }
+
+    // Get next cursor
+    const nextCursor = hasMore && receipts.length > 0
+      ? receipts[receipts.length - 1].capturedAt
+      : null;
+
+    return NextResponse.json({
+      receipts,
+      hasMore,
+      nextCursor,
+    });
   } catch (error) {
     console.error('Error fetching receipts:', error);
     return NextResponse.json(

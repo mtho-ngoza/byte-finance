@@ -1,10 +1,12 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
-import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, limit as fbLimit } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useUserId } from './use-user-id';
 import type { Event, EventItem, EventCategory, Project } from '@/types';
+
+const EVENTS_LIMIT = 100;
 
 /**
  * Extended Event with computed fields
@@ -130,7 +132,8 @@ export function useEvents(): UseEventsResult {
 
     const q = query(
       collection(db, `users/${userId}/events`),
-      orderBy('createdAt', 'desc')
+      orderBy('createdAt', 'desc'),
+      fbLimit(EVENTS_LIMIT)
     );
 
     const unsubscribe = onSnapshot(
@@ -155,7 +158,8 @@ export function useEvents(): UseEventsResult {
 
     const q = query(
       collection(db, `users/${userId}/projects`),
-      orderBy('createdAt', 'desc')
+      orderBy('createdAt', 'desc'),
+      fbLimit(100)
     );
 
     const unsubscribe = onSnapshot(

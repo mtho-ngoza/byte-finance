@@ -9,7 +9,10 @@ interface Params {
 
 /**
  * GET /api/goals/[id]/transactions
- * Returns all transactions (contributions and payments) for a project goal
+ * Returns transactions (contributions and payments) for a project goal
+ * Query params:
+ *   - limit: max items to return (default 50, max 100)
+ *   - cursor: ISO date string to paginate after
  */
 export async function GET(request: NextRequest, { params }: Params) {
   const auth = await withAuth(request);
@@ -17,6 +20,13 @@ export async function GET(request: NextRequest, { params }: Params) {
   const { userId } = auth;
 
   const { id: goalId } = await params;
+
+  const { searchParams } = new URL(request.url);
+  const limitParam = parseInt(searchParams.get('limit') || '50');
+  const cursor = searchParams.get('cursor');
+
+  // Clamp limit between 1 and 100
+  const limit = Math.min(Math.max(limitParam, 1), 100);
 
   const db = getAdminDb();
 
@@ -33,19 +43,43 @@ export async function GET(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Only project goals support transactions' }, { status: 400 });
   }
 
-  // Fetch all transactions for this goal
-  const transactionsSnap = await db
+  // Build query
+  let queryRef = db
     .collection(`users/${userId}/projectTransactions`)
     .where('goalId', '==', goalId)
-    .orderBy('date', 'desc')
-    .get();
+    .orderBy('date', 'desc');
 
-  const transactions = transactionsSnap.docs.map((doc) => ({
+  // Apply cursor if provided
+  if (cursor) {
+    const cursorDate = new Date(cursor);
+    queryRef = queryRef.startAfter(cursorDate);
+  }
+
+  // Fetch one extra to check if there are more
+  const transactionsSnap = await queryRef.limit(limit + 1).get();
+
+  let transactions = transactionsSnap.docs.map((doc) => ({
     id: doc.id,
     ...doc.data(),
+    date: doc.data().date?.toDate?.()?.toISOString() ?? doc.data().date,
   }));
 
-  return NextResponse.json({ transactions });
+  // Check if there are more items
+  const hasMore = transactions.length > limit;
+  if (hasMore) {
+    transactions = transactions.slice(0, limit);
+  }
+
+  // Get next cursor
+  const nextCursor = hasMore && transactions.length > 0
+    ? transactions[transactions.length - 1].date
+    : null;
+
+  return NextResponse.json({
+    transactions,
+    hasMore,
+    nextCursor,
+  });
 }
 
 /**

@@ -20,6 +20,7 @@ export async function GET(request: NextRequest) {
     .collection(`users/${userId}/cycleItems`)
     .where('cycleId', '==', cycleId)
     .orderBy('sortOrder')
+    .limit(200) // Reasonable limit per cycle
     .get();
 
   const items = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));

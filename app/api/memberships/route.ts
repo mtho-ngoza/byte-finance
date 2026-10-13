@@ -21,6 +21,7 @@ export async function GET() {
     .doc(userId)
     .collection('memberships')
     .orderBy('joinedAt', 'desc')
+    .limit(100)
     .get();
 
   const memberships = snapshot.docs.map((doc) => ({

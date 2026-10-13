@@ -10,6 +10,8 @@ import type { CreateEvent } from '@/types';
  * List all events for the authenticated user
  * Query params:
  *   - linkedProjectId: filter by linked project
+ *   - limit: max items to return (default 30, max 100)
+ *   - page: page number (0-indexed, default 0)
  */
 export async function GET(request: NextRequest) {
   const auth = await withAuth(request);
@@ -18,14 +20,20 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
   const linkedProjectId = searchParams.get('linkedProjectId');
+  const limitParam = parseInt(searchParams.get('limit') || '30');
+  const page = parseInt(searchParams.get('page') || '0');
+
+  // Clamp limit between 1 and 100
+  const limit = Math.min(Math.max(limitParam, 1), 100);
+  const offset = page * limit;
 
   const db = getAdminDb();
-  let query = db.collection(`users/${userId}/events`).orderBy('createdAt', 'desc');
+  const queryRef = db.collection(`users/${userId}/events`).orderBy('createdAt', 'desc');
 
   // Note: Firestore requires an index for compound queries, so we filter in memory
-  const snapshot = await query.get();
+  const snapshot = await queryRef.get();
 
-  let events = snapshot.docs.map((doc) => {
+  let allEvents = snapshot.docs.map((doc) => {
     const data = doc.data();
     const items = data.items || [];
 
@@ -46,10 +54,20 @@ export async function GET(request: NextRequest) {
 
   // Filter by linkedProjectId if provided
   if (linkedProjectId) {
-    events = events.filter((e) => e.linkedProjectId === linkedProjectId);
+    allEvents = allEvents.filter((e) => e.linkedProjectId === linkedProjectId);
   }
 
-  return NextResponse.json({ events });
+  const total = allEvents.length;
+  const events = allEvents.slice(offset, offset + limit);
+  const hasMore = offset + events.length < total;
+
+  return NextResponse.json({
+    events,
+    total,
+    page,
+    limit,
+    hasMore,
+  });
 }
 
 /**

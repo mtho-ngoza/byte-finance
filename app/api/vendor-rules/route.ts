@@ -8,21 +8,28 @@ import type { Category } from '@/types';
 
 /**
  * GET /api/vendor-rules
- * List all vendor rules for the authenticated user
+ * List vendor rules for the authenticated user
+ * Query params:
+ *   - limit: max items to return (default 500, max 1000)
  */
 export async function GET(request: NextRequest) {
   const auth = await withAuth(request);
   if (auth instanceof NextResponse) return auth;
   const { userId } = auth;
 
+  const { searchParams } = new URL(request.url);
+  const limitParam = parseInt(searchParams.get('limit') || '500');
+  const limit = Math.min(Math.max(limitParam, 1), 1000);
+
   const db = getAdminDb();
   const snap = await db
     .collection(`users/${userId}/vendorRules`)
     .orderBy('matchCount', 'desc')
+    .limit(limit)
     .get();
 
   const rules = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-  return NextResponse.json({ rules });
+  return NextResponse.json({ rules, total: rules.length, limit });
 }
 
 /**

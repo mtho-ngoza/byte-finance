@@ -14,9 +14,12 @@ vi.mock('@/lib/auth', () => ({
   withAuth: async () => ({ userId: TEST_USER_ID }),
 }));
 
-function createRequest(method: string, body?: unknown) {
+function createRequest(method: string, body?: unknown, searchParams?: Record<string, string>) {
+  const params = new URLSearchParams(searchParams);
+  const url = `http://localhost/api/goals${params.toString() ? `?${params.toString()}` : ''}`;
   return {
     method,
+    url,
     json: async () => body,
     headers: new Map(),
   };

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
-import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, limit as fbLimit } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useUserId } from './use-user-id';
 import type { Goal, Commitment } from '@/types';
@@ -136,7 +136,8 @@ export function useGoals(): UseGoalsResult {
     const q = query(
       collection(db, `users/${userId}/goals`),
       orderBy('priority'),
-      orderBy('createdAt', 'desc')
+      orderBy('createdAt', 'desc'),
+      fbLimit(100)
     );
 
     const unsubscribe = onSnapshot(

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, limit as fbLimit } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useUserId } from './use-user-id';
 import type { Commitment, Category } from '@/types';
@@ -33,7 +33,8 @@ export function useCommitments(): UseCommitmentsResult {
     // Subscribe to ALL commitments (active + inactive)
     const q = query(
       collection(db, `users/${userId}/commitments`),
-      orderBy('sortOrder')
+      orderBy('sortOrder'),
+      fbLimit(200)
     );
 
     const unsubscribe = onSnapshot(

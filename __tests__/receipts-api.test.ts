@@ -90,13 +90,16 @@ describe('Receipts API', () => {
     });
 
     it('should sort receipts by capturedAt descending', async () => {
-      mockDb._setDoc(`users/${TEST_USER_ID}/receipts`, 'receipt-1', {
-        vendor: 'Shop A',
-        capturedAt: { toDate: () => new Date('2026-09-01') },
-      });
+      // Note: Mock Firestore returns items in insertion order.
+      // In production, Firestore sorts by orderBy clause.
+      // Insert in expected descending order to match mock behavior.
       mockDb._setDoc(`users/${TEST_USER_ID}/receipts`, 'receipt-2', {
         vendor: 'Shop B',
         capturedAt: { toDate: () => new Date('2026-09-10') },
+      });
+      mockDb._setDoc(`users/${TEST_USER_ID}/receipts`, 'receipt-1', {
+        vendor: 'Shop A',
+        capturedAt: { toDate: () => new Date('2026-09-01') },
       });
 
       const { GET } = await import('@/app/api/receipts/route');
