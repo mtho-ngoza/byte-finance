@@ -136,12 +136,6 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
     }
   };
 
-  if (loading) {
-    return <div className="animate-pulse space-y-4"><div className="h-8 w-48 bg-surface rounded" /></div>;
-  }
-
-  if (!project) return null;
-
   // Helper to parse various date formats from API/Firestore
   const parseDate = (dateValue: unknown): Date => {
     if (!dateValue) return new Date();
@@ -158,9 +152,9 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
     return new Date();
   };
 
-  const allTransactions = project.transactions || [];
+  const allTransactions = project?.transactions || [];
 
-  // Extract unique contributor names for filter dropdown
+  // Extract unique contributor names for filter dropdown (must be before early returns - rules of hooks)
   const uniqueContributors = useMemo(() => {
     const contributors = new Set<string>();
     allTransactions.forEach(txn => {
@@ -169,7 +163,7 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
     return Array.from(contributors).sort();
   }, [allTransactions]);
 
-  // Apply filters to transactions
+  // Apply filters to transactions (must be before early returns - rules of hooks)
   const filteredTransactions = useMemo(() => {
     return allTransactions.filter(txn => {
       // Type filter
@@ -185,6 +179,12 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
   }, [allTransactions, filterType, filterContributor]);
 
   const isFiltered = filterType !== 'all' || filterContributor !== 'all';
+
+  if (loading) {
+    return <div className="animate-pulse space-y-4"><div className="h-8 w-48 bg-surface rounded" /></div>;
+  }
+
+  if (!project) return null;
 
   const sortedTransactions = [...filteredTransactions].sort((a, b) => {
     const dateA = parseDate(a.date);

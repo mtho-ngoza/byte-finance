@@ -325,16 +325,10 @@ export default function EventDetailPage({ params }: EventDetailPageProps) {
     });
   };
 
-  if (loading) {
-    return <div className="animate-pulse space-y-4"><div className="h-8 w-48 bg-surface rounded" /></div>;
-  }
+  const allCategories = event?.categories || [];
+  const allItems = event?.items || [];
 
-  if (!event) return null;
-
-  const allCategories = event.categories || [];
-  const allItems = event.items || [];
-
-  // Extract unique vendors for filter dropdown
+  // Extract unique vendors for filter dropdown (must be before early returns - rules of hooks)
   const uniqueVendors = useMemo(() => {
     const vendors = new Set<string>();
     allItems.forEach(item => {
@@ -349,7 +343,7 @@ export default function EventDetailPage({ params }: EventDetailPageProps) {
     return children.flatMap(c => [c.id, ...getDescendantIds(c.id)]);
   };
 
-  // Apply filters to items
+  // Apply filters to items (must be before early returns - rules of hooks)
   const filteredItems = useMemo(() => {
     return allItems.filter(item => {
       // Category filter
@@ -378,6 +372,12 @@ export default function EventDetailPage({ params }: EventDetailPageProps) {
   }, [allItems, filterCategory, filterVendor, filterStatus, allCategories]);
 
   const isFiltered = filterCategory !== 'all' || filterVendor !== 'all' || filterStatus !== 'all';
+
+  if (loading) {
+    return <div className="animate-pulse space-y-4"><div className="h-8 w-48 bg-surface rounded" /></div>;
+  }
+
+  if (!event) return null;
 
   // Get root categories (no parent) and helper to get children - sorted by sortOrder
   const rootCategories = allCategories
