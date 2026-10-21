@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useEffect, useState } from 'react';
+import { use, useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { AmountDisplay } from '@/components/shared/amount-display';
@@ -35,6 +35,10 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
   const [showAddTransaction, setShowAddTransaction] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<any | null>(null);
   const [showEditProject, setShowEditProject] = useState(false);
+
+  // Filters
+  const [filterType, setFilterType] = useState<string>('all');
+  const [filterContributor, setFilterContributor] = useState<string>('all');
 
   useEffect(() => {
     fetchProject();
@@ -154,8 +158,35 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
     return new Date();
   };
 
-  const transactions = project.transactions || [];
-  const sortedTransactions = [...transactions].sort((a, b) => {
+  const allTransactions = project.transactions || [];
+
+  // Extract unique contributor names for filter dropdown
+  const uniqueContributors = useMemo(() => {
+    const contributors = new Set<string>();
+    allTransactions.forEach(txn => {
+      if (txn.contributorName) contributors.add(txn.contributorName);
+    });
+    return Array.from(contributors).sort();
+  }, [allTransactions]);
+
+  // Apply filters to transactions
+  const filteredTransactions = useMemo(() => {
+    return allTransactions.filter(txn => {
+      // Type filter
+      if (filterType !== 'all' && txn.type !== filterType) return false;
+
+      // Contributor filter
+      if (filterContributor !== 'all') {
+        if (txn.contributorName !== filterContributor) return false;
+      }
+
+      return true;
+    });
+  }, [allTransactions, filterType, filterContributor]);
+
+  const isFiltered = filterType !== 'all' || filterContributor !== 'all';
+
+  const sortedTransactions = [...filteredTransactions].sort((a, b) => {
     const dateA = parseDate(a.date);
     const dateB = parseDate(b.date);
     return dateB.getTime() - dateA.getTime();
@@ -172,18 +203,34 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
     return groups;
   }, {} as Record<string, typeof sortedTransactions>);
 
-  // Calculate balance from transactions (always accurate)
-  const calculatedBalance = transactions.reduce((sum, txn) => {
+  // Calculate balance from ALL transactions (always accurate - not filtered)
+  const calculatedBalance = allTransactions.reduce((sum, txn) => {
     return sum + (txn.type === 'contribution' ? txn.amount : -txn.amount);
   }, 0);
 
-  // Calculate totals for summary
-  const totalContributions = transactions
+  // Calculate totals for summary (from filtered transactions)
+  const totalContributions = filteredTransactions
     .filter(t => t.type === 'contribution')
     .reduce((sum, t) => sum + t.amount, 0);
-  const totalPayments = transactions
+  const totalPayments = filteredTransactions
     .filter(t => t.type === 'payment')
     .reduce((sum, t) => sum + t.amount, 0);
+
+  // Clear all filters
+  const clearFilters = () => {
+    setFilterType('all');
+    setFilterContributor('all');
+  };
+
+  // Handle export - exports filtered transactions
+  const handleExport = () => {
+    // Create a copy of project with filtered transactions
+    const filteredProject = {
+      ...project,
+      transactions: filteredTransactions,
+    };
+    generateProjectPDF(filteredProject);
+  };
 
   return (
     <div className="space-y-4 pb-20">
@@ -197,9 +244,9 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
         </div>
         <div className="flex items-center gap-1">
           <button
-            onClick={() => generateProjectPDF(project)}
+            onClick={handleExport}
             className="p-2 rounded-lg hover:bg-surface text-text-secondary"
-            title="Export as PDF"
+            title={isFiltered ? `Export filtered (${filteredTransactions.length} transactions)` : 'Export as PDF'}
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -332,9 +379,61 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
         />
       )}
 
+      {/* Filter Bar */}
+      <div className="bg-surface border border-border rounded-xl p-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs text-text-secondary shrink-0">Filter:</span>
+
+          {/* Type Filter */}
+          <select
+            value={filterType}
+            onChange={(e) => setFilterType(e.target.value)}
+            className="px-2 py-1.5 rounded-lg border border-border bg-background text-text-primary text-xs focus:outline-none focus:border-primary"
+          >
+            <option value="all">All Types</option>
+            <option value="contribution">Contributions</option>
+            <option value="payment">Payments</option>
+          </select>
+
+          {/* Contributor Filter */}
+          {uniqueContributors.length > 0 && (
+            <select
+              value={filterContributor}
+              onChange={(e) => setFilterContributor(e.target.value)}
+              className="px-2 py-1.5 rounded-lg border border-border bg-background text-text-primary text-xs focus:outline-none focus:border-primary"
+            >
+              <option value="all">All Contributors</option>
+              {uniqueContributors.map(contributor => (
+                <option key={contributor} value={contributor}>{contributor}</option>
+              ))}
+            </select>
+          )}
+
+          {/* Clear Filters */}
+          {isFiltered && (
+            <button
+              onClick={clearFilters}
+              className="px-2 py-1.5 rounded-lg text-xs text-primary hover:bg-primary/10 flex items-center gap-1"
+            >
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+              Clear
+            </button>
+          )}
+
+          {/* Transaction count */}
+          <span className="text-xs text-text-secondary ml-auto">
+            {filteredTransactions.length} of {allTransactions.length} transactions
+          </span>
+        </div>
+      </div>
+
       {/* Transactions */}
       <div className="space-y-4">
-        <h2 className="text-sm font-medium text-text-secondary">Transaction History</h2>
+        <h2 className="text-sm font-medium text-text-secondary">
+          Transaction History{isFiltered && ' (filtered)'}
+        </h2>
         {sortedTransactions.length === 0 ? (
           <p className="text-sm text-text-secondary text-center py-6">No transactions yet</p>
         ) : (

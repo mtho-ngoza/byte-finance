@@ -77,6 +77,10 @@ function GoalDetail({ goal, allCommitments }: GoalDetailProps) {
   const [editingContribution, setEditingContribution] = useState<any | null>(null);
   const [deletingContribution, setDeletingContribution] = useState<string | null>(null);
 
+  // Filters
+  const [filterMonth, setFilterMonth] = useState<string>('all');
+  const [filterNoteSearch, setFilterNoteSearch] = useState('');
+
   // Link past payments state
   const [showLinkPayments, setShowLinkPayments] = useState(false);
   const [unlinkedPayments, setUnlinkedPayments] = useState<UnlinkedPayment[]>([]);
@@ -251,14 +255,62 @@ function GoalDetail({ goal, allCommitments }: GoalDetailProps) {
     }
   };
 
+  // Get all contributions
+  const allContributions = goal.contributions ?? [];
+
+  // Extract unique months for filter dropdown
+  const uniqueMonths = useMemo(() => {
+    const months = new Map<string, string>();
+    allContributions.forEach(contrib => {
+      const date = contrib.date?.toDate?.() ?? new Date();
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      const label = date.toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' });
+      months.set(key, label);
+    });
+    return Array.from(months.entries()).sort((a, b) => b[0].localeCompare(a[0]));
+  }, [allContributions]);
+
+  // Filter contributions
+  const filteredContributions = useMemo(() => {
+    return allContributions.filter(contrib => {
+      // Month filter
+      if (filterMonth !== 'all') {
+        const date = contrib.date?.toDate?.() ?? new Date();
+        const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        if (key !== filterMonth) return false;
+      }
+
+      // Note search filter
+      if (filterNoteSearch.trim()) {
+        const note = contrib.note?.toLowerCase() ?? '';
+        if (!note.includes(filterNoteSearch.toLowerCase())) return false;
+      }
+
+      return true;
+    });
+  }, [allContributions, filterMonth, filterNoteSearch]);
+
+  const isFiltered = filterMonth !== 'all' || filterNoteSearch.trim() !== '';
+
+  // Clear filters
+  const clearFilters = () => {
+    setFilterMonth('all');
+    setFilterNoteSearch('');
+  };
+
+  // Handle export - exports filtered contributions
+  const handleExport = () => {
+    generateGoalPDF(goal, filteredContributions);
+  };
+
   // Sort contributions by date descending
   const sortedContributions = useMemo(() => {
-    return [...(goal.contributions ?? [])].sort((a, b) => {
+    return [...filteredContributions].sort((a, b) => {
       const dateA = a.date?.toDate?.() ?? new Date(0);
       const dateB = b.date?.toDate?.() ?? new Date(0);
       return dateB.getTime() - dateA.getTime();
     });
-  }, [goal.contributions]);
+  }, [filteredContributions]);
 
   // Group contributions by month
   const contributionsByMonth = useMemo(() => {
@@ -315,9 +367,9 @@ function GoalDetail({ goal, allCommitments }: GoalDetailProps) {
         {!showEdit && (
           <div className="flex items-center gap-2">
             <button
-              onClick={() => generateGoalPDF(goal)}
+              onClick={handleExport}
               className="p-1.5 rounded-lg border border-border text-text-secondary hover:border-primary hover:text-primary transition-colors"
-              title="Export as PDF"
+              title={isFiltered ? `Export filtered (${filteredContributions.length} contributions)` : 'Export as PDF'}
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
@@ -535,11 +587,59 @@ function GoalDetail({ goal, allCommitments }: GoalDetailProps) {
         </div>
       )}
 
+      {/* Filter Bar */}
+      {allContributions.length > 0 && (
+        <div className="p-3 rounded-xl border border-border bg-surface">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs text-text-secondary shrink-0">Filter:</span>
+
+            {/* Month Filter */}
+            <select
+              value={filterMonth}
+              onChange={(e) => setFilterMonth(e.target.value)}
+              className="px-2 py-1.5 rounded-lg border border-border bg-background text-text-primary text-xs focus:outline-none focus:border-primary"
+            >
+              <option value="all">All Months</option>
+              {uniqueMonths.map(([key, label]) => (
+                <option key={key} value={key}>{label}</option>
+              ))}
+            </select>
+
+            {/* Note Search */}
+            <input
+              type="text"
+              value={filterNoteSearch}
+              onChange={(e) => setFilterNoteSearch(e.target.value)}
+              placeholder="Search notes..."
+              className="px-2 py-1.5 rounded-lg border border-border bg-background text-text-primary text-xs focus:outline-none focus:border-primary w-32"
+            />
+
+            {/* Clear Filters */}
+            {isFiltered && (
+              <button
+                onClick={clearFilters}
+                className="px-2 py-1.5 rounded-lg text-xs text-primary hover:bg-primary/10 flex items-center gap-1"
+              >
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+                Clear
+              </button>
+            )}
+
+            {/* Count */}
+            <span className="text-xs text-text-secondary ml-auto">
+              {filteredContributions.length} of {allContributions.length}
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Contribution History */}
       <div className="p-4 rounded-xl border border-border bg-surface">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-medium text-text-primary">
-            Contribution History ({sortedContributions.length})
+            Contribution History{isFiltered && ' (filtered)'} ({sortedContributions.length})
           </h2>
           {!showAddContribution && !showLinkPayments && (
             <div className="flex items-center gap-3">

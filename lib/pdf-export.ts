@@ -225,10 +225,15 @@ export function generateProjectPDF(project: Project): void {
 
 /**
  * Generate PDF for a goal
+ * @param goal - The goal to export
+ * @param filteredContributions - Optional array of filtered contributions. If not provided, all contributions are included.
  */
-export function generateGoalPDF(goal: GoalWithComputed): void {
+export function generateGoalPDF(goal: GoalWithComputed, filteredContributions?: typeof goal.contributions): void {
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
+
+  // Use filtered contributions if provided, otherwise use all
+  const contributions = filteredContributions ?? goal.contributions ?? [];
 
   // Colors
   const primaryColor: [number, number, number] = [16, 185, 129]; // emerald-500
@@ -260,7 +265,7 @@ export function generateGoalPDF(goal: GoalWithComputed): void {
   doc.setTextColor(...(statusColors[goal.status] || mutedColor));
   doc.text(` • ${goal.status.toUpperCase()}`, 14 + doc.getTextWidth(typeLabel), yPos);
 
-  // On track indicator
+  // On track indicator - always use all contributions for balance
   const calculatedBalance = (goal.contributions ?? []).reduce((sum, c) => sum + c.amount, 0);
   if (calculatedBalance >= goal.targetAmount) {
     doc.setTextColor(...primaryColor);
@@ -408,7 +413,6 @@ export function generateGoalPDF(goal: GoalWithComputed): void {
   // Contribution History Section
   doc.setFontSize(12);
   doc.setTextColor(...textColor);
-  const contributions = goal.contributions ?? [];
   doc.text(`Contribution History (${contributions.length})`, 14, yPos);
 
   yPos += 6;
