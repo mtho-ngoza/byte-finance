@@ -515,8 +515,10 @@ export function generateGoalPDF(goal: GoalWithComputed): void {
 
 /**
  * Generate PDF for an event
+ * @param event - The event to export
+ * @param selectedItemIds - Optional array of item IDs to include. If not provided, all items are included.
  */
-export function generateEventPDF(event: Event): void {
+export function generateEventPDF(event: Event, selectedItemIds?: string[]): void {
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
 
@@ -567,8 +569,11 @@ export function generateEventPDF(event: Event): void {
 
   yPos += 8;
 
-  // Calculate totals
-  const items = event.items || [];
+  // Filter items based on selection (if provided)
+  const allItems = event.items || [];
+  const items = selectedItemIds
+    ? allItems.filter(item => selectedItemIds.includes(item.id))
+    : allItems;
   const categories = event.categories || [];
 
   let totalQuoted = 0;
