@@ -38,11 +38,11 @@ export async function PATCH(
     const updated = {
       ...contributions[index],
       type: type ?? contributions[index].type,
-      amount: type === 'cash' ? amount : undefined,
-      itemDescription: type === 'item' ? itemDescription?.trim() : undefined,
-      contributorName: contributorName?.trim() || undefined,
+      amount: type === 'cash' ? amount : null,
+      itemDescription: type === 'item' ? itemDescription?.trim() : null,
+      contributorName: contributorName?.trim() || null,
       date: date ? new Date(date) : contributions[index].date,
-      note: note?.trim() || undefined,
+      note: note?.trim() || null,
     };
 
     contributions[index] = updated;
