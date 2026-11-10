@@ -111,15 +111,15 @@ describe('Payday Utils', () => {
       // September 2026 cycle with last_working_day
       const { startDate, endDate, payDay } = getCycleDateRange(2026, 9, 'last_working_day');
 
-      // Start: August payday (Aug 31, 2026 is Monday - last working day)
-      expect(startDate.getMonth()).toBe(7); // August (0-indexed)
-      expect(startDate.getDate()).toBe(31);
+      // Start: Day AFTER August payday (Aug 31 + 1 = Sep 1, 2026)
+      expect(startDate.getMonth()).toBe(8); // September (0-indexed)
+      expect(startDate.getDate()).toBe(1);
       expect(startDate.getHours()).toBe(0);
       expect(startDate.getMinutes()).toBe(0);
 
-      // End: September payday - 1 day (Sep 29, 2026)
+      // End: ON September payday (Sep 30, 2026)
       expect(endDate.getMonth()).toBe(8); // September
-      expect(endDate.getDate()).toBe(29);
+      expect(endDate.getDate()).toBe(30);
       expect(endDate.getHours()).toBe(23);
       expect(endDate.getMinutes()).toBe(59);
       expect(endDate.getSeconds()).toBe(59);
@@ -131,27 +131,27 @@ describe('Payday Utils', () => {
     it('should handle fixed payday type', () => {
       const { startDate, endDate } = getCycleDateRange(2026, 9, 'fixed', 25);
 
-      // Start: August 25
+      // Start: Day AFTER August 25 = August 26
       expect(startDate.getMonth()).toBe(7);
-      expect(startDate.getDate()).toBe(25);
+      expect(startDate.getDate()).toBe(26);
 
-      // End: September 24
+      // End: ON September 25
       expect(endDate.getMonth()).toBe(8);
-      expect(endDate.getDate()).toBe(24);
+      expect(endDate.getDate()).toBe(25);
     });
 
     it('should handle January cycle (year boundary)', () => {
       const { startDate, endDate } = getCycleDateRange(2026, 1, 'fixed', 25);
 
-      // Start: December 25, 2025 is Christmas (holiday), moves to Dec 24 (Wednesday)
+      // Start: Day AFTER December 24 (Dec 25 is holiday so payday is Dec 24) = Dec 25
       expect(startDate.getFullYear()).toBe(2025);
       expect(startDate.getMonth()).toBe(11); // December
-      expect(startDate.getDate()).toBe(24); // Moved from 25th due to Christmas
+      expect(startDate.getDate()).toBe(25); // Day after Dec 24 payday
 
-      // End: January 25, 2026 is Sunday, payday moves to Friday 23, end is 22
+      // End: ON January payday (Jan 25 is Sunday, moves to Friday 23)
       expect(endDate.getFullYear()).toBe(2026);
       expect(endDate.getMonth()).toBe(0); // January
-      expect(endDate.getDate()).toBe(22); // Day before payday (23rd)
+      expect(endDate.getDate()).toBe(23); // ON payday (23rd)
     });
   });
 
@@ -188,9 +188,15 @@ describe('Payday Utils', () => {
       expect(cycleId).toBe('2026-09');
     });
 
-    it('should handle date on payday (start of next cycle)', () => {
-      // September 30, 2026 is payday - should be October cycle
+    it('should handle date on payday (last day of current cycle)', () => {
+      // September 30, 2026 is payday - should still be September cycle (cycle ends on payday)
       const cycleId = getCycleIdForDate(new Date('2026-09-30'), 'last_working_day');
+      expect(cycleId).toBe('2026-09');
+    });
+
+    it('should handle date after payday (start of next cycle)', () => {
+      // October 1, 2026 is day after payday - should be October cycle
+      const cycleId = getCycleIdForDate(new Date('2026-10-01'), 'last_working_day');
       expect(cycleId).toBe('2026-10');
     });
 
