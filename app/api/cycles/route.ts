@@ -87,6 +87,36 @@ export async function POST(request: NextRequest) {
   // Spawn cycle items from commitments (unless skipSpawn)
   if (commitments.length > 0) {
     const batch = db.batch();
+
+    // Get commitment IDs being spawned
+    const commitmentIds = commitments.map(c => (c as { id: string }).id);
+
+    // Find unpaid items from previous cycles for these commitments and mark them skipped
+    // This prevents duplicates when new cycle items are created
+    // Firestore 'in' queries support max 30 items, so we chunk
+    const chunkSize = 30;
+    for (let i = 0; i < commitmentIds.length; i += chunkSize) {
+      const chunk = commitmentIds.slice(i, i + chunkSize);
+      const unpaidItemsSnap = await db
+        .collection(`users/${userId}/cycleItems`)
+        .where('commitmentId', 'in', chunk)
+        .where('status', 'in', ['upcoming', 'due'])
+        .get();
+
+      // Mark old unpaid items as skipped (they're being replaced by new cycle items)
+      for (const doc of unpaidItemsSnap.docs) {
+        const item = doc.data();
+        // Only skip items from OTHER cycles (not this one, though it shouldn't exist yet)
+        if (item.cycleId !== id) {
+          batch.update(doc.ref, {
+            status: 'skipped',
+            updatedAt: now,
+          });
+        }
+      }
+    }
+
+    // Spawn new items for this cycle
     commitments.forEach((commitment, index) => {
       const c = commitment as {
         id: string;
