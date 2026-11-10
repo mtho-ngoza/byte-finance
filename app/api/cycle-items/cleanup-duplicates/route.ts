@@ -6,14 +6,21 @@ import { FieldValue } from 'firebase-admin/firestore';
 /**
  * POST /api/cycle-items/cleanup-duplicates
  *
- * Cleans up duplicate cycle items:
- * 1. Same commitment + same cycle = true duplicate, DELETE extras
- * 2. Same commitment + different cycles (both unpaid) = mark old as skipped
+ * SAFE cleanup of duplicate cycle items:
+ * - NEVER deletes anything
+ * - Only marks items as skipped
+ * - Has dry-run mode by default
+ *
+ * Query params:
+ * - dryRun=false to actually make changes (default: true)
  */
 export async function POST(request: NextRequest) {
   const auth = await withAuth(request);
   if (auth instanceof NextResponse) return auth;
   const { userId } = auth;
+
+  const { searchParams } = new URL(request.url);
+  const dryRun = searchParams.get('dryRun') !== 'false';
 
   const db = getAdminDb();
   const now = FieldValue.serverTimestamp();
@@ -24,7 +31,7 @@ export async function POST(request: NextRequest) {
     .orderBy('createdAt', 'desc')
     .get();
 
-  // Group items by commitmentId + cycleId (to find true duplicates in same cycle)
+  // Group items by commitmentId + cycleId (to find duplicates in same cycle)
   const itemsByCycleAndCommitment = new Map<string, Array<{ id: string; data: any; ref: any }>>();
 
   for (const doc of itemsSnap.docs) {
@@ -45,10 +52,18 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  let deletedCount = 0;
+  const duplicates: Array<{
+    cycleId: string;
+    commitmentId: string;
+    label: string;
+    kept: { id: string; status: string };
+    wouldSkip: Array<{ id: string; status: string }>;
+  }> = [];
+
+  let skippedCount = 0;
   const cyclesToRecalculate = new Set<string>();
 
-  // Find true duplicates (same cycle + same commitment)
+  // Find duplicates (same cycle + same commitment)
   for (const [key, items] of itemsByCycleAndCommitment) {
     if (items.length <= 1) continue; // No duplicates
 
@@ -66,52 +81,81 @@ export async function POST(request: NextRequest) {
       return dateB.getTime() - dateA.getTime();
     });
 
-    // Keep the first one (paid or newest), delete the rest
-    for (let i = 1; i < items.length; i++) {
-      await items[i].ref.delete();
-      deletedCount++;
-      cyclesToRecalculate.add(items[i].data.cycleId);
+    // Keep the first one (paid or newest), mark rest as skipped (NOT deleted)
+    const kept = items[0];
+    const toSkip = items.slice(1).filter(item => item.data.status !== 'skipped');
+
+    if (toSkip.length === 0) continue; // All duplicates already skipped
+
+    duplicates.push({
+      cycleId: kept.data.cycleId,
+      commitmentId: kept.data.commitmentId,
+      label: kept.data.label,
+      kept: { id: kept.id, status: kept.data.status },
+      wouldSkip: toSkip.map(item => ({ id: item.id, status: item.data.status })),
+    });
+
+    if (!dryRun) {
+      for (const item of toSkip) {
+        await item.ref.update({
+          status: 'skipped',
+          skippedReason: 'duplicate_cleanup',
+          updatedAt: now,
+        });
+        skippedCount++;
+        cyclesToRecalculate.add(item.data.cycleId);
+      }
+    } else {
+      skippedCount += toSkip.length;
     }
   }
 
-  // Recalculate totals for affected cycles
-  for (const cycleId of cyclesToRecalculate) {
-    const cycleItemsSnap = await db
-      .collection(`users/${userId}/cycleItems`)
-      .where('cycleId', '==', cycleId)
-      .get();
+  // Recalculate totals for affected cycles (only if not dry run)
+  if (!dryRun) {
+    for (const cycleId of cyclesToRecalculate) {
+      const cycleItemsSnap = await db
+        .collection(`users/${userId}/cycleItems`)
+        .where('cycleId', '==', cycleId)
+        .get();
 
-    let totalCommitted = 0;
-    let totalPaid = 0;
-    let itemCount = 0;
-    let paidCount = 0;
+      let totalCommitted = 0;
+      let totalPaid = 0;
+      let itemCount = 0;
+      let paidCount = 0;
 
-    for (const doc of cycleItemsSnap.docs) {
-      const item = doc.data();
-      if (item.status === 'skipped') continue;
+      for (const doc of cycleItemsSnap.docs) {
+        const item = doc.data();
+        if (item.status === 'skipped') continue;
 
-      totalCommitted += item.amount || 0;
-      itemCount++;
+        totalCommitted += item.amount || 0;
+        itemCount++;
 
-      if (item.status === 'paid' || item.status === 'partial') {
-        totalPaid += item.totalPaidAmount || item.actualAmount || item.amount || 0;
-        if (item.status === 'paid') paidCount++;
+        if (item.status === 'paid' || item.status === 'partial') {
+          totalPaid += item.totalPaidAmount || item.actualAmount || item.amount || 0;
+          if (item.status === 'paid') paidCount++;
+        }
       }
-    }
 
-    await db.collection(`users/${userId}/cycles`).doc(cycleId).update({
-      totalCommitted,
-      totalPaid,
-      itemCount,
-      paidCount,
-      updatedAt: now,
-    });
+      await db.collection(`users/${userId}/cycles`).doc(cycleId).update({
+        totalCommitted,
+        totalPaid,
+        itemCount,
+        paidCount,
+        updatedAt: now,
+      });
+    }
   }
 
   return NextResponse.json({
     success: true,
-    deletedCount,
-    cyclesRecalculated: cyclesToRecalculate.size,
-    message: `Deleted ${deletedCount} duplicate items, recalculated ${cyclesToRecalculate.size} cycles`,
+    dryRun,
+    duplicatesFound: duplicates.length,
+    wouldSkipCount: skippedCount,
+    skippedCount: dryRun ? 0 : skippedCount,
+    cyclesAffected: cyclesToRecalculate.size,
+    duplicates,
+    message: dryRun
+      ? `DRY RUN: Found ${duplicates.length} duplicate groups, would skip ${skippedCount} items. Run with ?dryRun=false to apply.`
+      : `Skipped ${skippedCount} duplicate items, recalculated ${cyclesToRecalculate.size} cycles. NO items were deleted.`,
   });
 }
