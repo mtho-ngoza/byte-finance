@@ -247,6 +247,7 @@ export interface Event {
   shareToken?: string;              // Unique token for sharing (e.g., "abc123xyz")
   categories: EventCategory[];      // Embedded array
   items: EventItem[];               // Embedded array (includes payments)
+  contributions?: EventContribution[]; // Gifts received (izipheko) - separate from budget
   todos?: EventTodo[];              // Checklist items
   activities?: EventActivity[];     // Activity log (most recent first)
   // Membership
@@ -320,6 +321,20 @@ export interface EventPayment {
   date: Timestamp;
   note?: string;                    // "Deposit", "Final payment"
   receiptId?: string;               // Optional link to receipt
+}
+
+/**
+ * EventContribution - Gift/contribution received for the event (izipheko)
+ * Can be cash or items - tracked separately from budget expenses
+ */
+export interface EventContribution {
+  id: string;                       // Auto-generated
+  type: 'cash' | 'item';            // Cash gift or physical item
+  amount?: number;                  // cents (for cash gifts)
+  itemDescription?: string;         // "2 cases of beer", "Tablecloths" (for items)
+  contributorName?: string;         // "Uncle Joe", "Mom & Dad"
+  date: Timestamp;
+  note?: string;                    // Additional notes
 }
 
 /**

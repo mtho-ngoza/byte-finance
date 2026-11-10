@@ -8,7 +8,7 @@ import { CurrencyInput } from '@/components/shared/currency-input';
 import { DateInput } from '@/components/shared/date-input';
 import { useToast } from '@/components/shared/toast';
 import { generateEventPDF } from '@/lib/pdf-export';
-import type { Event, EventCategory, EventItem, EventPayment, Project } from '@/types';
+import type { Event, EventCategory, EventItem, EventPayment, EventContribution, Project } from '@/types';
 
 interface EventDetailPageProps {
   params: Promise<{ id: string }>;
@@ -35,6 +35,8 @@ export default function EventDetailPage({ params }: EventDetailPageProps) {
   const [editingCategory, setEditingCategory] = useState<EventCategory | null>(null);
   const [editingItem, setEditingItem] = useState<EventItem | null>(null);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+  const [showAddContribution, setShowAddContribution] = useState(false);
+  const [editingContribution, setEditingContribution] = useState<EventContribution | null>(null);
 
   useEffect(() => {
     fetchData();
@@ -323,6 +325,55 @@ export default function EventDetailPage({ params }: EventDetailPageProps) {
       }
       return next;
     });
+  };
+
+  // Contribution handlers
+  const handleAddContribution = async (data: any) => {
+    try {
+      const res = await fetch(`/api/events/${id}/contributions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error('Failed to add contribution');
+      await fetchData();
+      setShowAddContribution(false);
+      toast('Contribution added', 'success');
+    } catch (error) {
+      console.error('Failed to add contribution:', error);
+      toast('Failed to add contribution', 'error');
+    }
+  };
+
+  const handleUpdateContribution = async (contributionId: string, data: any) => {
+    try {
+      const res = await fetch(`/api/events/${id}/contributions/${contributionId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error('Failed to update contribution');
+      await fetchData();
+      setEditingContribution(null);
+      toast('Contribution updated', 'success');
+    } catch (error) {
+      console.error('Failed to update contribution:', error);
+      toast('Failed to update contribution', 'error');
+    }
+  };
+
+  const handleDeleteContribution = async (contributionId: string) => {
+    try {
+      const res = await fetch(`/api/events/${id}/contributions/${contributionId}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) throw new Error('Failed to delete contribution');
+      await fetchData();
+      toast('Contribution deleted', 'success');
+    } catch (error) {
+      console.error('Failed to delete contribution:', error);
+      toast('Failed to delete contribution', 'error');
+    }
   };
 
   const allCategories = event?.categories || [];
@@ -652,6 +703,15 @@ export default function EventDetailPage({ params }: EventDetailPageProps) {
         </button>
       </div>
 
+      {/* Contributions / Izipheko Section */}
+      <ContributionsSection
+        contributions={event.contributions || []}
+        parseDate={parseDate}
+        onAdd={() => setShowAddContribution(true)}
+        onEdit={setEditingContribution}
+        onDelete={handleDeleteContribution}
+      />
+
       {/* Modals */}
       {showEditEvent && (
         <EditEventForm
@@ -713,6 +773,21 @@ export default function EventDetailPage({ params }: EventDetailPageProps) {
           shareToken={event.shareToken}
           onClose={() => setShowShareModal(false)}
           onUpdate={fetchData}
+        />
+      )}
+
+      {showAddContribution && (
+        <ContributionForm
+          onSave={handleAddContribution}
+          onCancel={() => setShowAddContribution(false)}
+        />
+      )}
+
+      {editingContribution && (
+        <ContributionForm
+          contribution={editingContribution}
+          onSave={(data) => handleUpdateContribution(editingContribution.id, data)}
+          onCancel={() => setEditingContribution(null)}
         />
       )}
     </div>
@@ -1753,6 +1828,336 @@ function CategoryNode({
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+// Contributions Section - Gift register (izipheko)
+function ContributionsSection({
+  contributions,
+  parseDate,
+  onAdd,
+  onEdit,
+  onDelete,
+}: {
+  contributions: EventContribution[];
+  parseDate: (d: unknown) => Date;
+  onAdd: () => void;
+  onEdit: (contribution: EventContribution) => void;
+  onDelete: (id: string) => void;
+}) {
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(true);
+
+  // Sort by date descending
+  const sortedContributions = [...contributions].sort((a, b) => {
+    const dateA = parseDate(a.date);
+    const dateB = parseDate(b.date);
+    return dateB.getTime() - dateA.getTime();
+  });
+
+  // Calculate totals
+  const cashTotal = contributions
+    .filter(c => c.type === 'cash' && c.amount)
+    .reduce((sum, c) => sum + (c.amount || 0), 0);
+  const itemCount = contributions.filter(c => c.type === 'item').length;
+
+  return (
+    <div className="bg-surface border border-border rounded-xl overflow-hidden">
+      {/* Header */}
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center justify-between p-3 hover:bg-background/50 transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <svg
+            className={`w-4 h-4 text-text-secondary transition-transform ${expanded ? 'rotate-90' : ''}`}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+          </svg>
+          <span className="font-semibold text-text-primary">Contributions / Izipheko</span>
+          <span className="text-xs text-text-secondary">({contributions.length})</span>
+        </div>
+        <div className="flex items-center gap-3 text-xs">
+          {cashTotal > 0 && (
+            <span className="text-success">
+              <AmountDisplay amount={cashTotal} size="xs" /> cash
+            </span>
+          )}
+          {itemCount > 0 && (
+            <span className="text-text-secondary">{itemCount} items</span>
+          )}
+        </div>
+      </button>
+
+      {/* Content */}
+      {expanded && (
+        <div className="border-t border-border">
+          {sortedContributions.length === 0 ? (
+            <p className="text-sm text-text-secondary text-center py-6">No contributions yet</p>
+          ) : (
+            <div className="divide-y divide-border">
+              {sortedContributions.map(contrib => {
+                const date = parseDate(contrib.date);
+
+                if (confirmDelete === contrib.id) {
+                  return (
+                    <div key={contrib.id} className="flex items-center justify-between gap-3 p-3 bg-error/5">
+                      <span className="text-sm text-text-primary">Delete this contribution?</span>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setConfirmDelete(null)}
+                          className="px-3 py-1 rounded text-xs text-text-secondary border border-border"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={() => { onDelete(contrib.id); setConfirmDelete(null); }}
+                          className="px-3 py-1 rounded text-xs text-white bg-error"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div key={contrib.id} className="flex items-center gap-3 p-3 hover:bg-background/30">
+                    {/* Date badge */}
+                    <div className="w-10 h-10 rounded-lg bg-background flex flex-col items-center justify-center shrink-0">
+                      <span className="text-xs text-text-secondary leading-none">
+                        {date.toLocaleDateString('en-ZA', { month: 'short' })}
+                      </span>
+                      <span className="text-sm font-semibold text-text-primary leading-none">
+                        {date.getDate()}
+                      </span>
+                    </div>
+
+                    {/* Details */}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-text-primary truncate">
+                        {contrib.type === 'cash' ? (
+                          <span className="text-success">
+                            <AmountDisplay amount={contrib.amount || 0} size="sm" />
+                          </span>
+                        ) : (
+                          contrib.itemDescription
+                        )}
+                      </p>
+                      <p className="text-xs text-text-secondary truncate">
+                        {contrib.contributorName || 'Anonymous'}
+                        {contrib.note && ` • ${contrib.note}`}
+                      </p>
+                    </div>
+
+                    {/* Type badge */}
+                    <span className={`px-2 py-0.5 rounded text-xs ${
+                      contrib.type === 'cash'
+                        ? 'bg-success/10 text-success'
+                        : 'bg-primary/10 text-primary'
+                    }`}>
+                      {contrib.type === 'cash' ? 'Cash' : 'Item'}
+                    </span>
+
+                    {/* Actions */}
+                    <div className="flex shrink-0">
+                      <button
+                        onClick={() => onEdit(contrib)}
+                        className="p-1.5 rounded text-text-secondary/50 hover:text-text-secondary hover:bg-background"
+                        title="Edit"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                          <path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => setConfirmDelete(contrib.id)}
+                        className="p-1.5 rounded text-text-secondary/50 hover:text-error hover:bg-background"
+                        title="Delete"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Add button */}
+          <button
+            onClick={onAdd}
+            className="w-full p-2.5 text-sm text-primary hover:bg-background/50 flex items-center justify-center gap-1 border-t border-border"
+          >
+            <span>+</span> Add Contribution
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Contribution Form Modal
+function ContributionForm({
+  contribution,
+  onSave,
+  onCancel,
+}: {
+  contribution?: EventContribution;
+  onSave: (data: any) => void;
+  onCancel: () => void;
+}) {
+  const [type, setType] = useState<'cash' | 'item'>(contribution?.type || 'cash');
+  const [amount, setAmount] = useState(contribution?.amount || 0);
+  const [itemDescription, setItemDescription] = useState(contribution?.itemDescription || '');
+  const [contributorName, setContributorName] = useState(contribution?.contributorName || '');
+  const [date, setDate] = useState(() => {
+    if (!contribution?.date) return new Date().toISOString().split('T')[0];
+    const d = contribution.date as any;
+    if (d._seconds) return new Date(d._seconds * 1000).toISOString().split('T')[0];
+    if (d.toDate) return d.toDate().toISOString().split('T')[0];
+    if (typeof d === 'string') return new Date(d).toISOString().split('T')[0];
+    return new Date().toISOString().split('T')[0];
+  });
+  const [note, setNote] = useState(contribution?.note || '');
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await onSave({
+        type,
+        amount: type === 'cash' ? amount : undefined,
+        itemDescription: type === 'item' ? itemDescription : undefined,
+        contributorName: contributorName || undefined,
+        date,
+        note: note || undefined,
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50">
+      <div className="bg-surface border border-border rounded-t-2xl sm:rounded-xl w-full sm:max-w-md max-h-[85vh] overflow-y-auto">
+        <form onSubmit={handleSubmit} className="p-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-base font-semibold text-text-primary">
+              {contribution ? 'Edit Contribution' : 'Add Contribution'}
+            </h3>
+            <button type="button" onClick={onCancel} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-background text-text-secondary">
+              ✕
+            </button>
+          </div>
+
+          {/* Type toggle */}
+          <div>
+            <label className="block text-xs text-text-secondary mb-1">Type</label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setType('cash')}
+                className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                  type === 'cash'
+                    ? 'bg-success/10 border-success text-success'
+                    : 'border-border text-text-secondary hover:border-text-secondary'
+                }`}
+              >
+                Cash
+              </button>
+              <button
+                type="button"
+                onClick={() => setType('item')}
+                className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                  type === 'item'
+                    ? 'bg-primary/10 border-primary text-primary'
+                    : 'border-border text-text-secondary hover:border-text-secondary'
+                }`}
+              >
+                Item
+              </button>
+            </div>
+          </div>
+
+          {/* Amount (for cash) */}
+          {type === 'cash' && (
+            <div>
+              <label className="block text-xs text-text-secondary mb-1">Amount</label>
+              <CurrencyInput value={amount} onChange={setAmount} />
+            </div>
+          )}
+
+          {/* Item description (for item) */}
+          {type === 'item' && (
+            <div>
+              <label className="block text-xs text-text-secondary mb-1">What was given?</label>
+              <input
+                required
+                value={itemDescription}
+                onChange={(e) => setItemDescription(e.target.value)}
+                placeholder="e.g., 2 cases of beer, Tablecloths"
+                className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary text-sm focus:outline-none focus:border-primary"
+              />
+            </div>
+          )}
+
+          {/* Contributor name */}
+          <div>
+            <label className="block text-xs text-text-secondary mb-1">From (optional)</label>
+            <input
+              value={contributorName}
+              onChange={(e) => setContributorName(e.target.value)}
+              placeholder="e.g., Uncle Joe, Mom & Dad"
+              className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary text-sm focus:outline-none focus:border-primary"
+            />
+          </div>
+
+          {/* Date */}
+          <DateInput
+            label="Date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+          />
+
+          {/* Note */}
+          <div>
+            <label className="block text-xs text-text-secondary mb-1">Note (optional)</label>
+            <input
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="e.g., Wedding gift, Towards catering"
+              className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary text-sm focus:outline-none focus:border-primary"
+            />
+          </div>
+
+          {/* Buttons */}
+          <div className="flex gap-2 pt-2">
+            <button
+              type="button"
+              onClick={onCancel}
+              className="flex-1 py-2.5 rounded-lg border border-border text-text-secondary text-sm font-medium"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving || (type === 'cash' && amount <= 0) || (type === 'item' && !itemDescription.trim())}
+              className="flex-1 py-2.5 rounded-lg bg-primary text-background font-medium text-sm disabled:opacity-50"
+            >
+              {saving ? 'Saving...' : contribution ? 'Save Changes' : 'Add Contribution'}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
