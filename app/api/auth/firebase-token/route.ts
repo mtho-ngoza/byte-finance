@@ -1,6 +1,5 @@
-import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { NextRequest, NextResponse } from 'next/server';
+import { withAuth } from '@/lib/auth';
 import { adminAuth } from '@/lib/firebase-admin';
 
 /**
@@ -8,17 +7,15 @@ import { adminAuth } from '@/lib/firebase-admin';
  * This allows the client-side Firestore SDK to authenticate and
  * satisfy security rules that check request.auth.uid.
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-    }
+    const auth = await withAuth(request);
+    if (auth instanceof NextResponse) return auth;
+    const { userId } = auth;
 
     // Generate a custom token with the NextAuth user ID
     // This ensures Firebase Auth UID matches the document paths
-    const customToken = await adminAuth.createCustomToken(session.user.id);
+    const customToken = await adminAuth.createCustomToken(userId);
 
     return NextResponse.json({ token: customToken });
   } catch (error) {

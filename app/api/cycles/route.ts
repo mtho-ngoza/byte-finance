@@ -98,6 +98,10 @@ export async function POST(request: NextRequest) {
     // When a new cycle starts (payday), all previous items are considered paid
     // Firestore 'in' queries support max 30 items, so we chunk
     const chunkSize = 30;
+
+    // Collect all unpaid items first
+    const allUnpaidItems: Array<{ ref: FirebaseFirestore.DocumentReference; data: FirebaseFirestore.DocumentData }> = [];
+
     for (let i = 0; i < commitmentIds.length; i += chunkSize) {
       const chunk = commitmentIds.slice(i, i + chunkSize);
       const unpaidItemsSnap = await db
@@ -106,25 +110,41 @@ export async function POST(request: NextRequest) {
         .where('status', 'in', ['upcoming', 'due'])
         .get();
 
-      // Mark old unpaid items as PAID (closing them when new cycle starts)
       for (const doc of unpaidItemsSnap.docs) {
-        const item = doc.data();
-        // Only close items from OTHER cycles (not this one)
-        if (item.cycleId !== id) {
-          // Get the old cycle's endDate to use as paidDate
-          const oldCycleSnap = await db.collection(`users/${userId}/cycles`).doc(item.cycleId).get();
-          const oldCycle = oldCycleSnap.data();
-          const paidDate = oldCycle?.endDate || Timestamp.fromDate(new Date(startDate));
-
-          batch.update(doc.ref, {
-            status: 'paid',
-            paidDate,
-            totalPaidAmount: item.amount || 0,
-            updatedAt: now,
-          });
-          cyclesToRecalculate.add(item.cycleId);
+        if (doc.data().cycleId !== id) {
+          allUnpaidItems.push({ ref: doc.ref, data: doc.data() });
+          cyclesToRecalculate.add(doc.data().cycleId);
         }
       }
+    }
+
+    // Batch fetch all affected cycles (avoid N+1 queries)
+    const cycleCache = new Map<string, FirebaseFirestore.DocumentData>();
+    const cycleIds = Array.from(cyclesToRecalculate);
+
+    for (let i = 0; i < cycleIds.length; i += chunkSize) {
+      const chunk = cycleIds.slice(i, i + chunkSize);
+      const cyclesSnap = await db
+        .collection(`users/${userId}/cycles`)
+        .where('__name__', 'in', chunk)
+        .get();
+
+      for (const doc of cyclesSnap.docs) {
+        cycleCache.set(doc.id, doc.data());
+      }
+    }
+
+    // Now mark items as paid using cached cycle data
+    for (const { ref, data: item } of allUnpaidItems) {
+      const oldCycle = cycleCache.get(item.cycleId);
+      const paidDate = oldCycle?.endDate || Timestamp.fromDate(new Date(startDate));
+
+      batch.update(ref, {
+        status: 'paid',
+        paidDate,
+        totalPaidAmount: item.amount || 0,
+        updatedAt: now,
+      });
     }
 
     // Recalculate totals for affected previous cycles

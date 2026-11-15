@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { withAuth } from '@/lib/auth';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 
@@ -10,16 +9,15 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string; contributionId: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const auth = await withAuth(request);
+    if (auth instanceof NextResponse) return auth;
+    const { userId } = auth;
 
     const { id, contributionId } = await params;
     const body = await request.json();
     const { type, amount, itemDescription, contributorName, date, note } = body;
 
-    const eventRef = getAdminDb().collection(`users/${session.user.id}/events`).doc(id);
+    const eventRef = getAdminDb().collection(`users/${userId}/events`).doc(id);
     const eventSnap = await eventRef.get();
 
     if (!eventSnap.exists) {
@@ -65,14 +63,13 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string; contributionId: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const auth = await withAuth(request);
+    if (auth instanceof NextResponse) return auth;
+    const { userId } = auth;
 
     const { id, contributionId } = await params;
 
-    const eventRef = getAdminDb().collection(`users/${session.user.id}/events`).doc(id);
+    const eventRef = getAdminDb().collection(`users/${userId}/events`).doc(id);
     const eventSnap = await eventRef.get();
 
     if (!eventSnap.exists) {

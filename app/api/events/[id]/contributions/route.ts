@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { withAuth } from '@/lib/auth';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 
@@ -10,13 +9,12 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const auth = await withAuth(request);
+    if (auth instanceof NextResponse) return auth;
+    const { userId } = auth;
 
     const { id } = await params;
-    const eventRef = getAdminDb().collection(`users/${session.user.id}/events`).doc(id);
+    const eventRef = getAdminDb().collection(`users/${userId}/events`).doc(id);
     const eventSnap = await eventRef.get();
 
     if (!eventSnap.exists) {
@@ -39,10 +37,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const auth = await withAuth(request);
+    if (auth instanceof NextResponse) return auth;
+    const { userId } = auth;
 
     const { id } = await params;
     const body = await request.json();
@@ -60,7 +57,7 @@ export async function POST(
       return NextResponse.json({ error: 'Item contribution requires a description' }, { status: 400 });
     }
 
-    const eventRef = getAdminDb().collection(`users/${session.user.id}/events`).doc(id);
+    const eventRef = getAdminDb().collection(`users/${userId}/events`).doc(id);
     const eventSnap = await eventRef.get();
 
     if (!eventSnap.exists) {
