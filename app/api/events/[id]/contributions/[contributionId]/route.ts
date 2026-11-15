@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/auth';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
+import type { EventContribution } from '@/types';
 
 // PATCH /api/events/[id]/contributions/[contributionId] - Update contribution
 export async function PATCH(
@@ -26,7 +27,7 @@ export async function PATCH(
 
     const event = eventSnap.data();
     const contributions = event?.contributions || [];
-    const index = contributions.findIndex((c: any) => c.id === contributionId);
+    const index = contributions.findIndex((c: EventContribution) => c.id === contributionId);
 
     if (index === -1) {
       return NextResponse.json({ error: 'Contribution not found' }, { status: 404 });
@@ -78,7 +79,7 @@ export async function DELETE(
 
     const event = eventSnap.data();
     const contributions = event?.contributions || [];
-    const contribution = contributions.find((c: any) => c.id === contributionId);
+    const contribution = contributions.find((c: EventContribution) => c.id === contributionId);
 
     if (!contribution) {
       return NextResponse.json({ error: 'Contribution not found' }, { status: 404 });

@@ -51,7 +51,7 @@ export default function ProjectsPage() {
     }
   };
 
-  const handleCreateProject = async (projectData: any) => {
+  const handleCreateProject = async (projectData: Record<string, unknown>) => {
     try {
       const res = await fetch('/api/projects', {
         method: 'POST',
@@ -68,7 +68,7 @@ export default function ProjectsPage() {
     }
   };
 
-  const handleCreateEvent = async (eventData: any) => {
+  const handleCreateEvent = async (eventData: Record<string, unknown>) => {
     try {
       const res = await fetch('/api/events', {
         method: 'POST',
@@ -414,7 +414,7 @@ function EventCard({ event }: { event: Event }) {
 }
 
 function CreateProjectForm({ onSave, onCancel }: {
-  onSave: (data: any) => Promise<void>;
+  onSave: (data: Record<string, unknown>) => Promise<void>;
   onCancel: () => void;
 }) {
   const [name, setName] = useState('');
@@ -507,7 +507,7 @@ function CreateProjectForm({ onSave, onCancel }: {
 
 function CreateEventForm({ projects, onSave, onCancel }: {
   projects: Project[];
-  onSave: (data: any) => Promise<void>;
+  onSave: (data: Record<string, unknown>) => Promise<void>;
   onCancel: () => void;
 }) {
   const [name, setName] = useState('');

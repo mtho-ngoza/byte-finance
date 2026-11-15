@@ -17,7 +17,7 @@ interface SharedEvent {
   ownerId?: string;
   name: string;
   description?: string;
-  eventDate?: any;
+  eventDate?: { toDate?: () => Date } | string;
   status: string;
   categories: EventCategory[];
   items: EventItem[];
@@ -74,7 +74,7 @@ export default function SharedEventPage({ params }: SharedEventPageProps) {
       const res = await fetch('/api/memberships');
       if (!res.ok) return;
       const memberships = await res.json();
-      const found = memberships.find((m: any) => m.eventId === event?.id);
+      const found = memberships.find((m: { eventId: string; ownerId: string }) => m.eventId === event?.id);
       if (found) {
         setMembershipStatus('member');
         setJoinedEventId({ ownerId: found.ownerId, eventId: found.eventId });
@@ -105,9 +105,9 @@ export default function SharedEventPage({ params }: SharedEventPageProps) {
       setMembershipStatus('member');
       setJoinedEventId({ ownerId: data.ownerId, eventId: data.eventId });
       showToast('Joined event successfully!', 'success');
-    } catch (err: any) {
+    } catch (err) {
       console.error('Failed to join:', err);
-      showToast(err.message || 'Failed to join event', 'error');
+      showToast(err instanceof Error ? err.message : 'Failed to join event', 'error');
       setMembershipStatus('none');
     }
   };
@@ -169,7 +169,7 @@ export default function SharedEventPage({ params }: SharedEventPageProps) {
     }
   };
 
-  const handleUpdateCategory = async (categoryId: string, data: any) => {
+  const handleUpdateCategory = async (categoryId: string, data: Record<string, unknown>) => {
     try {
       const res = await fetch(`/api/share/events/${token}/categories/${categoryId}`, {
         method: 'PATCH',
@@ -198,7 +198,7 @@ export default function SharedEventPage({ params }: SharedEventPageProps) {
     }
   };
 
-  const handleAddItem = async (data: any) => {
+  const handleAddItem = async (data: Record<string, unknown>) => {
     try {
       const res = await fetch(`/api/share/events/${token}/items`, {
         method: 'POST',
@@ -214,7 +214,7 @@ export default function SharedEventPage({ params }: SharedEventPageProps) {
     }
   };
 
-  const handleUpdateItem = async (itemId: string, data: any) => {
+  const handleUpdateItem = async (itemId: string, data: Record<string, unknown>) => {
     try {
       const res = await fetch(`/api/share/events/${token}/items/${itemId}`, {
         method: 'PATCH',
@@ -243,7 +243,7 @@ export default function SharedEventPage({ params }: SharedEventPageProps) {
     }
   };
 
-  const handleAddPayment = async (itemId: string, data: any) => {
+  const handleAddPayment = async (itemId: string, data: Record<string, unknown>) => {
     try {
       const res = await fetch(`/api/share/events/${token}/items/${itemId}/payments`, {
         method: 'POST',
@@ -257,8 +257,8 @@ export default function SharedEventPage({ params }: SharedEventPageProps) {
       await fetchEvent();
       setShowAddPayment(null);
       showToast('Payment added', 'success');
-    } catch (err: any) {
-      showToast(err.message || 'Failed to add payment', 'error');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Failed to add payment', 'error');
     }
   };
 
@@ -964,7 +964,7 @@ function ItemForm({
   item?: EventItem;
   categoryId?: string;
   categories: EventCategory[];
-  onSave: (data: any) => Promise<void>;
+  onSave: (data: Record<string, unknown>) => Promise<void>;
   onCancel: () => void;
 }) {
   const [name, setName] = useState(item?.name || '');
@@ -1291,7 +1291,7 @@ function PaymentForm({
   onCancel,
 }: {
   item: EventItem;
-  onSave: (data: any) => Promise<void>;
+  onSave: (data: Record<string, unknown>) => Promise<void>;
   onCancel: () => void;
 }) {
   const subtotal = item.unitPrice * item.quantity;

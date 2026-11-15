@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { findEventByShareToken } from '@/lib/share-auth';
 import { FieldValue } from 'firebase-admin/firestore';
 import { createActivityEntry } from '@/lib/event-activity';
+import type { EventItem } from '@/types';
 
 /**
  * PATCH /api/share/events/[token]/items/[itemId]
@@ -23,7 +24,7 @@ export async function PATCH(
 
     const { eventRef, eventData } = result;
     const items = eventData.items || [];
-    const itemIndex = items.findIndex((i: any) => i.id === itemId);
+    const itemIndex = items.findIndex((i: EventItem) => i.id === itemId);
 
     if (itemIndex === -1) {
       return NextResponse.json({ error: 'Item not found' }, { status: 404 });
@@ -86,8 +87,8 @@ export async function DELETE(
 
     const { eventRef, eventData } = result;
     const items = eventData.items || [];
-    const deletedItem = items.find((i: any) => i.id === itemId);
-    const updatedItems = items.filter((i: any) => i.id !== itemId);
+    const deletedItem = items.find((i: EventItem) => i.id === itemId);
+    const updatedItems = items.filter((i: EventItem) => i.id !== itemId);
 
     if (items.length === updatedItems.length) {
       return NextResponse.json({ error: 'Item not found' }, { status: 404 });

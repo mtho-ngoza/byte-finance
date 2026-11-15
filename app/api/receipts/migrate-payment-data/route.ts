@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
       const receiptRef = receiptsRef.doc(receipt.id);
 
       // Build update object - only update missing fields
-      const updateData: any = {
+      const updateData: Record<string, unknown> = {
         updatedAt: FieldValue.serverTimestamp(),
       };
 

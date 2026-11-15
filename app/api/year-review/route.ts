@@ -61,9 +61,9 @@ export async function GET(request: NextRequest) {
     totalPaid?: number;
     income?: { amount?: number; vatAmount?: number };
   }));
-  const totalCommitted = cycles.reduce((sum, c: any) => sum + (c.totalCommitted || 0), 0);
-  const totalIncome = cycles.reduce((sum, c: any) => sum + (c.income?.amount || 0), 0);
-  const totalVat = cycles.reduce((sum, c: any) => sum + (c.income?.vatAmount || 0), 0);
+  const totalCommitted = cycles.reduce((sum, c) => sum + (c.totalCommitted || 0), 0);
+  const totalIncome = cycles.reduce((sum, c) => sum + (c.income?.amount || 0), 0);
+  const totalVat = cycles.reduce((sum, c) => sum + (c.income?.vatAmount || 0), 0);
 
   // Helper to get earliest payment date from an item
   const getEarliestPaymentDate = (item: Record<string, unknown>): Date | null => {
@@ -89,7 +89,7 @@ export async function GET(request: NextRequest) {
   const monthDateRanges: Array<{ month: number; monthId: string; startDate: Date; endDate: Date }> = [];
   for (let i = 1; i <= 12; i++) {
     const monthId = `${year}-${String(i).padStart(2, '0')}`;
-    const cycle = cycles.find((c: any) => c.id === monthId);
+    const cycle = cycles.find((c) => c.id === monthId);
 
     let startDate: Date;
     let endDate: Date;
@@ -172,7 +172,7 @@ export async function GET(request: NextRequest) {
   // Monthly breakdown
   const monthlyData = Array.from({ length: 12 }, (_, i) => {
     const monthId = `${year}-${String(i + 1).padStart(2, '0')}`;
-    const cycle = cycles.find((c: any) => c.id === monthId) as any;
+    const cycle = cycles.find((c) => c.id === monthId) as any;
     return {
       month: i + 1,
       spent: monthlySpending[monthId] ?? 0,
@@ -189,15 +189,24 @@ export async function GET(request: NextRequest) {
     .map(([category, amount]) => ({ category, amount }));
 
   // Goals stats
-  const goals = goalsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-  const goalsCompletedThisYear = goals.filter((g: any) => {
+  const goals = goalsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() } as {
+    id: string;
+    status?: string;
+    currentAmount?: number;
+    targetAmount?: number;
+    name?: string;
+    completedAt?: { toDate?: () => Date } | string;
+  }));
+  const goalsCompletedThisYear = goals.filter((g) => {
     if (g.status !== 'completed' || !g.completedAt) return false;
-    const completedDate = g.completedAt.toDate?.() || new Date(g.completedAt);
+    const completedDate = typeof g.completedAt === 'string'
+      ? new Date(g.completedAt)
+      : (g.completedAt.toDate?.() ?? new Date());
     return completedDate.getFullYear() === year;
   });
-  const activeGoals = goals.filter((g: any) => g.status === 'active');
+  const activeGoals = goals.filter((g) => g.status === 'active');
   const totalGoalProgress = activeGoals.length > 0
-    ? activeGoals.reduce((sum, g: any) => {
+    ? activeGoals.reduce((sum, g) => {
         if (!g.targetAmount || g.targetAmount === 0) return sum;
         return sum + Math.min(100, Math.round((g.currentAmount || 0) / g.targetAmount * 100));
       }, 0) / activeGoals.length
@@ -205,16 +214,21 @@ export async function GET(request: NextRequest) {
 
   // Wishlist stats for this year
   const wishlistItems = wishlistSnap.docs
-    .map((doc) => ({ id: doc.id, ...doc.data() }))
-    .filter((item: any) => item.targetYear === year ||
-      (item.targetYear <= year && item.targetYearEnd && item.targetYearEnd >= year));
+    .map((doc) => ({ id: doc.id, ...doc.data() } as {
+      id: string;
+      status?: string;
+      targetYear?: number;
+      targetYearEnd?: number;
+    }))
+    .filter((item) => item.targetYear === year ||
+      (item.targetYear && item.targetYear <= year && item.targetYearEnd && item.targetYearEnd >= year));
 
   const wishlistStats = {
     total: wishlistItems.length,
-    completed: wishlistItems.filter((i: any) => i.status === 'completed').length,
-    abandoned: wishlistItems.filter((i: any) => i.status === 'abandoned').length,
-    carriedForward: wishlistItems.filter((i: any) => i.status === 'carried-forward').length,
-    active: wishlistItems.filter((i: any) => i.status === 'active').length,
+    completed: wishlistItems.filter((i) => i.status === 'completed').length,
+    abandoned: wishlistItems.filter((i) => i.status === 'abandoned').length,
+    carriedForward: wishlistItems.filter((i) => i.status === 'carried-forward').length,
+    active: wishlistItems.filter((i) => i.status === 'active').length,
   };
 
   const wishlistSuccessRate = wishlistStats.total > 0
@@ -240,9 +254,13 @@ export async function GET(request: NextRequest) {
     .where('__name__', '<=', `${year - 1}-12`)
     .get();
 
-  const prevYearCycles = prevYearCyclesSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-  const prevYearSpent = prevYearCycles.reduce((sum, c: any) => sum + (c.totalPaid || 0), 0);
-  const prevYearIncome = prevYearCycles.reduce((sum, c: any) => sum + (c.income?.amount || 0), 0);
+  const prevYearCycles = prevYearCyclesSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() } as {
+    id: string;
+    totalPaid?: number;
+    income?: { amount?: number };
+  }));
+  const prevYearSpent = prevYearCycles.reduce((sum, c) => sum + (c.totalPaid || 0), 0);
+  const prevYearIncome = prevYearCycles.reduce((sum, c) => sum + (c.income?.amount || 0), 0);
 
   const spendingChange = prevYearSpent > 0
     ? Math.round(((totalSpent - prevYearSpent) / prevYearSpent) * 100)
@@ -266,7 +284,7 @@ export async function GET(request: NextRequest) {
       completedThisYear: goalsCompletedThisYear.length,
       activeCount: activeGoals.length,
       averageProgress: Math.round(totalGoalProgress),
-      completedGoals: goalsCompletedThisYear.map((g: any) => ({
+      completedGoals: goalsCompletedThisYear.map((g) => ({
         id: g.id,
         name: g.name,
         targetAmount: g.targetAmount,

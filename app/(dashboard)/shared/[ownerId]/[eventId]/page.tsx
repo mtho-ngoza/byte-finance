@@ -18,7 +18,7 @@ interface SharedEventData {
   ownerId: string;
   name: string;
   description?: string;
-  eventDate?: any;
+  eventDate?: { toDate?: () => Date } | string;
   status: string;
   categories: EventCategory[];
   items: EventItem[];
@@ -83,7 +83,7 @@ export default function SharedEventPage({ params }: SharedEventPageProps) {
       const membershipsRes = await fetch('/api/memberships');
       if (!membershipsRes.ok) throw new Error('Failed to get memberships');
       const memberships = await membershipsRes.json();
-      const membership = memberships.find((m: any) => m.eventId === eventId && m.ownerId === ownerId);
+      const membership = memberships.find((m: { id: string; eventId: string; ownerId: string }) => m.eventId === eventId && m.ownerId === ownerId);
 
       if (!membership) {
         toast('Membership not found', 'error');

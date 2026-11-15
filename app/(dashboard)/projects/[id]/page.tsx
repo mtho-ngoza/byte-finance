@@ -9,7 +9,8 @@ import { DateInput } from '@/components/shared/date-input';
 import { InlineReceiptCapture } from '@/components/shared/inline-receipt-capture';
 import { useToast } from '@/components/shared/toast';
 import { generateProjectPDF } from '@/lib/pdf-export';
-import type { Project, Event } from '@/types';
+import type { Project, Event, ProjectTransaction } from '@/types';
+import type { Timestamp } from 'firebase/firestore';
 
 interface ProjectDetailPageProps {
   params: Promise<{ id: string }>;
@@ -19,7 +20,7 @@ interface LinkedEvent {
   id: string;
   name: string;
   status: string;
-  eventDate?: any;
+  eventDate?: Timestamp;
   totalQuoted: number;
   totalPaid: number;
 }
@@ -33,7 +34,7 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
   const [linkedEvents, setLinkedEvents] = useState<LinkedEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddTransaction, setShowAddTransaction] = useState(false);
-  const [editingTransaction, setEditingTransaction] = useState<any | null>(null);
+  const [editingTransaction, setEditingTransaction] = useState<Partial<ProjectTransaction> & { id: string } | null>(null);
   const [showEditProject, setShowEditProject] = useState(false);
 
   // Filters
@@ -71,7 +72,7 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
     }
   };
 
-  const handleAddTransaction = async (transactionData: any) => {
+  const handleAddTransaction = async (transactionData: Record<string, unknown>) => {
     try {
       const res = await fetch(`/api/projects/${id}/transactions`, {
         method: 'POST',
@@ -88,7 +89,7 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
     }
   };
 
-  const handleEditTransaction = async (transactionId: string, data: any) => {
+  const handleEditTransaction = async (transactionId: string, data: Record<string, unknown>) => {
     try {
       const res = await fetch(`/api/projects/${id}/transactions/${transactionId}`, {
         method: 'PATCH',
@@ -119,7 +120,7 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
     }
   };
 
-  const handleEditProject = async (data: any) => {
+  const handleEditProject = async (data: Record<string, unknown>) => {
     try {
       const res = await fetch(`/api/projects/${id}`, {
         method: 'PATCH',
@@ -465,7 +466,7 @@ function TransactionCard({
   onEdit,
   onDelete,
 }: {
-  transaction: any;
+  transaction: Partial<ProjectTransaction> & { id: string };
   parseDate: (d: unknown) => Date;
   onEdit: () => void;
   onDelete: () => void;
@@ -527,7 +528,7 @@ function TransactionCard({
 
       {/* Amount */}
       <div className={`text-sm font-semibold shrink-0 ${isContribution ? 'text-success' : 'text-error'}`}>
-        {isContribution ? '+' : '-'}<AmountDisplay amount={transaction.amount} size="sm" />
+        {isContribution ? '+' : '-'}<AmountDisplay amount={transaction.amount ?? 0} size="sm" />
       </div>
 
       {/* Action buttons - always visible */}
@@ -556,7 +557,7 @@ function TransactionCard({
 }
 
 function TransactionForm({ onSave, onCancel }: {
-  onSave: (data: any) => Promise<void>;
+  onSave: (data: Record<string, unknown>) => Promise<void>;
   onCancel: () => void;
 }) {
   const { toast } = useToast();
@@ -676,22 +677,22 @@ function EditTransactionForm({
   onSave,
   onCancel,
 }: {
-  transaction: any;
+  transaction: Partial<ProjectTransaction> & { id: string };
   parseDate: (d: unknown) => Date;
-  onSave: (data: any) => Promise<void>;
+  onSave: (data: Record<string, unknown>) => Promise<void>;
   onCancel: () => void;
 }) {
   const { toast } = useToast();
-  const [type, setType] = useState<'contribution' | 'payment'>(transaction.type);
-  const [amount, setAmount] = useState(transaction.amount);
-  const [description, setDescription] = useState(transaction.description);
+  const [type, setType] = useState<'contribution' | 'payment'>(transaction.type ?? 'contribution');
+  const [amount, setAmount] = useState(transaction.amount ?? 0);
+  const [description, setDescription] = useState(transaction.description ?? '');
   const [contributorName, setContributorName] = useState(transaction.contributorName || '');
   const [date, setDate] = useState(parseDate(transaction.date).toISOString().split('T')[0]);
   const [saving, setSaving] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (amount <= 0) {
+    if (!amount || amount <= 0) {
       toast('Amount must be positive', 'error');
       return;
     }
@@ -784,7 +785,7 @@ function ProjectEditForm({
   onCancel,
 }: {
   project: Project;
-  onSave: (data: any) => Promise<void>;
+  onSave: (data: Record<string, unknown>) => Promise<void>;
   onCancel: () => void;
 }) {
   const { toast } = useToast();

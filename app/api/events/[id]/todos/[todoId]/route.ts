@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/auth';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
+import type { EventTodo } from '@/types';
 
 /**
  * PATCH /api/events/[id]/todos/[todoId]
@@ -27,7 +28,7 @@ export async function PATCH(
   }
 
   const todos = doc.data()?.todos || [];
-  const todoIndex = todos.findIndex((t: any) => t.id === todoId);
+  const todoIndex = todos.findIndex((t: EventTodo) => t.id === todoId);
 
   if (todoIndex === -1) {
     return NextResponse.json({ error: 'Todo not found' }, { status: 404 });
@@ -82,7 +83,7 @@ export async function DELETE(
   }
 
   const todos = doc.data()?.todos || [];
-  const updatedTodos = todos.filter((t: any) => t.id !== todoId);
+  const updatedTodos = todos.filter((t: EventTodo) => t.id !== todoId);
 
   if (todos.length === updatedTodos.length) {
     return NextResponse.json({ error: 'Todo not found' }, { status: 404 });

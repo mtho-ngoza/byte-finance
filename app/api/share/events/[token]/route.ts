@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { findEventByShareToken } from '@/lib/share-auth';
+import type { EventTodo } from '@/types';
 
 /**
  * GET /api/share/events/[token]
@@ -66,7 +67,7 @@ export async function GET(
 
   // Todo stats
   const todoTotal = todos.length;
-  const todoCompleted = todos.filter((t: any) => t.completed).length;
+  const todoCompleted = todos.filter((t: EventTodo) => t.completed).length;
 
   // Summary object
   const summary = {

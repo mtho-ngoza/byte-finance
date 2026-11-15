@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { findEventByShareToken } from '@/lib/share-auth';
 import { FieldValue } from 'firebase-admin/firestore';
 import { createActivityEntry } from '@/lib/event-activity';
-import type { EventCategory } from '@/types';
+import type { EventCategory, EventItem } from '@/types';
 
 /**
  * POST /api/share/events/[token]/items
@@ -58,7 +58,7 @@ export async function POST(
     quantity: body.quantity,
     status: 'quoted',
     payments: [],
-    sortOrder: items.filter((i: any) => i.categoryId === body.categoryId).length,
+    sortOrder: items.filter((i: EventItem) => i.categoryId === body.categoryId).length,
     notes: body.notes?.trim() || null,
     createdAt: now,
     updatedAt: now,

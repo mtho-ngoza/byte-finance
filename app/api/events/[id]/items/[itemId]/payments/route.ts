@@ -3,6 +3,7 @@ import { withAuth } from '@/lib/auth';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import { createActivityEntry } from '@/lib/event-activity';
+import type { EventItem, EventPayment } from '@/types';
 
 /**
  * POST /api/events/[id]/items/[itemId]/payments
@@ -33,7 +34,7 @@ export async function POST(
   }
 
   const items = doc.data()?.items || [];
-  const itemIndex = items.findIndex((i: any) => i.id === itemId);
+  const itemIndex = items.findIndex((i: EventItem) => i.id === itemId);
 
   if (itemIndex === -1) {
     return NextResponse.json({ error: 'Item not found' }, { status: 404 });
@@ -41,7 +42,7 @@ export async function POST(
 
   const item = items[itemIndex];
   const subtotal = item.unitPrice * item.quantity;
-  const currentPaid = (item.payments || []).reduce((sum: number, p: any) => sum + p.amount, 0);
+  const currentPaid = (item.payments || []).reduce((sum: number, p: EventPayment) => sum + p.amount, 0);
   const remaining = subtotal - currentPaid;
 
   // Validate payment doesn't exceed remaining

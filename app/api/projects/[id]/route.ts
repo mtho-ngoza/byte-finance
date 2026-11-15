@@ -50,7 +50,7 @@ export async function PATCH(
   }
 
   // Build update object - only update provided fields
-  const updateData: any = {
+  const updateData: Record<string, unknown> = {
     updatedAt: FieldValue.serverTimestamp(),
   };
 

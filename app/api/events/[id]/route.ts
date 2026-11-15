@@ -3,6 +3,7 @@ import { withAuth } from '@/lib/auth';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import { createActivityEntry } from '@/lib/event-activity';
+import type { EventTodo } from '@/types';
 
 /**
  * GET /api/events/[id]
@@ -73,7 +74,7 @@ export async function GET(
 
   // Todo stats
   const todoTotal = todos.length;
-  const todoCompleted = todos.filter((t: any) => t.completed).length;
+  const todoCompleted = todos.filter((t: EventTodo) => t.completed).length;
 
   // Summary object
   const summary = {

@@ -3,6 +3,7 @@ import { withAuth } from '@/lib/auth';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import { createActivityEntry } from '@/lib/event-activity';
+import type { EventItem, EventPayment } from '@/types';
 
 /**
  * DELETE /api/events/[id]/items/[itemId]/payments/[paymentId]
@@ -27,14 +28,14 @@ export async function DELETE(
   }
 
   const items = doc.data()?.items || [];
-  const itemIndex = items.findIndex((i: any) => i.id === itemId);
+  const itemIndex = items.findIndex((i: EventItem) => i.id === itemId);
 
   if (itemIndex === -1) {
     return NextResponse.json({ error: 'Item not found' }, { status: 404 });
   }
 
   const item = items[itemIndex];
-  const paymentIndex = (item.payments || []).findIndex((p: any) => p.id === paymentId);
+  const paymentIndex = (item.payments || []).findIndex((p: EventPayment) => p.id === paymentId);
 
   if (paymentIndex === -1) {
     return NextResponse.json({ error: 'Payment not found' }, { status: 404 });
@@ -48,7 +49,7 @@ export async function DELETE(
 
   // Update item status based on remaining payments
   const subtotal = item.unitPrice * item.quantity;
-  const remainingPaid = item.payments.reduce((sum: number, p: any) => sum + p.amount, 0);
+  const remainingPaid = item.payments.reduce((sum: number, p: EventPayment) => sum + p.amount, 0);
 
   if (remainingPaid >= subtotal) {
     item.status = 'paid';

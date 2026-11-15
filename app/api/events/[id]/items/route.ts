@@ -3,7 +3,7 @@ import { withAuth } from '@/lib/auth';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import { createActivityEntry } from '@/lib/event-activity';
-import type { EventCategory } from '@/types';
+import type { EventCategory, EventItem } from '@/types';
 
 /**
  * POST /api/events/[id]/items
@@ -64,7 +64,7 @@ export async function POST(
     quantity: body.quantity,
     status: 'quoted',
     payments: [],
-    sortOrder: items.filter((i: any) => i.categoryId === body.categoryId).length,
+    sortOrder: items.filter((i: EventItem) => i.categoryId === body.categoryId).length,
     notes: body.notes?.trim() || null,
     createdAt: now,
     updatedAt: now,

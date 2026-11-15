@@ -75,7 +75,7 @@ export default function EventDetailPage({ params }: EventDetailPageProps) {
     }
   };
 
-  const handleUpdateEvent = async (data: any) => {
+  const handleUpdateEvent = async (data: Record<string, unknown>) => {
     try {
       const res = await fetch(`/api/events/${id}`, {
         method: 'PATCH',
@@ -92,7 +92,7 @@ export default function EventDetailPage({ params }: EventDetailPageProps) {
     }
   };
 
-  const handleAddCategory = async (data: any) => {
+  const handleAddCategory = async (data: Record<string, unknown>) => {
     try {
       const res = await fetch(`/api/events/${id}/categories`, {
         method: 'POST',
@@ -111,7 +111,7 @@ export default function EventDetailPage({ params }: EventDetailPageProps) {
     }
   };
 
-  const handleUpdateCategory = async (categoryId: string, data: any) => {
+  const handleUpdateCategory = async (categoryId: string, data: Record<string, unknown>) => {
     try {
       const res = await fetch(`/api/events/${id}/categories/${categoryId}`, {
         method: 'PATCH',
@@ -142,7 +142,7 @@ export default function EventDetailPage({ params }: EventDetailPageProps) {
     }
   };
 
-  const handleAddItem = async (data: any) => {
+  const handleAddItem = async (data: Record<string, unknown>) => {
     try {
       const res = await fetch(`/api/events/${id}/items`, {
         method: 'POST',
@@ -159,7 +159,7 @@ export default function EventDetailPage({ params }: EventDetailPageProps) {
     }
   };
 
-  const handleUpdateItem = async (itemId: string, data: any) => {
+  const handleUpdateItem = async (itemId: string, data: Record<string, unknown>) => {
     try {
       const res = await fetch(`/api/events/${id}/items/${itemId}`, {
         method: 'PATCH',
@@ -190,7 +190,7 @@ export default function EventDetailPage({ params }: EventDetailPageProps) {
     }
   };
 
-  const handleAddPayment = async (itemId: string, data: any) => {
+  const handleAddPayment = async (itemId: string, data: Record<string, unknown>) => {
     try {
       const res = await fetch(`/api/events/${id}/items/${itemId}/payments`, {
         method: 'POST',
@@ -204,9 +204,9 @@ export default function EventDetailPage({ params }: EventDetailPageProps) {
       await fetchData();
       setShowAddPayment(null);
       toast('Payment added', 'success');
-    } catch (error: any) {
+    } catch (error) {
       console.error('Failed to add payment:', error);
-      toast(error.message || 'Failed to add payment', 'error');
+      toast(error instanceof Error ? error.message : 'Failed to add payment', 'error');
     }
   };
 
@@ -337,7 +337,7 @@ export default function EventDetailPage({ params }: EventDetailPageProps) {
   };
 
   // Contribution handlers
-  const handleAddContribution = async (data: any) => {
+  const handleAddContribution = async (data: Record<string, unknown>) => {
     try {
       const res = await fetch(`/api/events/${id}/contributions`, {
         method: 'POST',
@@ -354,7 +354,7 @@ export default function EventDetailPage({ params }: EventDetailPageProps) {
     }
   };
 
-  const handleUpdateContribution = async (contributionId: string, data: any) => {
+  const handleUpdateContribution = async (contributionId: string, data: Record<string, unknown>) => {
     try {
       const res = await fetch(`/api/events/${id}/contributions/${contributionId}`, {
         method: 'PATCH',

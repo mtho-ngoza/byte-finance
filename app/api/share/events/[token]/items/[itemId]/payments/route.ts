@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { findEventByShareToken } from '@/lib/share-auth';
 import { FieldValue } from 'firebase-admin/firestore';
 import { createActivityEntry } from '@/lib/event-activity';
+import type { EventItem, EventPayment } from '@/types';
 
 /**
  * POST /api/share/events/[token]/items/[itemId]/payments
@@ -27,7 +28,7 @@ export async function POST(
 
   const { eventRef, eventData } = result;
   const items = eventData.items || [];
-  const itemIndex = items.findIndex((i: any) => i.id === itemId);
+  const itemIndex = items.findIndex((i: EventItem) => i.id === itemId);
 
   if (itemIndex === -1) {
     return NextResponse.json({ error: 'Item not found' }, { status: 404 });
@@ -35,7 +36,7 @@ export async function POST(
 
   const item = items[itemIndex];
   const subtotal = item.unitPrice * item.quantity;
-  const currentPaid = (item.payments || []).reduce((sum: number, p: any) => sum + p.amount, 0);
+  const currentPaid = (item.payments || []).reduce((sum: number, p: EventPayment) => sum + p.amount, 0);
   const remaining = subtotal - currentPaid;
 
   // Validate payment doesn't exceed remaining

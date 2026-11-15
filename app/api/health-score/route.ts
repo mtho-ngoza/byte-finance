@@ -5,6 +5,39 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { getCycleDateRange } from '@/lib/payday-utils';
 import type { HealthScore, HealthScoreTip } from '@/types';
 
+// Helper types for health score calculation
+interface CycleItemData {
+  status?: string;
+  dueDate?: { toDate?: () => Date } | string;
+  paidDate?: { toDate?: () => Date } | string;
+  isVariable?: boolean;
+  amount?: number;
+  actualAmount?: number;
+  totalPaidAmount?: number;
+}
+
+interface GoalData {
+  id: string;
+  name?: string;
+  type?: string;
+  priority?: string;
+  isOnTrack?: boolean;
+  currentAmount?: number;
+  contributions?: Array<{
+    amount?: number;
+    date?: { toDate?: () => Date } | string | Date;
+  }>;
+}
+
+interface CycleData {
+  startDate?: { toDate?: () => Date } | string;
+  endDate?: { toDate?: () => Date } | string;
+  income?: {
+    amount?: number;
+    vatAmount?: number;
+  };
+}
+
 // Tip templates for each pillar
 const TIPS: Record<string, HealthScoreTip[]> = {
   budgetDiscipline: [
@@ -79,9 +112,9 @@ export async function POST(request: NextRequest) {
       : Promise.resolve(null),
   ]);
 
-  const cycle = cycleSnap.exists ? cycleSnap.data() : null;
-  const items = itemsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-  const goals = goalsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const cycle = cycleSnap.exists ? cycleSnap.data() as CycleData : undefined;
+  const items = itemsSnap.docs.map(d => ({ id: d.id, ...d.data() } as CycleItemData));
+  const goals = goalsSnap.docs.map(d => ({ id: d.id, ...d.data() } as GoalData));
   const previousScore = previousScoreSnap?.exists ? (previousScoreSnap.data() as HealthScore).totalScore : null;
 
   // Get date range from stored cycle document (same as useCycleItems)
@@ -89,18 +122,27 @@ export async function POST(request: NextRequest) {
   const year = parseInt(yearStr, 10);
   const month = parseInt(monthStr, 10);
 
+  // Helper to parse date
+  const parseCycleDate = (d: { toDate?: () => Date } | string | undefined): Date | null => {
+    if (!d) return null;
+    if (typeof d === 'string') return new Date(d);
+    return d.toDate?.() ?? null;
+  };
+
   let startDate: Date;
   let endDate: Date;
 
-  if (cycle?.startDate) {
-    startDate = cycle.startDate.toDate?.() ?? new Date(cycle.startDate);
+  const parsedStart = parseCycleDate(cycle?.startDate);
+  if (parsedStart) {
+    startDate = parsedStart;
   } else {
     const { startDate: calcStart } = getCycleDateRange(year, month, payDayType, payDayFixed);
     startDate = calcStart;
   }
 
-  if (cycle?.endDate) {
-    endDate = cycle.endDate.toDate?.() ?? new Date(cycle.endDate);
+  const parsedEnd = parseCycleDate(cycle?.endDate);
+  if (parsedEnd) {
+    endDate = parsedEnd;
   } else {
     const { endDate: calcEnd } = getCycleDateRange(year, month, payDayType, payDayFixed);
     endDate = calcEnd;
@@ -175,8 +217,7 @@ function getPreviousCycleId(cycleId: string): string | null {
 }
 
 // Calculate Budget Discipline score
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function calculateBudgetDiscipline(items: any[]): HealthScore['pillars']['budgetDiscipline'] {
+function calculateBudgetDiscipline(items: CycleItemData[]): HealthScore['pillars']['budgetDiscipline'] {
   // Filter out skipped items
   const activeItems = items.filter(i => i.status !== 'skipped');
   const totalItems = activeItems.length;
@@ -189,13 +230,21 @@ function calculateBudgetDiscipline(items: any[]): HealthScore['pillars']['budget
   const fixedItems = activeItems.filter(i => i.dueDate && !i.isVariable);
   const variableItems = activeItems.filter(i => !i.dueDate || i.isVariable);
 
+  // Helper to parse date from Firestore
+  const parseDate = (d: { toDate?: () => Date } | string | undefined): Date | null => {
+    if (!d) return null;
+    if (typeof d === 'string') return new Date(d);
+    return d.toDate?.() ?? null;
+  };
+
   // Fixed items: Check if paid on or before due date
   const fixedOnTime = fixedItems.filter(item => {
     if (item.status !== 'paid' && item.status !== 'partial') return false;
     if (!item.paidDate) return true; // Marked paid without date = assume on time
 
-    const dueDate = item.dueDate?.toDate?.() ?? new Date(item.dueDate);
-    const paidDate = item.paidDate?.toDate?.() ?? new Date(item.paidDate);
+    const dueDate = parseDate(item.dueDate);
+    const paidDate = parseDate(item.paidDate);
+    if (!dueDate || !paidDate) return true;
     return paidDate <= dueDate;
   }).length;
 
@@ -212,8 +261,7 @@ function calculateBudgetDiscipline(items: any[]): HealthScore['pillars']['budget
 }
 
 // Calculate Savings Rate score
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function calculateSavingsRate(cycle: any, goals: any[], startDate: Date, endDate: Date): HealthScore['pillars']['savingsRate'] {
+function calculateSavingsRate(cycle: CycleData | undefined, goals: GoalData[], startDate: Date, endDate: Date): HealthScore['pillars']['savingsRate'] {
   const income = cycle?.income?.amount ?? 0;
   const vatAmount = cycle?.income?.vatAmount ?? 0;
   const netIncome = income - vatAmount;
@@ -222,13 +270,21 @@ function calculateSavingsRate(cycle: any, goals: any[], startDate: Date, endDate
     return { score: 0, rate: 0, incomeAmount: 0, savingsAmount: 0 };
   }
 
+  // Helper to parse date
+  const parseDate = (d: { toDate?: () => Date } | string | Date | undefined): Date | null => {
+    if (!d) return null;
+    if (d instanceof Date) return d;
+    if (typeof d === 'string') return new Date(d);
+    return d.toDate?.() ?? null;
+  };
+
   // Sum contributions to goals made within this cycle's date range
   let savingsAmount = 0;
   for (const goal of goals) {
     const contributions = goal.contributions ?? [];
     for (const c of contributions) {
-      const contributionDate = c.date?.toDate?.() ?? new Date(c.date);
-      if (contributionDate >= startDate && contributionDate <= endDate) {
+      const contributionDate = parseDate(c.date);
+      if (contributionDate && contributionDate >= startDate && contributionDate <= endDate) {
         savingsAmount += c.amount ?? 0;
       }
     }
@@ -242,8 +298,7 @@ function calculateSavingsRate(cycle: any, goals: any[], startDate: Date, endDate
 }
 
 // Calculate Goal Momentum score
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function calculateGoalMomentum(goals: any[], startDate: Date, endDate: Date): HealthScore['pillars']['goalMomentum'] {
+function calculateGoalMomentum(goals: GoalData[], startDate: Date, endDate: Date): HealthScore['pillars']['goalMomentum'] {
   const totalGoals = goals.length;
 
   if (totalGoals === 0) {
@@ -254,13 +309,21 @@ function calculateGoalMomentum(goals: any[], startDate: Date, endDate: Date): He
   const onTrackGoals = goals.filter(g => g.isOnTrack === true).length;
   const onTrackPercent = Math.round((onTrackGoals / totalGoals) * 100);
 
+  // Helper to parse date
+  const parseDate = (d: { toDate?: () => Date } | string | Date | undefined): Date | null => {
+    if (!d) return null;
+    if (d instanceof Date) return d;
+    if (typeof d === 'string') return new Date(d);
+    return d.toDate?.() ?? null;
+  };
+
   // Count contributions made within this cycle's date range
   let recentContributions = 0;
   for (const goal of goals) {
     const contributions = goal.contributions ?? [];
     for (const c of contributions) {
-      const contributionDate = c.date?.toDate?.() ?? new Date(c.date);
-      if (contributionDate >= startDate && contributionDate <= endDate) {
+      const contributionDate = parseDate(c.date);
+      if (contributionDate && contributionDate >= startDate && contributionDate <= endDate) {
         recentContributions++;
       }
     }
@@ -278,10 +341,8 @@ function calculateGoalMomentum(goals: any[], startDate: Date, endDate: Date): He
 async function calculateStabilityBuffer(
   db: FirebaseFirestore.Firestore,
   userId: string,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  goals: any[],
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  items: any[]
+  goals: GoalData[],
+  items: CycleItemData[]
 ): Promise<HealthScore['pillars']['stabilityBuffer']> {
   // Find emergency fund goal
   // Look for: name contains "emergency" OR (type=savings AND priority=high)

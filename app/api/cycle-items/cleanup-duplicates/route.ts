@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
     .get();
 
   // Group items by commitmentId + cycleId (to find duplicates in same cycle)
-  const itemsByCycleAndCommitment = new Map<string, Array<{ id: string; data: any; ref: any }>>();
+  const itemsByCycleAndCommitment = new Map<string, Array<{ id: string; data: FirebaseFirestore.DocumentData; ref: FirebaseFirestore.DocumentReference }>>();
 
   for (const doc of itemsSnap.docs) {
     const data = doc.data();

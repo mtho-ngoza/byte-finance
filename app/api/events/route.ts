@@ -3,7 +3,7 @@ import { withAuth } from '@/lib/auth';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import { createActivityEntry } from '@/lib/event-activity';
-import type { CreateEvent } from '@/types';
+import type { CreateEvent, EventItem, EventPayment } from '@/types';
 
 /**
  * GET /api/events
@@ -38,10 +38,10 @@ export async function GET(request: NextRequest) {
     const items = data.items || [];
 
     // Calculate totals
-    const totalQuoted = items.reduce((sum: number, item: any) => sum + (item.unitPrice * item.quantity), 0);
-    const totalPaid = items.reduce((sum: number, item: any) => {
+    const totalQuoted = items.reduce((sum: number, item: EventItem) => sum + (item.unitPrice * item.quantity), 0);
+    const totalPaid = items.reduce((sum: number, item: EventItem) => {
       const payments = item.payments || [];
-      return sum + payments.reduce((s: number, p: any) => s + p.amount, 0);
+      return sum + payments.reduce((s: number, p: EventPayment) => s + p.amount, 0);
     }, 0);
 
     return {
@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
       ...data,
       totalQuoted,
       totalPaid,
-    } as { id: string; linkedProjectId?: string; [key: string]: any };
+    } as { id: string; linkedProjectId?: string; [key: string]: unknown };
   });
 
   // Filter by linkedProjectId if provided
