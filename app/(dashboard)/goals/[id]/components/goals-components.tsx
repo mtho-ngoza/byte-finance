@@ -1,0 +1,1500 @@
+'use client';
+
+import { useMemo, useState, useEffect } from 'react';
+import Link from 'next/link';
+import { GoalWithComputed } from '@/hooks/use-goals';
+import { AmountDisplay } from '@/components/shared/amount-display';
+import { CurrencyInput } from '@/components/shared/currency-input';
+import { DateInput } from '@/components/shared/date-input';
+import { useToast } from '@/components/shared/toast';
+import { InlineReceiptCapture } from '@/components/shared/inline-receipt-capture';
+import { GroupedReceiptPicker } from '@/components/shared/grouped-receipt-picker';
+import { useReceipts } from '@/hooks/use-receipts';
+import { generateGoalPDF } from '@/lib/pdf-export';
+import type { Commitment } from '@/types';
+
+// ============================================================================
+// Types
+// ============================================================================
+
+interface UnlinkedPayment {
+  paymentId: string;
+  cycleItemId: string;
+  cycleId: string;
+  cycleName: string;
+  itemLabel: string;
+  amount: number;
+  date: string;
+  note?: string;
+}
+
+interface ProjectTransaction {
+  id: string;
+  goalId: string;
+  type: 'contribution' | 'payment';
+  amount: number;
+  contributorName?: string;
+  description: string;
+  receiptId?: string;
+  receipt?: {
+    thumbnailUrl?: string;
+    imageUrl: string;
+  };
+  date: { toDate?: () => Date } | Date;
+  createdAt: { toDate?: () => Date } | Date;
+}
+
+// ============================================================================
+// GoalDetail Component
+// ============================================================================
+
+interface GoalDetailProps {
+  goal: GoalWithComputed;
+  allCommitments: Commitment[];
+}
+
+export function GoalDetail({ goal, allCommitments }: GoalDetailProps) {
+  const { toast } = useToast();
+  const [showEdit, setShowEdit] = useState(false);
+  const [showAddContribution, setShowAddContribution] = useState(false);
+  const [contributionAmount, setContributionAmount] = useState(0);
+  const [contributionDate, setContributionDate] = useState(new Date().toISOString().split('T')[0]);
+  const [contributionNote, setContributionNote] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [editingContribution, setEditingContribution] = useState<any | null>(null);
+  const [deletingContribution, setDeletingContribution] = useState<string | null>(null);
+
+  // Filters
+  const [filterMonth, setFilterMonth] = useState<string>('all');
+  const [filterNoteSearch, setFilterNoteSearch] = useState('');
+
+  // Link past payments state
+  const [showLinkPayments, setShowLinkPayments] = useState(false);
+  const [unlinkedPayments, setUnlinkedPayments] = useState<UnlinkedPayment[]>([]);
+  const [loadingPayments, setLoadingPayments] = useState(false);
+  const [selectedPayments, setSelectedPayments] = useState<Set<string>>(new Set());
+  const [linking, setLinking] = useState(false);
+  const [paymentSearch, setPaymentSearch] = useState('');
+
+  const fetchUnlinkedPayments = async () => {
+    setLoadingPayments(true);
+    try {
+      const res = await fetch(`/api/goals/${goal.id}/unlinked-payments`);
+      if (!res.ok) throw new Error('Failed to fetch');
+      const data = await res.json();
+      setUnlinkedPayments(data.payments ?? []);
+    } catch {
+      toast('Failed to load payments', 'error');
+    } finally {
+      setLoadingPayments(false);
+    }
+  };
+
+  const togglePaymentSelection = (paymentKey: string) => {
+    setSelectedPayments((prev) => {
+      const next = new Set(prev);
+      if (next.has(paymentKey)) {
+        next.delete(paymentKey);
+      } else {
+        next.add(paymentKey);
+      }
+      return next;
+    });
+  };
+
+  // Filter payments by search
+  const filteredPayments = useMemo(() => {
+    if (!paymentSearch.trim()) return unlinkedPayments;
+    const q = paymentSearch.toLowerCase();
+    return unlinkedPayments.filter((p) =>
+      p.itemLabel.toLowerCase().includes(q) ||
+      p.cycleName.toLowerCase().includes(q) ||
+      (p.note && p.note.toLowerCase().includes(q))
+    );
+  }, [unlinkedPayments, paymentSearch]);
+
+  const handleLinkPayments = async () => {
+    if (selectedPayments.size === 0) return;
+
+    const paymentsToLink = unlinkedPayments.filter((p) =>
+      selectedPayments.has(`${p.cycleItemId}-${p.paymentId}`)
+    );
+
+    setLinking(true);
+    try {
+      const res = await fetch(`/api/goals/${goal.id}/link-payments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ payments: paymentsToLink }),
+      });
+      if (!res.ok) throw new Error('Failed to link');
+      const data = await res.json();
+      toast(`Linked ${data.linked} payments (R${(data.totalAdded / 100).toFixed(2)})`, 'success');
+      setShowLinkPayments(false);
+      setSelectedPayments(new Set());
+      setPaymentSearch('');
+      setUnlinkedPayments([]);
+    } catch {
+      toast('Failed to link payments', 'error');
+    } finally {
+      setLinking(false);
+    }
+  };
+
+  // Calculate balance from contributions (always accurate)
+  const calculatedBalance = (goal.contributions ?? []).reduce((sum, c) => sum + c.amount, 0);
+
+  const progressPercent = goal.targetAmount > 0
+    ? Math.min(100, Math.round((calculatedBalance / goal.targetAmount) * 100))
+    : 0;
+
+  const remaining = Math.max(0, goal.targetAmount - calculatedBalance);
+
+  const handleEdit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+
+    const body: Record<string, unknown> = {
+      name: formData.get('name'),
+      type: formData.get('type'),
+      targetAmount: Number(formData.get('targetAmount')) * 100,
+      monthlyTarget: formData.get('monthlyTarget') ? Number(formData.get('monthlyTarget')) * 100 : null,
+      priority: formData.get('priority'),
+      notes: formData.get('notes') || null,
+      status: formData.get('status'),
+    };
+
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/goals/${goal.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error('Failed to update goal');
+      toast('Goal updated', 'success');
+      setShowEdit(false);
+    } catch {
+      toast('Failed to update goal', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleAddContribution = async () => {
+    if (contributionAmount <= 0) {
+      toast('Please enter a valid amount', 'error');
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/goals/${goal.id}/contribute`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: contributionAmount,
+          date: contributionDate,
+          note: contributionNote.trim() || undefined,
+        }),
+      });
+      if (!res.ok) throw new Error('Failed to add contribution');
+      toast('Contribution added', 'success');
+      setShowAddContribution(false);
+      setContributionAmount(0);
+      setContributionNote('');
+    } catch {
+      toast('Failed to add contribution', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleEditContribution = async (contributionId: string, data: Record<string, unknown>) => {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/goals/${goal.id}/contributions/${contributionId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error('Failed to update');
+      toast('Contribution updated', 'success');
+      setEditingContribution(null);
+    } catch {
+      toast('Failed to update contribution', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteContribution = async (contributionId: string) => {
+    setDeletingContribution(contributionId);
+    try {
+      const res = await fetch(`/api/goals/${goal.id}/contributions/${contributionId}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) throw new Error('Failed to delete');
+      toast('Contribution deleted', 'success');
+    } catch {
+      toast('Failed to delete contribution', 'error');
+    } finally {
+      setDeletingContribution(null);
+    }
+  };
+
+  // Get all contributions
+  const allContributions = goal.contributions ?? [];
+
+  // Extract unique months for filter dropdown
+  const uniqueMonths = useMemo(() => {
+    const months = new Map<string, string>();
+    allContributions.forEach(contrib => {
+      const date = contrib.date?.toDate?.() ?? new Date();
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      const label = date.toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' });
+      months.set(key, label);
+    });
+    return Array.from(months.entries()).sort((a, b) => b[0].localeCompare(a[0]));
+  }, [allContributions]);
+
+  // Filter contributions
+  const filteredContributions = useMemo(() => {
+    return allContributions.filter(contrib => {
+      if (filterMonth !== 'all') {
+        const date = contrib.date?.toDate?.() ?? new Date();
+        const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        if (key !== filterMonth) return false;
+      }
+      if (filterNoteSearch.trim()) {
+        const note = contrib.note?.toLowerCase() ?? '';
+        if (!note.includes(filterNoteSearch.toLowerCase())) return false;
+      }
+      return true;
+    });
+  }, [allContributions, filterMonth, filterNoteSearch]);
+
+  const isFiltered = filterMonth !== 'all' || filterNoteSearch.trim() !== '';
+
+  const clearFilters = () => {
+    setFilterMonth('all');
+    setFilterNoteSearch('');
+  };
+
+  const handleExport = () => {
+    generateGoalPDF(goal, filteredContributions);
+  };
+
+  // Sort contributions by date descending
+  const sortedContributions = useMemo(() => {
+    return [...filteredContributions].sort((a, b) => {
+      const dateA = a.date?.toDate?.() ?? new Date(0);
+      const dateB = b.date?.toDate?.() ?? new Date(0);
+      return dateB.getTime() - dateA.getTime();
+    });
+  }, [filteredContributions]);
+
+  // Group contributions by month
+  const contributionsByMonth = useMemo(() => {
+    const groups = new Map<string, typeof sortedContributions>();
+
+    for (const contrib of sortedContributions) {
+      const date = contrib.date?.toDate?.() ?? new Date();
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+
+      if (!groups.has(key)) {
+        groups.set(key, []);
+      }
+      groups.get(key)!.push(contrib);
+    }
+
+    return Array.from(groups.entries()).map(([key, contribs]) => {
+      const [year, month] = key.split('-');
+      const date = new Date(parseInt(year, 10), parseInt(month, 10) - 1);
+      return {
+        label: date.toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' }),
+        total: contribs.reduce((sum, c) => sum + c.amount, 0),
+        contributions: contribs,
+      };
+    });
+  }, [sortedContributions]);
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <Link
+            href="/goals"
+            className="p-2 rounded-lg text-text-secondary hover:bg-surface transition-colors"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 20 20">
+              <path d="M12 4l-6 6 6 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </Link>
+          <div>
+            <h1 className="text-xl font-semibold text-text-primary">{goal.name}</h1>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-text-secondary capitalize">{goal.type.replace('_', ' ')}</span>
+              {calculatedBalance >= goal.targetAmount ? (
+                <span className="text-xs px-1.5 py-0.5 rounded bg-success/10 text-success font-medium">Complete</span>
+              ) : goal.isOnTrack ? (
+                <span className="text-xs px-1.5 py-0.5 rounded bg-primary/10 text-primary">On Track</span>
+              ) : (
+                <span className="text-xs px-1.5 py-0.5 rounded bg-warning/10 text-warning">Behind</span>
+              )}
+            </div>
+          </div>
+        </div>
+        {!showEdit && (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleExport}
+              className="p-1.5 rounded-lg border border-border text-text-secondary hover:border-primary hover:text-primary transition-colors"
+              title={isFiltered ? `Export filtered (${filteredContributions.length} contributions)` : 'Export as PDF'}
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+              </svg>
+            </button>
+            <button
+              onClick={() => setShowEdit(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-text-secondary hover:border-primary hover:text-primary transition-colors text-sm"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
+              </svg>
+              Edit
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Edit Form */}
+      {showEdit && (
+        <form onSubmit={handleEdit} className="p-4 rounded-xl border border-border bg-surface space-y-4">
+          <h2 className="text-base font-semibold text-text-primary">Edit Goal</h2>
+
+          <div>
+            <label className="block text-sm text-text-secondary mb-1">Name</label>
+            <input
+              name="name"
+              required
+              defaultValue={goal.name}
+              className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary"
+              placeholder="e.g., Emergency Fund"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm text-text-secondary mb-1">Type</label>
+              <select
+                name="type"
+                required
+                defaultValue={goal.type}
+                className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary"
+              >
+                <option value="savings">Savings</option>
+                <option value="debt_payoff">Debt Payoff</option>
+                <option value="investment">Investment</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm text-text-secondary mb-1">Priority</label>
+              <select
+                name="priority"
+                required
+                defaultValue={goal.priority}
+                className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary"
+              >
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm text-text-secondary mb-1">Target Amount (R)</label>
+              <input
+                name="targetAmount"
+                type="number"
+                required
+                min="0"
+                defaultValue={goal.targetAmount / 100}
+                className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-text-secondary mb-1">Monthly Target (R)</label>
+              <input
+                name="monthlyTarget"
+                type="number"
+                min="0"
+                defaultValue={goal.monthlyTarget ? goal.monthlyTarget / 100 : ''}
+                className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm text-text-secondary mb-1">Status</label>
+            <select
+              name="status"
+              required
+              defaultValue={goal.status}
+              className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary"
+            >
+              <option value="active">Active</option>
+              <option value="paused">Paused</option>
+              <option value="completed">Completed</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm text-text-secondary mb-1">Notes</label>
+            <textarea
+              name="notes"
+              rows={2}
+              defaultValue={goal.notes || ''}
+              className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setShowEdit(false)}
+              disabled={saving}
+              className="px-4 py-2 rounded-lg text-text-secondary hover:bg-background transition-colors disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="px-4 py-2 rounded-lg bg-primary text-background font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
+            >
+              {saving ? 'Saving...' : 'Save Changes'}
+            </button>
+          </div>
+        </form>
+      )}
+
+      {/* Progress Card */}
+      <div className="p-4 rounded-xl border border-border bg-surface">
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-sm text-text-secondary">Progress</span>
+          <span className="text-sm font-medium text-text-primary">{progressPercent}%</span>
+        </div>
+
+        <div className="h-3 bg-background rounded-full overflow-hidden mb-4">
+          <div
+            className="h-full bg-primary rounded-full transition-all"
+            style={{ width: `${progressPercent}%` }}
+          />
+        </div>
+
+        <div className="grid grid-cols-3 gap-4 text-center">
+          <div>
+            <p className="text-xs text-text-secondary mb-1">Current</p>
+            <AmountDisplay amount={calculatedBalance} size="sm" />
+          </div>
+          <div>
+            <p className="text-xs text-text-secondary mb-1">Target</p>
+            <AmountDisplay amount={goal.targetAmount} size="sm" />
+          </div>
+          <div>
+            <p className="text-xs text-text-secondary mb-1">Remaining</p>
+            <AmountDisplay amount={remaining} size="sm" />
+          </div>
+        </div>
+      </div>
+
+      {/* Monthly Info Card */}
+      <div className="p-4 rounded-xl border border-border bg-surface">
+        <h2 className="text-sm font-medium text-text-primary mb-3">Monthly Contribution</h2>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <p className="text-xs text-text-secondary mb-1">Effective Monthly</p>
+            <AmountDisplay amount={goal.effectiveMonthlyTarget} size="sm" />
+            {goal.linkedCommitments.length > 0 && (
+              <p className="text-xs text-text-secondary mt-1">From linked commitments</p>
+            )}
+          </div>
+          <div>
+            <p className="text-xs text-text-secondary mb-1">Manual Target</p>
+            <AmountDisplay amount={goal.monthlyTarget ?? 0} size="sm" />
+          </div>
+        </div>
+
+        {/* Linked Commitments — editable */}
+        <LinkedCommitmentsEditor goal={goal} allCommitments={allCommitments} />
+      </div>
+
+      {/* Timeline Info */}
+      {(goal.estimatedCompletionDate || goal.daysUntilDeadline !== null) && (
+        <div className="p-4 rounded-xl border border-border bg-surface">
+          <h2 className="text-sm font-medium text-text-primary mb-3">Timeline</h2>
+
+          <div className="space-y-3">
+            {goal.estimatedCompletionDate && calculatedBalance < goal.targetAmount && (
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-text-secondary">Estimated Completion</span>
+                <span className="text-sm text-text-primary">
+                  {goal.estimatedCompletionDate.toLocaleDateString('en-ZA', {
+                    month: 'long',
+                    year: 'numeric',
+                  })}
+                </span>
+              </div>
+            )}
+
+            {goal.daysUntilDeadline !== null && (
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-text-secondary">Target Deadline</span>
+                <span className={`text-sm ${goal.daysUntilDeadline < 30 ? 'text-warning' : 'text-text-primary'}`}>
+                  {goal.daysUntilDeadline > 0
+                    ? `${goal.daysUntilDeadline} days remaining`
+                    : goal.daysUntilDeadline === 0
+                    ? 'Today!'
+                    : `${Math.abs(goal.daysUntilDeadline)} days overdue`}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Filter Bar */}
+      {allContributions.length > 0 && (
+        <div className="p-3 rounded-xl border border-border bg-surface">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs text-text-secondary shrink-0">Filter:</span>
+
+            <select
+              value={filterMonth}
+              onChange={(e) => setFilterMonth(e.target.value)}
+              className="px-2 py-1.5 rounded-lg border border-border bg-background text-text-primary text-xs focus:outline-none focus:border-primary"
+            >
+              <option value="all">All Months</option>
+              {uniqueMonths.map(([key, label]) => (
+                <option key={key} value={key}>{label}</option>
+              ))}
+            </select>
+
+            <input
+              type="text"
+              value={filterNoteSearch}
+              onChange={(e) => setFilterNoteSearch(e.target.value)}
+              placeholder="Search notes..."
+              className="px-2 py-1.5 rounded-lg border border-border bg-background text-text-primary text-xs focus:outline-none focus:border-primary w-32"
+            />
+
+            {isFiltered && (
+              <button
+                onClick={clearFilters}
+                className="px-2 py-1.5 rounded-lg text-xs text-primary hover:bg-primary/10 flex items-center gap-1"
+              >
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+                Clear
+              </button>
+            )}
+
+            <span className="text-xs text-text-secondary ml-auto">
+              {filteredContributions.length} of {allContributions.length}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Contribution History */}
+      <div className="p-4 rounded-xl border border-border bg-surface">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-medium text-text-primary">
+            Contribution History{isFiltered && ' (filtered)'} ({sortedContributions.length})
+          </h2>
+          {!showAddContribution && !showLinkPayments && (
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => {
+                  setShowLinkPayments(true);
+                  fetchUnlinkedPayments();
+                }}
+                className="flex items-center gap-1 text-xs text-text-secondary hover:text-primary"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                </svg>
+                Link past
+              </button>
+              <button
+                onClick={() => setShowAddContribution(true)}
+                className="flex items-center gap-1 text-xs text-primary hover:text-primary/80"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 16 16">
+                  <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                </svg>
+                Add manual
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Link Past Payments UI */}
+        {showLinkPayments && (
+          <div className="mb-4 p-3 rounded-lg bg-background border border-border">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs text-text-secondary">Select payments to link to this goal</p>
+              <button
+                onClick={() => { setShowLinkPayments(false); setSelectedPayments(new Set()); setPaymentSearch(''); }}
+                className="text-xs text-text-secondary hover:text-text-primary"
+              >
+                Cancel
+              </button>
+            </div>
+
+            {loadingPayments ? (
+              <div className="flex items-center justify-center py-6">
+                <svg className="w-5 h-5 animate-spin text-text-secondary" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+              </div>
+            ) : unlinkedPayments.length === 0 ? (
+              <p className="text-sm text-text-secondary text-center py-4">
+                No unlinked payments found in recent cycles.
+              </p>
+            ) : (
+              <>
+                <div className="mb-3">
+                  <input
+                    type="text"
+                    value={paymentSearch}
+                    onChange={(e) => setPaymentSearch(e.target.value)}
+                    placeholder="Search payments..."
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-surface text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:border-primary"
+                  />
+                </div>
+
+                <div className="max-h-64 overflow-y-auto space-y-1 mb-3">
+                  {filteredPayments.length === 0 ? (
+                    <p className="text-sm text-text-secondary text-center py-4">
+                      No payments match your search.
+                    </p>
+                  ) : filteredPayments.map((payment) => {
+                    const key = `${payment.cycleItemId}-${payment.paymentId}`;
+                    const isSelected = selectedPayments.has(key);
+                    const date = new Date(payment.date);
+
+                    return (
+                      <label
+                        key={key}
+                        className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-colors ${
+                          isSelected ? 'bg-primary/10 border border-primary/30' : 'hover:bg-surface border border-transparent'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => togglePaymentSelection(key)}
+                          className="w-4 h-4 rounded border-border text-primary focus:ring-primary"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-text-primary truncate">{payment.itemLabel}</p>
+                          <p className="text-xs text-text-secondary">
+                            {date.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' })}
+                            {' · '}{payment.cycleName}
+                            {payment.note && ` · ${payment.note}`}
+                          </p>
+                        </div>
+                        <span className="text-sm font-mono text-text-primary shrink-0">
+                          R{(payment.amount / 100).toFixed(2)}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+
+                {selectedPayments.size > 0 && (
+                  <div className="flex items-center justify-between pt-2 border-t border-border">
+                    <span className="text-xs text-text-secondary">
+                      {selectedPayments.size} selected · R
+                      {(unlinkedPayments
+                        .filter((p) => selectedPayments.has(`${p.cycleItemId}-${p.paymentId}`))
+                        .reduce((sum, p) => sum + p.amount, 0) / 100
+                      ).toFixed(2)}
+                    </span>
+                    <button
+                      onClick={handleLinkPayments}
+                      disabled={linking}
+                      className="px-3 py-1.5 rounded-lg bg-primary text-background text-sm font-medium disabled:opacity-50"
+                    >
+                      {linking ? 'Linking...' : 'Link Selected'}
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Add Contribution Form */}
+        {showAddContribution && (
+          <div className="mb-4 p-3 rounded-lg bg-background border border-border space-y-3">
+            <p className="text-xs text-text-secondary">Record a past contribution</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-text-secondary mb-1">Amount</label>
+                <CurrencyInput value={contributionAmount} onChange={setContributionAmount} />
+              </div>
+              <DateInput
+                label="Date"
+                value={contributionDate}
+                onChange={(e) => setContributionDate(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-text-secondary mb-1">Note (optional)</label>
+              <input
+                type="text"
+                value={contributionNote}
+                onChange={(e) => setContributionNote(e.target.value)}
+                placeholder="e.g. Bank transfer"
+                className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-surface text-text-primary focus:outline-none focus:border-primary"
+              />
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowAddContribution(false)}
+                className="flex-1 py-2 rounded-lg border border-border text-text-secondary text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAddContribution}
+                disabled={saving || contributionAmount <= 0}
+                className="flex-1 py-2 rounded-lg bg-primary text-background font-medium text-sm disabled:opacity-50"
+              >
+                {saving ? 'Adding...' : 'Add Contribution'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {sortedContributions.length === 0 && !showAddContribution ? (
+          <p className="text-sm text-text-secondary text-center py-4">
+            No contributions yet. Link a commitment and mark it as paid, or add a manual contribution.
+          </p>
+        ) : sortedContributions.length === 0 ? null : (
+          <div className="space-y-4">
+            {contributionsByMonth.map(({ label, total, contributions }) => (
+              <div key={label}>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-medium text-text-secondary">{label}</span>
+                  <AmountDisplay amount={total} size="xs" />
+                </div>
+                <div className="space-y-2">
+                  {contributions.map((contrib) => {
+                    const date = contrib.date?.toDate?.() ?? new Date();
+                    const isEditing = editingContribution?.id === contrib.id;
+                    const isDeleting = deletingContribution === contrib.id;
+
+                    if (isEditing) {
+                      return (
+                        <EditContributionForm
+                          key={contrib.id}
+                          contribution={contrib}
+                          onSave={(data) => handleEditContribution(contrib.id, data)}
+                          onCancel={() => setEditingContribution(null)}
+                          saving={saving}
+                        />
+                      );
+                    }
+
+                    return (
+                      <div
+                        key={contrib.id}
+                        className="flex items-center justify-between py-2 border-b border-border/50 last:border-0"
+                      >
+                        <div className="flex-1">
+                          <p className="text-sm text-text-primary">
+                            {date.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })}
+                          </p>
+                          {contrib.note && (
+                            <p className="text-xs text-text-secondary">{contrib.note}</p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <AmountDisplay amount={contrib.amount} size="sm" />
+                          <div className="flex">
+                            <button
+                              onClick={() => setEditingContribution(contrib)}
+                              className="p-1.5 text-text-secondary/50 hover:text-primary"
+                              title="Edit"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                <path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                            <button
+                              onClick={() => handleDeleteContribution(contrib.id)}
+                              disabled={isDeleting}
+                              className="p-1.5 text-text-secondary/50 hover:text-error disabled:opacity-50"
+                              title="Delete"
+                            >
+                              {isDeleting ? (
+                                <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                                </svg>
+                              ) : (
+                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Notes */}
+      {goal.notes && (
+        <div className="p-4 rounded-xl border border-border bg-surface">
+          <h2 className="text-sm font-medium text-text-primary mb-2">Notes</h2>
+          <p className="text-sm text-text-secondary whitespace-pre-wrap">{goal.notes}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// LinkedCommitmentsEditor Component
+// ============================================================================
+
+interface LinkedCommitmentsEditorProps {
+  goal: GoalWithComputed;
+  allCommitments: Commitment[];
+}
+
+export function LinkedCommitmentsEditor({ goal, allCommitments }: LinkedCommitmentsEditorProps) {
+  const { toast } = useToast();
+  const [saving, setSaving] = useState<string | null>(null);
+
+  const linked = allCommitments.filter((c) => c.linkedGoalId === goal.id);
+  const available = allCommitments.filter((c) => !c.linkedGoalId && c.isActive);
+
+  const link = async (commitmentId: string) => {
+    setSaving(commitmentId);
+    try {
+      const res = await fetch(`/api/commitments/${commitmentId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ linkedGoalId: goal.id }),
+      });
+      if (!res.ok) throw new Error('Failed');
+      toast('Commitment linked', 'success');
+    } catch {
+      toast('Failed to link commitment', 'error');
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const unlink = async (commitmentId: string) => {
+    setSaving(commitmentId);
+    try {
+      const res = await fetch(`/api/commitments/${commitmentId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ linkedGoalId: null }),
+      });
+      if (!res.ok) throw new Error('Failed');
+      toast('Commitment unlinked', 'success');
+    } catch {
+      toast('Failed to unlink commitment', 'error');
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  return (
+    <div className="mt-4 pt-4 border-t border-border space-y-3">
+      <p className="text-xs font-medium text-text-secondary">Linked Commitments</p>
+
+      {linked.length > 0 ? (
+        <div className="space-y-2">
+          {linked.map((c) => (
+            <div key={c.id} className="flex items-center justify-between gap-2">
+              <div className="flex-1 min-w-0">
+                <span className="text-sm text-text-primary truncate">{c.label}</span>
+                {!c.isActive && <span className="ml-1.5 text-xs text-text-secondary">(inactive)</span>}
+              </div>
+              <AmountDisplay amount={c.amount} size="xs" className="shrink-0" />
+              <button
+                onClick={() => unlink(c.id)}
+                disabled={saving === c.id}
+                className="text-xs text-warning hover:text-warning/70 transition-colors disabled:opacity-50 shrink-0"
+              >
+                {saving === c.id ? '…' : 'Unlink'}
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-text-secondary">No commitments linked yet.</p>
+      )}
+
+      {available.length > 0 && (
+        <div className="flex items-center gap-2">
+          <select
+            defaultValue=""
+            onChange={(e) => { if (e.target.value) link(e.target.value); e.target.value = ''; }}
+            disabled={saving !== null}
+            className="flex-1 px-3 py-1.5 rounded-lg border border-border bg-background text-text-primary text-xs focus:outline-none focus:border-primary disabled:opacity-50"
+          >
+            <option value="" disabled>+ Link a commitment…</option>
+            {available.map((c) => (
+              <option key={c.id} value={c.id}>{c.label} (R{(c.amount / 100).toFixed(0)}/mo)</option>
+            ))}
+          </select>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// ProjectGoalDetail Component
+// ============================================================================
+
+interface ProjectGoalDetailProps {
+  goal: GoalWithComputed;
+}
+
+export function ProjectGoalDetail({ goal }: ProjectGoalDetailProps) {
+  const { toast } = useToast();
+  const { receipts } = useReceipts();
+  const [transactions, setTransactions] = useState<ProjectTransaction[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showAddTransaction, setShowAddTransaction] = useState(false);
+  const [transactionType, setTransactionType] = useState<'contribution' | 'payment'>('contribution');
+  const [amount, setAmount] = useState(0);
+  const [description, setDescription] = useState('');
+  const [contributorName, setContributorName] = useState('');
+  const [transactionDate, setTransactionDate] = useState(new Date().toISOString().split('T')[0]);
+  const [saving, setSaving] = useState(false);
+  const [receiptId, setReceiptId] = useState<string | null>(null);
+  const [showReceiptCapture, setShowReceiptCapture] = useState(false);
+  const [showReceiptPicker, setShowReceiptPicker] = useState(false);
+
+  const fetchTransactions = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/goals/${goal.id}/transactions`);
+      if (!res.ok) throw new Error('Failed to fetch');
+      const data = await res.json();
+
+      const transactionsWithReceipts = await Promise.all(
+        (data.transactions ?? []).map(async (txn: ProjectTransaction) => {
+          if (txn.receiptId) {
+            try {
+              const receiptRes = await fetch(`/api/receipts/${txn.receiptId}`);
+              if (receiptRes.ok) {
+                const receiptData = await receiptRes.json();
+                return {
+                  ...txn,
+                  receipt: {
+                    thumbnailUrl: receiptData.thumbnailUrl,
+                    imageUrl: receiptData.imageUrl,
+                  },
+                };
+              }
+            } catch {
+              return txn;
+            }
+          }
+          return txn;
+        })
+      );
+
+      setTransactions(transactionsWithReceipts);
+    } catch {
+      toast('Failed to load transactions', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchTransactions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleAddTransaction = async () => {
+    if (amount <= 0) {
+      toast('Please enter a valid amount', 'error');
+      return;
+    }
+    if (!description.trim()) {
+      toast('Please enter a description', 'error');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/goals/${goal.id}/transactions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: transactionType,
+          amount,
+          description: description.trim(),
+          contributorName: contributorName.trim() || undefined,
+          receiptId: receiptId || undefined,
+          date: transactionDate,
+        }),
+      });
+
+      if (!res.ok) throw new Error('Failed to add transaction');
+
+      toast(`${transactionType === 'contribution' ? 'Contribution' : 'Payment'} added`, 'success');
+      setShowAddTransaction(false);
+      setAmount(0);
+      setDescription('');
+      setContributorName('');
+      setReceiptId(null);
+      fetchTransactions();
+    } catch {
+      toast('Failed to add transaction', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const contributionsTotal = transactions
+    .filter((t) => t.type === 'contribution')
+    .reduce((sum, t) => sum + t.amount, 0);
+
+  const paymentsTotal = transactions
+    .filter((t) => t.type === 'payment')
+    .reduce((sum, t) => sum + t.amount, 0);
+
+  const poolBalance = contributionsTotal - paymentsTotal;
+
+  const transactionsByMonth = useMemo(() => {
+    const groups = new Map<string, ProjectTransaction[]>();
+
+    for (const txn of transactions) {
+      const dateValue = txn.date;
+      const date = typeof dateValue === 'object' && 'toDate' in dateValue && dateValue.toDate
+        ? dateValue.toDate()
+        : new Date(dateValue as Date);
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+
+      if (!groups.has(key)) {
+        groups.set(key, []);
+      }
+      groups.get(key)!.push(txn);
+    }
+
+    return Array.from(groups.entries()).map(([key, txns]) => {
+      const [year, month] = key.split('-');
+      const date = new Date(parseInt(year, 10), parseInt(month, 10) - 1);
+      return {
+        label: date.toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' }),
+        transactions: txns,
+      };
+    });
+  }, [transactions]);
+
+  const formatAmount = (cents: number) => {
+    return `R${(cents / 100).toLocaleString('en-ZA', { minimumFractionDigits: 0 })}`;
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center gap-3">
+        <Link
+          href="/goals"
+          className="p-2 rounded-lg text-text-secondary hover:bg-surface transition-colors"
+        >
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 20 20">
+            <path d="M12 4l-6 6 6 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </Link>
+        <div>
+          <h1 className="text-xl font-semibold text-text-primary">{goal.name}</h1>
+          <span className="text-sm text-text-secondary">Project</span>
+        </div>
+      </div>
+
+      {/* Summary Card */}
+      <div className="p-4 rounded-xl border border-border bg-surface space-y-3">
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <span className="text-xs text-text-secondary block mb-1">Contributions IN</span>
+            <span className="text-lg font-semibold text-primary">+{formatAmount(contributionsTotal)}</span>
+          </div>
+          <div>
+            <span className="text-xs text-text-secondary block mb-1">Payments OUT</span>
+            <span className="text-lg font-semibold text-error">-{formatAmount(paymentsTotal)}</span>
+          </div>
+        </div>
+
+        <div className="border-t border-border pt-3">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-text-secondary">Pool Balance</span>
+            <span className="text-2xl font-bold text-text-primary">{formatAmount(poolBalance)}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Statement */}
+      <div className="p-4 rounded-xl border border-border bg-surface">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-sm font-medium text-text-primary">
+            Statement ({transactions.length})
+          </h2>
+          {!showAddTransaction && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  setTransactionType('contribution');
+                  setShowAddTransaction(true);
+                }}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-primary text-background text-xs font-medium"
+              >
+                + Contribution
+              </button>
+              <button
+                onClick={() => {
+                  setTransactionType('payment');
+                  setShowAddTransaction(true);
+                }}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border text-text-secondary hover:border-primary hover:text-primary text-xs"
+              >
+                + Payment
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Receipt Capture Modal */}
+        {showReceiptCapture && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-surface rounded-xl max-w-md w-full p-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-base font-semibold text-text-primary">Capture Receipt</h3>
+                <button
+                  onClick={() => setShowReceiptCapture(false)}
+                  className="text-text-secondary hover:text-text-primary"
+                >
+                  ✕
+                </button>
+              </div>
+              <InlineReceiptCapture
+                onCaptured={(id) => {
+                  setReceiptId(id);
+                  setShowReceiptCapture(false);
+                  toast('Receipt captured', 'success');
+                }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Receipt Picker Modal */}
+        {showReceiptPicker && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-surface rounded-xl max-w-2xl w-full max-h-[80vh] overflow-y-auto p-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-base font-semibold text-text-primary">Select Receipt</h3>
+                <button
+                  onClick={() => setShowReceiptPicker(false)}
+                  className="text-text-secondary hover:text-text-primary"
+                >
+                  ✕
+                </button>
+              </div>
+              <GroupedReceiptPicker
+                receipts={receipts
+                  .filter(r => !r.cycleItemId && !r.projectTransactionId)
+                  .map(r => ({
+                    id: r.id,
+                    thumbnailUrl: r.thumbnailUrl,
+                    imageUrl: r.imageUrl,
+                    vendor: r.vendor,
+                    amountInCents: r.amountInCents,
+                    cycleItemId: r.cycleItemId,
+                    capturedAt: r.capturedAt?.toDate?.().toISOString() ?? new Date().toISOString(),
+                  }))}
+                onSelect={(id) => {
+                  setReceiptId(id);
+                  setShowReceiptPicker(false);
+                  toast('Receipt linked', 'success');
+                }}
+                filterLinked={false}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Add Transaction Form */}
+        {showAddTransaction && (
+          <div className="mb-4 p-3 rounded-lg bg-background border border-border space-y-3">
+            <p className="text-xs text-text-secondary">
+              Add {transactionType === 'contribution' ? 'Contribution' : 'Payment'}
+            </p>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-text-secondary mb-1">Amount (R)</label>
+                <input
+                  type="number"
+                  value={amount === 0 ? '' : amount / 100}
+                  onChange={(e) => setAmount(Math.round(Number(e.target.value) * 100))}
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-surface text-text-primary"
+                  min="0"
+                  step="0.01"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-text-secondary mb-1">Date</label>
+                <input
+                  type="date"
+                  value={transactionDate}
+                  onChange={(e) => setTransactionDate(e.target.value)}
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-surface text-text-primary"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs text-text-secondary mb-1">Description</label>
+              <input
+                type="text"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder={transactionType === 'contribution' ? 'e.g., Uncle Joe' : 'e.g., First installment'}
+                className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-surface text-text-primary"
+              />
+            </div>
+
+            {transactionType === 'contribution' && (
+              <div>
+                <label className="block text-xs text-text-secondary mb-1">From (optional, private)</label>
+                <input
+                  type="text"
+                  value={contributorName}
+                  onChange={(e) => setContributorName(e.target.value)}
+                  placeholder="e.g., Uncle Joe"
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-surface text-text-primary"
+                />
+              </div>
+            )}
+
+            {transactionType === 'payment' && (
+              <div>
+                <label className="block text-xs text-text-secondary mb-1">Receipt (optional)</label>
+                {!receiptId ? (
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowReceiptCapture(true)}
+                      className="flex-1 px-3 py-2 text-sm rounded-lg border border-border bg-surface text-text-primary hover:border-primary"
+                    >
+                      📸 Add Photo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowReceiptPicker(true)}
+                      className="flex-1 px-3 py-2 text-sm rounded-lg border border-border bg-surface text-text-primary hover:border-primary"
+                    >
+                      🔗 Link Existing
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 p-2 rounded-lg bg-primary/10 border border-primary/30">
+                    <span className="text-sm text-text-primary flex-1">Receipt attached</span>
+                    <button
+                      type="button"
+                      onClick={() => setReceiptId(null)}
+                      className="text-xs text-error hover:text-error/70"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  setShowAddTransaction(false);
+                  setAmount(0);
+                  setDescription('');
+                  setContributorName('');
+                }}
+                className="flex-1 py-2 rounded-lg border border-border text-text-secondary text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAddTransaction}
+                disabled={saving || amount <= 0 || !description.trim()}
+                className="flex-1 py-2 rounded-lg bg-primary text-background font-medium text-sm disabled:opacity-50"
+              >
+                {saving ? 'Adding...' : 'Add'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Transactions List */}
+        {loading ? (
+          <div className="text-center py-8">
+            <svg className="w-5 h-5 animate-spin mx-auto text-text-secondary" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+          </div>
+        ) : transactions.length === 0 ? (
+          <p className="text-sm text-text-secondary text-center py-8">
+            No transactions yet. Add a contribution or payment to get started.
+          </p>
+        ) : (
+          <div className="space-y-4">
+            {transactionsByMonth.map(({ label, transactions: monthTxns }) => (
+              <div key={label}>
+                <div className="text-xs font-medium text-text-secondary mb-2">{label}</div>
+                <div className="space-y-2">
+                  {monthTxns.map((txn) => {
+                    const dateValue = txn.date;
+                    const date = typeof dateValue === 'object' && 'toDate' in dateValue && dateValue.toDate
+                      ? dateValue.toDate()
+                      : new Date(dateValue as Date);
+                    const isContribution = txn.type === 'contribution';
+
+                    return (
+                      <div
+                        key={txn.id}
+                        className="flex items-center gap-3 py-2 border-b border-border/50 last:border-0"
+                      >
+                        {txn.receipt && (
+                          <img
+                            src={txn.receipt.thumbnailUrl || txn.receipt.imageUrl}
+                            alt="Receipt"
+                            className="w-12 h-12 rounded object-cover cursor-pointer hover:opacity-80"
+                            onClick={() => window.open(txn.receipt?.imageUrl, '_blank')}
+                          />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-text-primary">
+                            {date.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })}
+                          </p>
+                          <p className="text-xs text-text-secondary truncate">
+                            {isContribution ? 'Contribution' : 'Payment'} - {txn.description}
+                          </p>
+                          {txn.contributorName && (
+                            <p className="text-xs text-text-secondary/70">From: {txn.contributorName}</p>
+                          )}
+                        </div>
+                        <span className={`text-sm font-mono font-medium ${isContribution ? 'text-primary' : 'text-error'}`}>
+                          {isContribution ? '+' : '-'}{formatAmount(txn.amount)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// EditContributionForm Component
+// ============================================================================
+
+interface EditContributionFormProps {
+  contribution: { id: string; amount: number; note?: string; date?: { toDate?: () => Date } };
+  onSave: (data: Record<string, unknown>) => void;
+  onCancel: () => void;
+  saving: boolean;
+}
+
+export function EditContributionForm({ contribution, onSave, onCancel, saving }: EditContributionFormProps) {
+  const date = contribution.date?.toDate?.() ?? new Date();
+  const [amount, setAmount] = useState(contribution.amount);
+  const [note, setNote] = useState(contribution.note || '');
+  const [dateValue, setDateValue] = useState(date.toISOString().split('T')[0]);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSave({ amount, note, date: dateValue });
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="p-2 rounded-lg bg-background border border-border space-y-2">
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="block text-xs text-text-secondary mb-1">Amount</label>
+          <CurrencyInput value={amount} onChange={setAmount} />
+        </div>
+        <div>
+          <label className="block text-xs text-text-secondary mb-1">Date</label>
+          <input
+            type="date"
+            value={dateValue}
+            onChange={(e) => setDateValue(e.target.value)}
+            className="w-full px-2 py-1.5 text-sm rounded border border-border bg-surface text-text-primary"
+          />
+        </div>
+      </div>
+      <div>
+        <label className="block text-xs text-text-secondary mb-1">Note</label>
+        <input
+          type="text"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          className="w-full px-2 py-1.5 text-sm rounded border border-border bg-surface text-text-primary"
+        />
+      </div>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="flex-1 py-1.5 rounded border border-border text-text-secondary text-xs"
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          disabled={saving || amount <= 0}
+          className="flex-1 py-1.5 rounded bg-primary text-background font-medium text-xs disabled:opacity-50"
+        >
+          {saving ? 'Saving...' : 'Save'}
+        </button>
+      </div>
+    </form>
+  );
+}
