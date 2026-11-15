@@ -91,8 +91,11 @@ export async function POST(request: NextRequest) {
     // Get commitment IDs being spawned
     const commitmentIds = commitments.map(c => (c as { id: string }).id);
 
-    // Find unpaid items from previous cycles for these commitments and mark them skipped
-    // This prevents duplicates when new cycle items are created
+    // Track cycles that need totals recalculated
+    const cyclesToRecalculate = new Set<string>();
+
+    // Find unpaid items from previous cycles for these commitments and mark them PAID
+    // When a new cycle starts (payday), all previous items are considered paid
     // Firestore 'in' queries support max 30 items, so we chunk
     const chunkSize = 30;
     for (let i = 0; i < commitmentIds.length; i += chunkSize) {
@@ -103,17 +106,59 @@ export async function POST(request: NextRequest) {
         .where('status', 'in', ['upcoming', 'due'])
         .get();
 
-      // Mark old unpaid items as skipped (they're being replaced by new cycle items)
+      // Mark old unpaid items as PAID (closing them when new cycle starts)
       for (const doc of unpaidItemsSnap.docs) {
         const item = doc.data();
-        // Only skip items from OTHER cycles (not this one, though it shouldn't exist yet)
+        // Only close items from OTHER cycles (not this one)
         if (item.cycleId !== id) {
+          // Get the old cycle's endDate to use as paidDate
+          const oldCycleSnap = await db.collection(`users/${userId}/cycles`).doc(item.cycleId).get();
+          const oldCycle = oldCycleSnap.data();
+          const paidDate = oldCycle?.endDate || Timestamp.fromDate(new Date(startDate));
+
           batch.update(doc.ref, {
-            status: 'skipped',
+            status: 'paid',
+            paidDate,
+            totalPaidAmount: item.amount || 0,
             updatedAt: now,
           });
+          cyclesToRecalculate.add(item.cycleId);
         }
       }
+    }
+
+    // Recalculate totals for affected previous cycles
+    for (const oldCycleId of cyclesToRecalculate) {
+      const oldCycleItemsSnap = await db
+        .collection(`users/${userId}/cycleItems`)
+        .where('cycleId', '==', oldCycleId)
+        .get();
+
+      let totalCommitted = 0;
+      let totalPaid = 0;
+      let itemCount = 0;
+      let paidCount = 0;
+
+      for (const itemDoc of oldCycleItemsSnap.docs) {
+        const item = itemDoc.data();
+        if (item.status === 'skipped') continue;
+
+        totalCommitted += item.amount || 0;
+        itemCount++;
+
+        if (item.status === 'paid' || item.status === 'partial') {
+          totalPaid += item.totalPaidAmount || item.amount || 0;
+          if (item.status === 'paid') paidCount++;
+        }
+      }
+
+      batch.update(db.collection(`users/${userId}/cycles`).doc(oldCycleId), {
+        totalCommitted,
+        totalPaid,
+        itemCount,
+        paidCount,
+        updatedAt: now,
+      });
     }
 
     // Spawn new items for this cycle
