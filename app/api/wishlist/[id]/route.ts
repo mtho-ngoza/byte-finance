@@ -11,26 +11,34 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await withAuth(request);
-  if (auth instanceof NextResponse) return auth;
-  const { userId } = auth;
-  const { id } = await params;
+  try {
+    const auth = await withAuth(request);
+    if (auth instanceof NextResponse) return auth;
+    const { userId } = auth;
+    const { id } = await params;
 
-  const db = getAdminDb();
-  const doc = await db.doc(`users/${userId}/wishlist/${id}`).get();
+    const db = getAdminDb();
+    const doc = await db.doc(`users/${userId}/wishlist/${id}`).get();
 
-  if (!doc.exists) {
-    return NextResponse.json({ error: 'Wishlist item not found' }, { status: 404 });
+    if (!doc.exists) {
+      return NextResponse.json({ error: 'Wishlist item not found' }, { status: 404 });
+    }
+
+    const data = doc.data()!;
+    return NextResponse.json({
+      id: doc.id,
+      ...data,
+      createdAt: data.createdAt?.toDate?.()?.toISOString() ?? null,
+      updatedAt: data.updatedAt?.toDate?.()?.toISOString() ?? null,
+      completedAt: data.completedAt?.toDate?.()?.toISOString() ?? null,
+    });
+  } catch (error) {
+    console.error('Error fetching wishlist item:', error);
+    return NextResponse.json(
+      { error: 'Failed to fetch wishlist item' },
+      { status: 500 }
+    );
   }
-
-  const data = doc.data()!;
-  return NextResponse.json({
-    id: doc.id,
-    ...data,
-    createdAt: data.createdAt?.toDate?.()?.toISOString() ?? null,
-    updatedAt: data.updatedAt?.toDate?.()?.toISOString() ?? null,
-    completedAt: data.completedAt?.toDate?.()?.toISOString() ?? null,
-  });
 }
 
 /**
@@ -41,97 +49,105 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await withAuth(request);
-  if (auth instanceof NextResponse) return auth;
-  const { userId } = auth;
-  const { id } = await params;
+  try {
+    const auth = await withAuth(request);
+    if (auth instanceof NextResponse) return auth;
+    const { userId } = auth;
+    const { id } = await params;
 
-  const body = await request.json();
-  const {
-    title,
-    description,
-    type,
-    targetYear,
-    targetYearEnd,
-    linkedGoalId,
-    linkedCommitmentId,
-    targetAmount,
-    progress,
-    status,
-    priority,
-    carriedFromYear,
-  } = body;
+    const body = await request.json();
+    const {
+      title,
+      description,
+      type,
+      targetYear,
+      targetYearEnd,
+      linkedGoalId,
+      linkedCommitmentId,
+      targetAmount,
+      progress,
+      status,
+      priority,
+      carriedFromYear,
+    } = body;
 
-  const db = getAdminDb();
-  const docRef = db.doc(`users/${userId}/wishlist/${id}`);
-  const doc = await docRef.get();
+    const db = getAdminDb();
+    const docRef = db.doc(`users/${userId}/wishlist/${id}`);
+    const doc = await docRef.get();
 
-  if (!doc.exists) {
-    return NextResponse.json({ error: 'Wishlist item not found' }, { status: 404 });
-  }
-
-  const updates: Record<string, unknown> = {
-    updatedAt: FieldValue.serverTimestamp(),
-  };
-
-  if (title !== undefined) updates.title = title;
-  if (description !== undefined) updates.description = description;
-  if (type !== undefined) updates.type = type;
-  if (targetYear !== undefined) updates.targetYear = targetYear;
-  if (targetYearEnd !== undefined) updates.targetYearEnd = targetYearEnd;
-  if (linkedGoalId !== undefined) updates.linkedGoalId = linkedGoalId;
-  if (linkedCommitmentId !== undefined) updates.linkedCommitmentId = linkedCommitmentId;
-  if (targetAmount !== undefined) updates.targetAmount = targetAmount;
-  if (progress !== undefined) updates.progress = progress;
-  if (priority !== undefined) updates.priority = priority;
-  if (carriedFromYear !== undefined) updates.carriedFromYear = carriedFromYear;
-
-  if (status !== undefined) {
-    updates.status = status;
-    if (status === 'completed') {
-      updates.completedAt = FieldValue.serverTimestamp();
-      updates.progress = 100;
+    if (!doc.exists) {
+      return NextResponse.json({ error: 'Wishlist item not found' }, { status: 404 });
     }
-  }
 
-  // If linking to a goal, calculate progress from contributions
-  if (linkedGoalId) {
-    const goalDoc = await db.doc(`users/${userId}/goals/${linkedGoalId}`).get();
-    if (goalDoc.exists) {
-      const goal = goalDoc.data()!;
-      // Calculate balance from contributions (accurate, not stale)
-      const contributions = goal.contributions ?? [];
-      const calculatedBalance = contributions.reduce(
-        (sum: number, c: { amount: number }) => sum + c.amount,
-        0
-      );
-      updates.currentAmount = calculatedBalance;
-      if (goal.targetAmount > 0) {
-        updates.progress = Math.min(100, Math.round((calculatedBalance / goal.targetAmount) * 100));
-      }
-      updates.targetAmount = goal.targetAmount;
+    const updates: Record<string, unknown> = {
+      updatedAt: FieldValue.serverTimestamp(),
+    };
 
-      // Auto-complete if goal is completed
-      if (goal.status === 'completed') {
-        updates.status = 'completed';
-        updates.progress = 100;
+    if (title !== undefined) updates.title = title;
+    if (description !== undefined) updates.description = description;
+    if (type !== undefined) updates.type = type;
+    if (targetYear !== undefined) updates.targetYear = targetYear;
+    if (targetYearEnd !== undefined) updates.targetYearEnd = targetYearEnd;
+    if (linkedGoalId !== undefined) updates.linkedGoalId = linkedGoalId;
+    if (linkedCommitmentId !== undefined) updates.linkedCommitmentId = linkedCommitmentId;
+    if (targetAmount !== undefined) updates.targetAmount = targetAmount;
+    if (progress !== undefined) updates.progress = progress;
+    if (priority !== undefined) updates.priority = priority;
+    if (carriedFromYear !== undefined) updates.carriedFromYear = carriedFromYear;
+
+    if (status !== undefined) {
+      updates.status = status;
+      if (status === 'completed') {
         updates.completedAt = FieldValue.serverTimestamp();
+        updates.progress = 100;
       }
     }
+
+    // If linking to a goal, calculate progress from contributions
+    if (linkedGoalId) {
+      const goalDoc = await db.doc(`users/${userId}/goals/${linkedGoalId}`).get();
+      if (goalDoc.exists) {
+        const goal = goalDoc.data()!;
+        // Calculate balance from contributions (accurate, not stale)
+        const contributions = goal.contributions ?? [];
+        const calculatedBalance = contributions.reduce(
+          (sum: number, c: { amount: number }) => sum + c.amount,
+          0
+        );
+        updates.currentAmount = calculatedBalance;
+        if (goal.targetAmount > 0) {
+          updates.progress = Math.min(100, Math.round((calculatedBalance / goal.targetAmount) * 100));
+        }
+        updates.targetAmount = goal.targetAmount;
+
+        // Auto-complete if goal is completed
+        if (goal.status === 'completed') {
+          updates.status = 'completed';
+          updates.progress = 100;
+          updates.completedAt = FieldValue.serverTimestamp();
+        }
+      }
+    }
+
+    await docRef.update(updates);
+
+    const updated = await docRef.get();
+    const data = updated.data()!;
+
+    return NextResponse.json({
+      id: updated.id,
+      ...data,
+      createdAt: data.createdAt?.toDate?.()?.toISOString() ?? null,
+      updatedAt: data.updatedAt?.toDate?.()?.toISOString() ?? null,
+      completedAt: data.completedAt?.toDate?.()?.toISOString() ?? null,
+    });
+  } catch (error) {
+    console.error('Error updating wishlist item:', error);
+    return NextResponse.json(
+      { error: 'Failed to update wishlist item' },
+      { status: 500 }
+    );
   }
-
-  await docRef.update(updates);
-
-  const updated = await docRef.get();
-  const data = updated.data()!;
-
-  return NextResponse.json({
-    id: updated.id,
-    ...data,
-    createdAt: data.createdAt?.toDate?.()?.toISOString() ?? null,
-    updatedAt: data.updatedAt?.toDate?.()?.toISOString() ?? null,
-    completedAt: data.completedAt?.toDate?.()?.toISOString() ?? null,
-  });
 }
 
 /**
@@ -142,20 +158,28 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await withAuth(request);
-  if (auth instanceof NextResponse) return auth;
-  const { userId } = auth;
-  const { id } = await params;
+  try {
+    const auth = await withAuth(request);
+    if (auth instanceof NextResponse) return auth;
+    const { userId } = auth;
+    const { id } = await params;
 
-  const db = getAdminDb();
-  const docRef = db.doc(`users/${userId}/wishlist/${id}`);
-  const doc = await docRef.get();
+    const db = getAdminDb();
+    const docRef = db.doc(`users/${userId}/wishlist/${id}`);
+    const doc = await docRef.get();
 
-  if (!doc.exists) {
-    return NextResponse.json({ error: 'Wishlist item not found' }, { status: 404 });
+    if (!doc.exists) {
+      return NextResponse.json({ error: 'Wishlist item not found' }, { status: 404 });
+    }
+
+    await docRef.delete();
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting wishlist item:', error);
+    return NextResponse.json(
+      { error: 'Failed to delete wishlist item' },
+      { status: 500 }
+    );
   }
-
-  await docRef.delete();
-
-  return NextResponse.json({ success: true });
 }

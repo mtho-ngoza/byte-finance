@@ -4,27 +4,36 @@ import { getAdminDb } from '@/lib/firebase-admin';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 
 export async function GET(request: NextRequest) {
-  const auth = await withAuth(request);
-  if (auth instanceof NextResponse) return auth;
-  const { userId } = auth;
+  try {
+    const auth = await withAuth(request);
+    if (auth instanceof NextResponse) return auth;
+    const { userId } = auth;
 
-  const db = getAdminDb();
-  const snap = await db
-    .collection(`users/${userId}/cycles`)
-    .orderBy('startDate', 'desc')
-    .limit(12)
-    .get();
+    const db = getAdminDb();
+    const snap = await db
+      .collection(`users/${userId}/cycles`)
+      .orderBy('startDate', 'desc')
+      .limit(12)
+      .get();
 
-  const cycles = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-  return NextResponse.json({ cycles });
+    const cycles = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    return NextResponse.json({ cycles });
+  } catch (error) {
+    console.error('Error fetching cycles:', error);
+    return NextResponse.json(
+      { error: 'Failed to fetch cycles' },
+      { status: 500 }
+    );
+  }
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await withAuth(request);
-  if (auth instanceof NextResponse) return auth;
-  const { userId } = auth;
+  try {
+    const auth = await withAuth(request);
+    if (auth instanceof NextResponse) return auth;
+    const { userId } = auth;
 
-  const body = await request.json();
+    const body = await request.json();
   const { id, startDate, endDate, income, status, skipSpawn } = body;
 
   if (!id || !startDate || !endDate) {
@@ -223,5 +232,12 @@ export async function POST(request: NextRequest) {
   }
 
   const created = await cycleRef.get();
-  return NextResponse.json({ id, ...created.data() }, { status: 201 });
+    return NextResponse.json({ id, ...created.data() }, { status: 201 });
+  } catch (error) {
+    console.error('Error creating cycle:', error);
+    return NextResponse.json(
+      { error: 'Failed to create cycle' },
+      { status: 500 }
+    );
+  }
 }

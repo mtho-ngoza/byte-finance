@@ -8,95 +8,172 @@ interface RouteParams {
 }
 
 export async function PATCH(request: NextRequest, { params }: RouteParams) {
-  const auth = await withAuth(request);
-  if (auth instanceof NextResponse) return auth;
-  const { userId } = auth;
+  try {
+    const auth = await withAuth(request);
+    if (auth instanceof NextResponse) return auth;
+    const { userId } = auth;
 
-  const { id } = await params;
-  const body = await request.json();
+    const { id } = await params;
+    const body = await request.json();
 
-  const db = getAdminDb();
-  const ref = db.collection(`users/${userId}/cycleItems`).doc(id);
+    const db = getAdminDb();
+    const ref = db.collection(`users/${userId}/cycleItems`).doc(id);
 
-  const doc = await ref.get();
-  if (!doc.exists) {
-    return NextResponse.json({ error: 'CycleItem not found' }, { status: 404 });
-  }
+    const doc = await ref.get();
+    if (!doc.exists) {
+      return NextResponse.json({ error: 'CycleItem not found' }, { status: 404 });
+    }
 
-  const currentData = doc.data()!;
-  const previousStatus = currentData.status;
-  const newStatus = body.status;
-  const now = FieldValue.serverTimestamp();
+    const currentData = doc.data()!;
+    const previousStatus = currentData.status;
+    const newStatus = body.status;
+    const now = FieldValue.serverTimestamp();
 
-  // Allow backdating paidDate for seeding historical data
-  const providedPaidDate = body.paidDate ? new Date(body.paidDate) : null;
+    // Allow backdating paidDate for seeding historical data
+    const providedPaidDate = body.paidDate ? new Date(body.paidDate) : null;
 
-  // Build update data (exclude paidDate from spread, we handle it separately)
-  const { paidDate: _, ...restBody } = body;
-  const updateData: Record<string, unknown> = {
-    ...restBody,
-    updatedAt: now,
-  };
-
-  // Set paidDate when marking as paid
-  if (newStatus === 'paid' && previousStatus !== 'paid') {
-    updateData.paidDate = providedPaidDate ?? now;
-  } else if (previousStatus === 'paid' && newStatus !== 'paid') {
-    updateData.paidDate = null;
-  }
-
-  await ref.update(updateData);
-
-  // Update cycle totals when status changes to/from paid
-  const cycleRef = db.collection(`users/${userId}/cycles`).doc(currentData.cycleId);
-
-  if (newStatus === 'paid' && previousStatus !== 'paid') {
-    await cycleRef.update({
-      totalPaid: FieldValue.increment(currentData.amount),
-      paidCount: FieldValue.increment(1),
+    // Build update data (exclude paidDate from spread, we handle it separately)
+    const { paidDate: _, ...restBody } = body;
+    const updateData: Record<string, unknown> = {
+      ...restBody,
       updatedAt: now,
-    });
+    };
 
-    // Smart linking: contribute to goal
-    if (currentData.linkedGoalId) {
-      const contributionDate = providedPaidDate ?? new Date();
-      const goalRef = db.collection(`users/${userId}/goals`).doc(currentData.linkedGoalId);
-      await goalRef.update({
-        currentAmount: FieldValue.increment(currentData.amount),
-        contributions: FieldValue.arrayUnion({
-          id: `${id}-status-${Date.now()}`,
-          date: contributionDate,
-          amount: currentData.amount,
-          cycleId: currentData.cycleId,
-          cycleItemId: id,
-        }),
+    // Set paidDate when marking as paid
+    if (newStatus === 'paid' && previousStatus !== 'paid') {
+      updateData.paidDate = providedPaidDate ?? now;
+    } else if (previousStatus === 'paid' && newStatus !== 'paid') {
+      updateData.paidDate = null;
+    }
+
+    await ref.update(updateData);
+
+    // Update cycle totals when status changes to/from paid
+    const cycleRef = db.collection(`users/${userId}/cycles`).doc(currentData.cycleId);
+
+    if (newStatus === 'paid' && previousStatus !== 'paid') {
+      await cycleRef.update({
+        totalPaid: FieldValue.increment(currentData.amount),
+        paidCount: FieldValue.increment(1),
         updatedAt: now,
       });
-    }
-  } else if (previousStatus === 'paid' && newStatus !== 'paid') {
-    await cycleRef.update({
-      totalPaid: FieldValue.increment(-currentData.amount),
-      paidCount: FieldValue.increment(-1),
-      updatedAt: now,
-    });
 
-    // Reverse goal contribution - remove from contributions array
-    if (currentData.linkedGoalId) {
-      const goalRef = db.collection(`users/${userId}/goals`).doc(currentData.linkedGoalId);
+      // Smart linking: contribute to goal
+      if (currentData.linkedGoalId) {
+        const contributionDate = providedPaidDate ?? new Date();
+        const goalRef = db.collection(`users/${userId}/goals`).doc(currentData.linkedGoalId);
+        await goalRef.update({
+          currentAmount: FieldValue.increment(currentData.amount),
+          contributions: FieldValue.arrayUnion({
+            id: `${id}-status-${Date.now()}`,
+            date: contributionDate,
+            amount: currentData.amount,
+            cycleId: currentData.cycleId,
+            cycleItemId: id,
+          }),
+          updatedAt: now,
+        });
+      }
+    } else if (previousStatus === 'paid' && newStatus !== 'paid') {
+      await cycleRef.update({
+        totalPaid: FieldValue.increment(-currentData.amount),
+        paidCount: FieldValue.increment(-1),
+        updatedAt: now,
+      });
+
+      // Reverse goal contribution - remove from contributions array
+      if (currentData.linkedGoalId) {
+        const goalRef = db.collection(`users/${userId}/goals`).doc(currentData.linkedGoalId);
+        const goalSnap = await goalRef.get();
+        if (goalSnap.exists) {
+          const goal = goalSnap.data()!;
+          const contributions: Array<{ id: string; cycleItemId?: string; amount: number; [key: string]: unknown }> = goal.contributions ?? [];
+          // Find contributions from this cycle item
+          // Match by cycleItemId OR by contribution ID prefix (for old data without cycleItemId)
+          const toRemove = contributions.filter((c) =>
+            c.cycleItemId === id || c.id.startsWith(`${id}-`)
+          );
+          const totalToRemove = toRemove.reduce((sum, c) => sum + c.amount, 0);
+          const updatedContributions = contributions.filter((c) =>
+            c.cycleItemId !== id && !c.id.startsWith(`${id}-`)
+          );
+          if (toRemove.length > 0) {
+            await goalRef.update({
+              contributions: updatedContributions,
+              currentAmount: FieldValue.increment(-totalToRemove),
+              updatedAt: now,
+            });
+          }
+        }
+      }
+    }
+
+    const updated = await ref.get();
+    return NextResponse.json({ id, ...updated.data() });
+  } catch (error) {
+    console.error('Error updating cycle item:', error);
+    return NextResponse.json(
+      { error: 'Failed to update cycle item' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(request: NextRequest, { params }: RouteParams) {
+  try {
+    const auth = await withAuth(request);
+    if (auth instanceof NextResponse) return auth;
+    const { userId } = auth;
+
+    const { id } = await params;
+
+    const db = getAdminDb();
+    const ref = db.collection(`users/${userId}/cycleItems`).doc(id);
+
+    const doc = await ref.get();
+    if (!doc.exists) {
+      return NextResponse.json({ error: 'CycleItem not found' }, { status: 404 });
+    }
+
+    const data = doc.data()!;
+    const now = FieldValue.serverTimestamp();
+
+    // Update cycle totals
+    const cycleRef = db.collection(`users/${userId}/cycles`).doc(data.cycleId);
+    const updates: Record<string, unknown> = {
+      totalCommitted: FieldValue.increment(-data.amount),
+      itemCount: FieldValue.increment(-1),
+      updatedAt: now,
+    };
+
+    if (data.status === 'paid' || data.status === 'partial') {
+      const paidAmount = data.totalPaidAmount ?? (data.status === 'paid' ? data.amount : 0);
+      if (paidAmount > 0) {
+        updates.totalPaid = FieldValue.increment(-paidAmount);
+      }
+      if (data.status === 'paid') {
+        updates.paidCount = FieldValue.increment(-1);
+      }
+    }
+
+    await cycleRef.update(updates);
+
+    // Remove goal contributions if linked
+    if (data.linkedGoalId) {
+      const goalRef = db.collection(`users/${userId}/goals`).doc(data.linkedGoalId);
       const goalSnap = await goalRef.get();
       if (goalSnap.exists) {
         const goal = goalSnap.data()!;
         const contributions: Array<{ id: string; cycleItemId?: string; amount: number; [key: string]: unknown }> = goal.contributions ?? [];
-        // Find contributions from this cycle item
         // Match by cycleItemId OR by contribution ID prefix (for old data without cycleItemId)
         const toRemove = contributions.filter((c) =>
           c.cycleItemId === id || c.id.startsWith(`${id}-`)
         );
         const totalToRemove = toRemove.reduce((sum, c) => sum + c.amount, 0);
-        const updatedContributions = contributions.filter((c) =>
-          c.cycleItemId !== id && !c.id.startsWith(`${id}-`)
-        );
         if (toRemove.length > 0) {
+          const updatedContributions = contributions.filter((c) =>
+            c.cycleItemId !== id && !c.id.startsWith(`${id}-`)
+          );
           await goalRef.update({
             contributions: updatedContributions,
             currentAmount: FieldValue.increment(-totalToRemove),
@@ -105,76 +182,15 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         }
       }
     }
+
+    await ref.delete();
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting cycle item:', error);
+    return NextResponse.json(
+      { error: 'Failed to delete cycle item' },
+      { status: 500 }
+    );
   }
-
-  const updated = await ref.get();
-  return NextResponse.json({ id, ...updated.data() });
-}
-
-export async function DELETE(request: NextRequest, { params }: RouteParams) {
-  const auth = await withAuth(request);
-  if (auth instanceof NextResponse) return auth;
-  const { userId } = auth;
-
-  const { id } = await params;
-
-  const db = getAdminDb();
-  const ref = db.collection(`users/${userId}/cycleItems`).doc(id);
-
-  const doc = await ref.get();
-  if (!doc.exists) {
-    return NextResponse.json({ error: 'CycleItem not found' }, { status: 404 });
-  }
-
-  const data = doc.data()!;
-  const now = FieldValue.serverTimestamp();
-
-  // Update cycle totals
-  const cycleRef = db.collection(`users/${userId}/cycles`).doc(data.cycleId);
-  const updates: Record<string, unknown> = {
-    totalCommitted: FieldValue.increment(-data.amount),
-    itemCount: FieldValue.increment(-1),
-    updatedAt: now,
-  };
-
-  if (data.status === 'paid' || data.status === 'partial') {
-    const paidAmount = data.totalPaidAmount ?? (data.status === 'paid' ? data.amount : 0);
-    if (paidAmount > 0) {
-      updates.totalPaid = FieldValue.increment(-paidAmount);
-    }
-    if (data.status === 'paid') {
-      updates.paidCount = FieldValue.increment(-1);
-    }
-  }
-
-  await cycleRef.update(updates);
-
-  // Remove goal contributions if linked
-  if (data.linkedGoalId) {
-    const goalRef = db.collection(`users/${userId}/goals`).doc(data.linkedGoalId);
-    const goalSnap = await goalRef.get();
-    if (goalSnap.exists) {
-      const goal = goalSnap.data()!;
-      const contributions: Array<{ id: string; cycleItemId?: string; amount: number; [key: string]: unknown }> = goal.contributions ?? [];
-      // Match by cycleItemId OR by contribution ID prefix (for old data without cycleItemId)
-      const toRemove = contributions.filter((c) =>
-        c.cycleItemId === id || c.id.startsWith(`${id}-`)
-      );
-      const totalToRemove = toRemove.reduce((sum, c) => sum + c.amount, 0);
-      if (toRemove.length > 0) {
-        const updatedContributions = contributions.filter((c) =>
-          c.cycleItemId !== id && !c.id.startsWith(`${id}-`)
-        );
-        await goalRef.update({
-          contributions: updatedContributions,
-          currentAmount: FieldValue.increment(-totalToRemove),
-          updatedAt: now,
-        });
-      }
-    }
-  }
-
-  await ref.delete();
-
-  return NextResponse.json({ success: true });
 }

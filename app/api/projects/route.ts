@@ -9,23 +9,31 @@ import type { CreateProject } from '@/types';
  * List projects for the authenticated user (limit 100)
  */
 export async function GET(request: NextRequest) {
-  const auth = await withAuth(request);
-  if (auth instanceof NextResponse) return auth;
-  const { userId } = auth;
+  try {
+    const auth = await withAuth(request);
+    if (auth instanceof NextResponse) return auth;
+    const { userId } = auth;
 
-  const db = getAdminDb();
-  const snapshot = await db
-    .collection(`users/${userId}/projects`)
-    .orderBy('createdAt', 'desc')
-    .limit(100)
-    .get();
+    const db = getAdminDb();
+    const snapshot = await db
+      .collection(`users/${userId}/projects`)
+      .orderBy('createdAt', 'desc')
+      .limit(100)
+      .get();
 
-  const projects = snapshot.docs.map((doc) => ({
-    id: doc.id,
-    ...doc.data(),
-  }));
+    const projects = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
 
-  return NextResponse.json({ projects });
+    return NextResponse.json({ projects });
+  } catch (error) {
+    console.error('Error fetching projects:', error);
+    return NextResponse.json(
+      { error: 'Failed to fetch projects' },
+      { status: 500 }
+    );
+  }
 }
 
 /**
@@ -33,39 +41,47 @@ export async function GET(request: NextRequest) {
  * Create a new project
  */
 export async function POST(request: NextRequest) {
-  const auth = await withAuth(request);
-  if (auth instanceof NextResponse) return auth;
-  const { userId } = auth;
+  try {
+    const auth = await withAuth(request);
+    if (auth instanceof NextResponse) return auth;
+    const { userId } = auth;
 
-  const body: CreateProject = await request.json();
+    const body: CreateProject = await request.json();
 
-  // Validate required fields
-  if (!body.name?.trim()) {
-    return NextResponse.json({ error: 'Project name is required' }, { status: 400 });
+    // Validate required fields
+    if (!body.name?.trim()) {
+      return NextResponse.json({ error: 'Project name is required' }, { status: 400 });
+    }
+
+    if (!['construction', 'family', 'event', 'other'].includes(body.type)) {
+      return NextResponse.json({ error: 'Invalid project type' }, { status: 400 });
+    }
+
+    const db = getAdminDb();
+    const now = FieldValue.serverTimestamp();
+
+    const projectData = {
+      name: body.name.trim(),
+      description: body.description?.trim() || null,
+      type: body.type,
+      currentAmount: 0, // Start with empty pool
+      targetAmount: body.targetAmount || null,
+      transactions: [], // Empty transaction history
+      status: body.status || 'active',
+      priority: body.priority || 'medium',
+      notes: body.notes?.trim() || null,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    const docRef = await db.collection(`users/${userId}/projects`).add(projectData);
+
+    return NextResponse.json({ id: docRef.id, ...projectData }, { status: 201 });
+  } catch (error) {
+    console.error('Error creating project:', error);
+    return NextResponse.json(
+      { error: 'Failed to create project' },
+      { status: 500 }
+    );
   }
-
-  if (!['construction', 'family', 'event', 'other'].includes(body.type)) {
-    return NextResponse.json({ error: 'Invalid project type' }, { status: 400 });
-  }
-
-  const db = getAdminDb();
-  const now = FieldValue.serverTimestamp();
-
-  const projectData = {
-    name: body.name.trim(),
-    description: body.description?.trim() || null,
-    type: body.type,
-    currentAmount: 0, // Start with empty pool
-    targetAmount: body.targetAmount || null,
-    transactions: [], // Empty transaction history
-    status: body.status || 'active',
-    priority: body.priority || 'medium',
-    notes: body.notes?.trim() || null,
-    createdAt: now,
-    updatedAt: now,
-  };
-
-  const docRef = await db.collection(`users/${userId}/projects`).add(projectData);
-
-  return NextResponse.json({ id: docRef.id, ...projectData }, { status: 201 });
 }

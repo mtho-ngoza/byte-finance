@@ -9,33 +9,42 @@ interface RouteParams {
 }
 
 export async function GET(request: NextRequest, { params }: RouteParams) {
-  const auth = await withAuth(request);
-  if (auth instanceof NextResponse) return auth;
-  const { userId } = auth;
+  try {
+    const auth = await withAuth(request);
+    if (auth instanceof NextResponse) return auth;
+    const { userId } = auth;
 
-  const { id } = await params;
+    const { id } = await params;
 
-  const db = getAdminDb();
-  const ref = db.collection(`users/${userId}/cycles`).doc(id);
-  const doc = await ref.get();
+    const db = getAdminDb();
+    const ref = db.collection(`users/${userId}/cycles`).doc(id);
+    const doc = await ref.get();
 
-  if (!doc.exists) {
-    return NextResponse.json({ error: 'Cycle not found' }, { status: 404 });
+    if (!doc.exists) {
+      return NextResponse.json({ error: 'Cycle not found' }, { status: 404 });
+    }
+
+    return NextResponse.json({ id, ...doc.data() });
+  } catch (error) {
+    console.error('Error fetching cycle:', error);
+    return NextResponse.json(
+      { error: 'Failed to fetch cycle' },
+      { status: 500 }
+    );
   }
-
-  return NextResponse.json({ id, ...doc.data() });
 }
 
 export async function PATCH(request: NextRequest, { params }: RouteParams) {
-  const auth = await withAuth(request);
-  if (auth instanceof NextResponse) return auth;
-  const { userId } = auth;
+  try {
+    const auth = await withAuth(request);
+    if (auth instanceof NextResponse) return auth;
+    const { userId } = auth;
 
-  const { id } = await params;
-  const body = await request.json();
+    const { id } = await params;
+    const body = await request.json();
 
-  const db = getAdminDb();
-  const ref = db.collection(`users/${userId}/cycles`).doc(id);
+    const db = getAdminDb();
+    const ref = db.collection(`users/${userId}/cycles`).doc(id);
 
   const doc = await ref.get();
   if (!doc.exists) {
@@ -207,19 +216,27 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
   await ref.update(updateData);
 
-  const updated = await ref.get();
-  return NextResponse.json({ id, ...updated.data() });
+    const updated = await ref.get();
+    return NextResponse.json({ id, ...updated.data() });
+  } catch (error) {
+    console.error('Error updating cycle:', error);
+    return NextResponse.json(
+      { error: 'Failed to update cycle' },
+      { status: 500 }
+    );
+  }
 }
 
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
-  const auth = await withAuth(request);
-  if (auth instanceof NextResponse) return auth;
-  const { userId } = auth;
+  try {
+    const auth = await withAuth(request);
+    if (auth instanceof NextResponse) return auth;
+    const { userId } = auth;
 
-  const { id } = await params;
+    const { id } = await params;
 
-  const db = getAdminDb();
-  const ref = db.collection(`users/${userId}/cycles`).doc(id);
+    const db = getAdminDb();
+    const ref = db.collection(`users/${userId}/cycles`).doc(id);
 
   const doc = await ref.get();
   if (!doc.exists) {
@@ -269,7 +286,14 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     batch.delete(itemDoc.ref);
   });
   batch.delete(ref);
-  await batch.commit();
+    await batch.commit();
 
-  return NextResponse.json({ success: true, deletedItems: itemsSnap.size });
+    return NextResponse.json({ success: true, deletedItems: itemsSnap.size });
+  } catch (error) {
+    console.error('Error deleting cycle:', error);
+    return NextResponse.json(
+      { error: 'Failed to delete cycle' },
+      { status: 500 }
+    );
+  }
 }

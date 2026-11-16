@@ -11,19 +11,27 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await withAuth(request);
-  if (auth instanceof NextResponse) return auth;
-  const { userId } = auth;
+  try {
+    const auth = await withAuth(request);
+    if (auth instanceof NextResponse) return auth;
+    const { userId } = auth;
 
-  const { id } = await params;
-  const db = getAdminDb();
-  const doc = await db.collection(`users/${userId}/projects`).doc(id).get();
+    const { id } = await params;
+    const db = getAdminDb();
+    const doc = await db.collection(`users/${userId}/projects`).doc(id).get();
 
-  if (!doc.exists) {
-    return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+    if (!doc.exists) {
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+    }
+
+    return NextResponse.json({ id: doc.id, ...doc.data() });
+  } catch (error) {
+    console.error('Error fetching project:', error);
+    return NextResponse.json(
+      { error: 'Failed to fetch project' },
+      { status: 500 }
+    );
   }
-
-  return NextResponse.json({ id: doc.id, ...doc.data() });
 }
 
 /**
@@ -34,43 +42,51 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await withAuth(request);
-  if (auth instanceof NextResponse) return auth;
-  const { userId } = auth;
+  try {
+    const auth = await withAuth(request);
+    if (auth instanceof NextResponse) return auth;
+    const { userId } = auth;
 
-  const { id } = await params;
-  const body = await request.json();
+    const { id } = await params;
+    const body = await request.json();
 
-  const db = getAdminDb();
-  const docRef = db.collection(`users/${userId}/projects`).doc(id);
-  const doc = await docRef.get();
+    const db = getAdminDb();
+    const docRef = db.collection(`users/${userId}/projects`).doc(id);
+    const doc = await docRef.get();
 
-  if (!doc.exists) {
-    return NextResponse.json({ error: 'Project not found' }, { status: 404 });
-  }
-
-  // Build update object - only update provided fields
-  const updateData: Record<string, unknown> = {
-    updatedAt: FieldValue.serverTimestamp(),
-  };
-
-  if (body.name !== undefined) updateData.name = body.name.trim();
-  if (body.description !== undefined) updateData.description = body.description?.trim() || null;
-  if (body.type !== undefined) updateData.type = body.type;
-  if (body.targetAmount !== undefined) updateData.targetAmount = body.targetAmount;
-  if (body.status !== undefined) {
-    updateData.status = body.status;
-    if (body.status === 'completed') {
-      updateData.completedAt = FieldValue.serverTimestamp();
+    if (!doc.exists) {
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
+
+    // Build update object - only update provided fields
+    const updateData: Record<string, unknown> = {
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+
+    if (body.name !== undefined) updateData.name = body.name.trim();
+    if (body.description !== undefined) updateData.description = body.description?.trim() || null;
+    if (body.type !== undefined) updateData.type = body.type;
+    if (body.targetAmount !== undefined) updateData.targetAmount = body.targetAmount;
+    if (body.status !== undefined) {
+      updateData.status = body.status;
+      if (body.status === 'completed') {
+        updateData.completedAt = FieldValue.serverTimestamp();
+      }
+    }
+    if (body.priority !== undefined) updateData.priority = body.priority;
+    if (body.notes !== undefined) updateData.notes = body.notes?.trim() || null;
+
+    await docRef.update(updateData);
+
+    const updated = await docRef.get();
+    return NextResponse.json({ id: updated.id, ...updated.data() });
+  } catch (error) {
+    console.error('Error updating project:', error);
+    return NextResponse.json(
+      { error: 'Failed to update project' },
+      { status: 500 }
+    );
   }
-  if (body.priority !== undefined) updateData.priority = body.priority;
-  if (body.notes !== undefined) updateData.notes = body.notes?.trim() || null;
-
-  await docRef.update(updateData);
-
-  const updated = await docRef.get();
-  return NextResponse.json({ id: updated.id, ...updated.data() });
 }
 
 /**
@@ -81,25 +97,33 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await withAuth(request);
-  if (auth instanceof NextResponse) return auth;
-  const { userId } = auth;
+  try {
+    const auth = await withAuth(request);
+    if (auth instanceof NextResponse) return auth;
+    const { userId } = auth;
 
-  const { id } = await params;
-  const db = getAdminDb();
-  const docRef = db.collection(`users/${userId}/projects`).doc(id);
-  const doc = await docRef.get();
+    const { id } = await params;
+    const db = getAdminDb();
+    const docRef = db.collection(`users/${userId}/projects`).doc(id);
+    const doc = await docRef.get();
 
-  if (!doc.exists) {
-    return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+    if (!doc.exists) {
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+    }
+
+    // Soft delete - archive instead of hard delete
+    await docRef.update({
+      status: 'archived',
+      archivedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting project:', error);
+    return NextResponse.json(
+      { error: 'Failed to delete project' },
+      { status: 500 }
+    );
   }
-
-  // Soft delete - archive instead of hard delete
-  await docRef.update({
-    status: 'archived',
-    archivedAt: FieldValue.serverTimestamp(),
-    updatedAt: FieldValue.serverTimestamp(),
-  });
-
-  return NextResponse.json({ success: true });
 }

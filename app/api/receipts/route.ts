@@ -89,68 +89,76 @@ export async function GET(request: NextRequest) {
  * Create a new receipt
  */
 export async function POST(request: NextRequest) {
-  const auth = await withAuth(request);
-  if (auth instanceof NextResponse) return auth;
-  const { userId } = auth;
+  try {
+    const auth = await withAuth(request);
+    if (auth instanceof NextResponse) return auth;
+    const { userId } = auth;
 
-  const body = await request.json();
-  const {
-    imageUrl,
-    originalImageUrl,
-    thumbnailUrl,
-    imageHash,
-    amountInCents,
-    vendor,
-    note,
-    location,
-    capturedAt,
-  } = body;
+    const body = await request.json();
+    const {
+      imageUrl,
+      originalImageUrl,
+      thumbnailUrl,
+      imageHash,
+      amountInCents,
+      vendor,
+      note,
+      location,
+      capturedAt,
+    } = body;
 
-  if (!imageUrl || !imageHash) {
+    if (!imageUrl || !imageHash) {
+      return NextResponse.json(
+        { error: 'imageUrl and imageHash are required' },
+        { status: 400 }
+      );
+    }
+
+    // Check for duplicate by hash
+    const db = getAdminDb();
+    const existingSnap = await db
+      .collection(`users/${userId}/receipts`)
+      .where('imageHash', '==', imageHash)
+      .limit(1)
+      .get();
+
+    if (!existingSnap.empty) {
+      return NextResponse.json(
+        { error: 'Duplicate receipt detected', existingId: existingSnap.docs[0].id },
+        { status: 409 }
+      );
+    }
+
+    const now = FieldValue.serverTimestamp();
+
+    // Compute needsAttention
+    const needsAttention = !amountInCents || !vendor;
+
+    const receiptData = {
+      imageUrl,
+      originalImageUrl: originalImageUrl ?? null,
+      thumbnailUrl: thumbnailUrl ?? null,
+      imageHash,
+      amountInCents: amountInCents ?? null,
+      vendor: vendor ?? null,
+      note: note ?? null,
+      location: location ?? null,
+      capturedAt: capturedAt ? new Date(capturedAt) : now,
+      needsAttention,
+      cycleItemId: null,
+      cycleId: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    const docRef = await db.collection(`users/${userId}/receipts`).add(receiptData);
+
+    return NextResponse.json({ id: docRef.id, ...receiptData }, { status: 201 });
+  } catch (error) {
+    console.error('Error creating receipt:', error);
     return NextResponse.json(
-      { error: 'imageUrl and imageHash are required' },
-      { status: 400 }
+      { error: 'Failed to create receipt' },
+      { status: 500 }
     );
   }
-
-  // Check for duplicate by hash
-  const db = getAdminDb();
-  const existingSnap = await db
-    .collection(`users/${userId}/receipts`)
-    .where('imageHash', '==', imageHash)
-    .limit(1)
-    .get();
-
-  if (!existingSnap.empty) {
-    return NextResponse.json(
-      { error: 'Duplicate receipt detected', existingId: existingSnap.docs[0].id },
-      { status: 409 }
-    );
-  }
-
-  const now = FieldValue.serverTimestamp();
-
-  // Compute needsAttention
-  const needsAttention = !amountInCents || !vendor;
-
-  const receiptData = {
-    imageUrl,
-    originalImageUrl: originalImageUrl ?? null,
-    thumbnailUrl: thumbnailUrl ?? null,
-    imageHash,
-    amountInCents: amountInCents ?? null,
-    vendor: vendor ?? null,
-    note: note ?? null,
-    location: location ?? null,
-    capturedAt: capturedAt ? new Date(capturedAt) : now,
-    needsAttention,
-    cycleItemId: null,
-    cycleId: null,
-    createdAt: now,
-    updatedAt: now,
-  };
-
-  const docRef = await db.collection(`users/${userId}/receipts`).add(receiptData);
-
-  return NextResponse.json({ id: docRef.id, ...receiptData }, { status: 201 });
 }
