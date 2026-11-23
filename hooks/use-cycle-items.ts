@@ -145,11 +145,21 @@ export function useCycleItems(cycleId: string | null, cycle?: Cycle | null): Use
     return paymentDate >= startDate && paymentDate <= endDate;
   };
 
+  // Apply optimistic updates to raw items BEFORE filtering
+  // This ensures items being reverted from paid→unpaid stay visible
+  const rawItemsWithOptimistic = useMemo(() => {
+    return rawItems.map((item) => optimisticItems.get(item.id) ?? item);
+  }, [rawItems, optimisticItems]);
+
+  const recentItemsWithOptimistic = useMemo(() => {
+    return allRecentItems.map((item) => optimisticItems.get(item.id) ?? item);
+  }, [allRecentItems, optimisticItems]);
+
   // Combine and filter items based on date range
   // Key rule: paid items appear in the cycle where they were PAID, not where they were planned
   const filteredItems = useMemo(() => {
     if (!cycle?.startDate || !cycle?.endDate) {
-      return rawItems; // Fallback to cycleId-based filtering
+      return rawItemsWithOptimistic; // Fallback to cycleId-based filtering
     }
 
     const startDate = cycle.startDate.toDate ? cycle.startDate.toDate() : new Date(cycle.startDate as unknown as string);
@@ -162,7 +172,8 @@ export function useCycleItems(cycleId: string | null, cycle?: Cycle | null): Use
     const itemMap = new Map<string, CycleItem>();
 
     // 1. Add UNPAID items from this cycle (planned items that haven't been paid yet)
-    for (const item of rawItems) {
+    // Also include items with payments but status reverted to upcoming (user may want to add more)
+    for (const item of rawItemsWithOptimistic) {
       if (item.status === 'upcoming' || item.status === 'due' || item.status === 'skipped') {
         itemMap.set(item.id, item);
       }
@@ -175,13 +186,13 @@ export function useCycleItems(cycleId: string | null, cycle?: Cycle | null): Use
     // First, collect all paid/partial items from both sources
     const allPaidItems = new Map<string, CycleItem>();
 
-    for (const item of rawItems) {
+    for (const item of rawItemsWithOptimistic) {
       if (item.status === 'paid' || item.status === 'partial') {
         allPaidItems.set(item.id, item);
       }
     }
 
-    for (const item of allRecentItems) {
+    for (const item of recentItemsWithOptimistic) {
       if (item.status === 'paid' || item.status === 'partial') {
         // allRecentItems may have fresher data, prefer it
         allPaidItems.set(item.id, item);
@@ -196,15 +207,13 @@ export function useCycleItems(cycleId: string | null, cycle?: Cycle | null): Use
     }
 
     return Array.from(itemMap.values()).sort((a, b) => a.label.localeCompare(b.label));
-  }, [rawItems, allRecentItems, cycle?.startDate, cycle?.endDate]);
+  }, [rawItemsWithOptimistic, recentItemsWithOptimistic, cycle?.startDate, cycle?.endDate]);
 
-  // Merge optimistic updates
-  const items = filteredItems
-    .map((item) => optimisticItems.get(item.id) ?? item)
-    .filter((item) => {
-      if (accountFilter === 'all') return true;
-      return item.accountType === accountFilter;
-    });
+  // Apply account filter
+  const items = filteredItems.filter((item) => {
+    if (accountFilter === 'all') return true;
+    return item.accountType === accountFilter;
+  });
 
   // Group by category
   const itemsByCategory = new Map<Category, CycleItem[]>();
