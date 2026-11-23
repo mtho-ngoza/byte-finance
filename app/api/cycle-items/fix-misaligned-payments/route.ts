@@ -11,6 +11,137 @@ interface Payment {
   receiptId?: string;
 }
 
+/**
+ * DELETE /api/cycle-items/fix-misaligned-payments
+ * Merge duplicate cycle items (same cycle + same commitment/label)
+ */
+export async function DELETE(request: NextRequest) {
+  try {
+    const auth = await withAuth(request);
+    if (auth instanceof NextResponse) return auth;
+    const { userId } = auth;
+
+    const url = new URL(request.url);
+    const dryRun = url.searchParams.get('dryRun') !== 'false';
+
+    const db = getAdminDb();
+
+    // Get all cycle items
+    const itemsSnap = await db
+      .collection(`users/${userId}/cycleItems`)
+      .get();
+
+    // Group items by cycle + commitment/label
+    const groups = new Map<string, Array<{ doc: FirebaseFirestore.QueryDocumentSnapshot; data: FirebaseFirestore.DocumentData }>>();
+
+    for (const doc of itemsSnap.docs) {
+      const data = doc.data();
+      const key = `${data.cycleId}:${data.commitmentId || ''}:${data.label}`;
+      if (!groups.has(key)) {
+        groups.set(key, []);
+      }
+      groups.get(key)!.push({ doc, data });
+    }
+
+    // Find duplicates (groups with more than 1 item)
+    const duplicateGroups: Array<{
+      key: string;
+      cycleId: string;
+      label: string;
+      items: Array<{ id: string; paymentsCount: number; totalPaid: number }>;
+    }> = [];
+
+    for (const [key, items] of groups) {
+      if (items.length > 1) {
+        const [cycleId, , label] = key.split(':');
+        duplicateGroups.push({
+          key,
+          cycleId,
+          label: label || items[0].data.label,
+          items: items.map(i => ({
+            id: i.doc.id,
+            paymentsCount: (i.data.payments ?? []).length,
+            totalPaid: i.data.totalPaidAmount ?? 0,
+          })),
+        });
+      }
+    }
+
+    if (duplicateGroups.length === 0) {
+      return NextResponse.json({
+        dryRun,
+        message: 'No duplicate items found.',
+        mergedCount: 0,
+        deletedCount: 0,
+      });
+    }
+
+    if (dryRun) {
+      return NextResponse.json({
+        dryRun: true,
+        message: `Found ${duplicateGroups.length} groups of duplicate items. Add ?dryRun=false to merge them.`,
+        duplicateGroups,
+      });
+    }
+
+    // Merge duplicates
+    const batch = db.batch();
+    let mergedCount = 0;
+    let deletedCount = 0;
+
+    for (const [key, items] of groups) {
+      if (items.length <= 1) continue;
+
+      // Keep the first item, merge others into it
+      const [primary, ...duplicates] = items;
+      const primaryPayments: Payment[] = primary.data.payments ?? [];
+
+      // Collect all payments from duplicates
+      for (const dup of duplicates) {
+        const dupPayments: Payment[] = dup.data.payments ?? [];
+        primaryPayments.push(...dupPayments);
+
+        // Delete the duplicate
+        batch.delete(dup.doc.ref);
+        deletedCount++;
+      }
+
+      // Update the primary item with merged payments
+      const totalPaid = primaryPayments.reduce((sum, p) => sum + p.amount, 0);
+      batch.update(primary.doc.ref, {
+        payments: primaryPayments,
+        totalPaidAmount: totalPaid,
+        status: totalPaid >= primary.data.amount ? 'paid' : (totalPaid > 0 ? 'partial' : 'upcoming'),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      mergedCount++;
+
+      // Update cycle totals (reduce item count for deleted items)
+      const cycleRef = db.collection(`users/${userId}/cycles`).doc(primary.data.cycleId);
+      batch.update(cycleRef, {
+        itemCount: FieldValue.increment(-duplicates.length),
+        totalCommitted: FieldValue.increment(-duplicates.length * primary.data.amount),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
+
+    await batch.commit();
+
+    return NextResponse.json({
+      dryRun: false,
+      message: `Merged ${mergedCount} groups, deleted ${deletedCount} duplicate items.`,
+      mergedCount,
+      deletedCount,
+    });
+  } catch (error) {
+    console.error('Error merging duplicate items:', error);
+    return NextResponse.json(
+      { error: 'Failed to merge duplicate items' },
+      { status: 500 }
+    );
+  }
+}
+
 interface MisalignedPayment {
   payment: {
     id: string;
@@ -168,9 +299,10 @@ export async function GET(request: NextRequest) {
  * Move misaligned payments to their correct cycles
  *
  * Strategy:
- * 1. For each misaligned payment, find or create the correct cycle item
- * 2. Move the payment to that item
- * 3. Update totals on both items and cycles
+ * 1. Group all misaligned payments by target cycle and commitment
+ * 2. For each group, find or create ONE target cycle item
+ * 3. Add all payments from that group to the target item
+ * 4. Update totals on source items and cycles
  */
 export async function POST(request: NextRequest) {
   try {
@@ -203,6 +335,14 @@ export async function POST(request: NextRequest) {
       .collection(`users/${userId}/cycleItems`)
       .get();
 
+    // Build a map of existing items by cycle+commitment for quick lookup
+    const existingItemsMap = new Map<string, { docId: string; data: FirebaseFirestore.DocumentData }>();
+    for (const doc of itemsSnap.docs) {
+      const data = doc.data();
+      const key = `${data.cycleId}:${data.commitmentId || data.label}`;
+      existingItemsMap.set(key, { docId: doc.id, data });
+    }
+
     const fixes: Array<{
       action: string;
       cycleItemId: string;
@@ -213,21 +353,24 @@ export async function POST(request: NextRequest) {
       amount: number;
     }> = [];
 
-    const batch = db.batch();
-    let batchCount = 0;
+    // Group payments to move by: sourceItemId -> targetCycleId -> payments[]
+    const moveGroups = new Map<string, {
+      sourceDoc: FirebaseFirestore.QueryDocumentSnapshot;
+      sourceData: FirebaseFirestore.DocumentData;
+      paymentsToKeep: Payment[];
+      targetGroups: Map<string, Payment[]>;
+    }>();
 
     for (const doc of itemsSnap.docs) {
       const data = doc.data();
       const payments: Payment[] = data.payments ?? [];
       const currentCycleId = data.cycleId;
-      const commitmentId = data.commitmentId;
-      const label = data.label;
 
       const currentCycle = cycles.find(c => c.id === currentCycleId);
       if (!currentCycle) continue;
 
       const paymentsToKeep: Payment[] = [];
-      const paymentsToMove: Array<{ payment: Payment; targetCycleId: string }> = [];
+      const targetGroups = new Map<string, Payment[]>();
 
       for (const payment of payments) {
         let paymentDate: Date;
@@ -252,11 +395,16 @@ export async function POST(request: NextRequest) {
             paymentDate >= c.startDate && paymentDate <= c.endDate
           );
           if (correctCycle) {
-            paymentsToMove.push({ payment, targetCycleId: correctCycle.id });
+            // Group by target cycle
+            if (!targetGroups.has(correctCycle.id)) {
+              targetGroups.set(correctCycle.id, []);
+            }
+            targetGroups.get(correctCycle.id)!.push(payment);
+
             fixes.push({
               action: 'move_payment',
               cycleItemId: doc.id,
-              label,
+              label: data.label,
               paymentId: payment.id,
               fromCycle: currentCycleId,
               toCycle: correctCycle.id,
@@ -266,98 +414,128 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      if (paymentsToMove.length === 0) continue;
+      if (targetGroups.size > 0) {
+        moveGroups.set(doc.id, {
+          sourceDoc: doc,
+          sourceData: data,
+          paymentsToKeep,
+          targetGroups,
+        });
+      }
+    }
 
-      if (!dryRun) {
-        // Update the source item - remove moved payments
+    if (!dryRun && moveGroups.size > 0) {
+      const batch = db.batch();
+      let batchCount = 0;
+
+      // Track items we're creating/updating in this batch to avoid duplicates
+      const pendingItems = new Map<string, { ref: FirebaseFirestore.DocumentReference; payments: Payment[]; amount: number }>();
+
+      for (const [sourceDocId, group] of moveGroups) {
+        const { sourceDoc, sourceData, paymentsToKeep, targetGroups } = group;
+        const commitmentId = sourceData.commitmentId;
+        const label = sourceData.label;
+        const currentCycleId = sourceData.cycleId;
+
+        // Update source item - remove moved payments
         const newTotalPaid = paymentsToKeep.reduce((sum, p) => sum + p.amount, 0);
-        const sourceRef = db.collection(`users/${userId}/cycleItems`).doc(doc.id);
-
-        batch.update(sourceRef, {
+        batch.update(sourceDoc.ref, {
           payments: paymentsToKeep,
           totalPaidAmount: newTotalPaid,
-          status: newTotalPaid >= data.amount ? 'paid' : (newTotalPaid > 0 ? 'partial' : 'upcoming'),
+          status: newTotalPaid >= sourceData.amount ? 'paid' : (newTotalPaid > 0 ? 'partial' : 'upcoming'),
           updatedAt: FieldValue.serverTimestamp(),
         });
         batchCount++;
 
-        // For each payment to move, find or create target item
-        for (const { payment, targetCycleId } of paymentsToMove) {
-          // Find existing item in target cycle with same commitmentId or label
-          const existingQuery = commitmentId
-            ? await db
-                .collection(`users/${userId}/cycleItems`)
-                .where('cycleId', '==', targetCycleId)
-                .where('commitmentId', '==', commitmentId)
-                .limit(1)
-                .get()
-            : await db
-                .collection(`users/${userId}/cycleItems`)
-                .where('cycleId', '==', targetCycleId)
-                .where('label', '==', label)
-                .limit(1)
-                .get();
+        // Process each target cycle group
+        for (const [targetCycleId, paymentsToAdd] of targetGroups) {
+          const lookupKey = `${targetCycleId}:${commitmentId || label}`;
+          const totalToAdd = paymentsToAdd.reduce((sum, p) => sum + p.amount, 0);
 
-          if (!existingQuery.empty) {
-            // Add payment to existing item
-            const targetDoc = existingQuery.docs[0];
-            const targetData = targetDoc.data();
-            const targetPayments: Payment[] = targetData.payments ?? [];
-            targetPayments.push(payment);
-            const targetTotalPaid = targetPayments.reduce((sum, p) => sum + p.amount, 0);
-
-            batch.update(targetDoc.ref, {
-              payments: targetPayments,
-              totalPaidAmount: targetTotalPaid,
-              status: targetTotalPaid >= targetData.amount ? 'paid' : 'partial',
-              updatedAt: FieldValue.serverTimestamp(),
-            });
-            batchCount++;
+          // Check if we already have a pending item for this target
+          if (pendingItems.has(lookupKey)) {
+            // Add to pending item
+            const pending = pendingItems.get(lookupKey)!;
+            pending.payments.push(...paymentsToAdd);
           } else {
-            // Create new item in target cycle
-            const newItemRef = db.collection(`users/${userId}/cycleItems`).doc();
-            batch.set(newItemRef, {
-              cycleId: targetCycleId,
-              commitmentId: commitmentId || null,
-              label,
-              amount: data.amount,
-              category: data.category,
-              subCategory: data.subCategory || null,
-              accountType: data.accountType,
-              status: 'partial',
-              isVariable: data.isVariable ?? false,
-              linkedGoalId: data.linkedGoalId || null,
-              payments: [payment],
-              totalPaidAmount: payment.amount,
-              sortOrder: data.sortOrder || 999,
-              createdAt: FieldValue.serverTimestamp(),
-              updatedAt: FieldValue.serverTimestamp(),
-            });
-            batchCount++;
+            // Check if item exists in DB
+            const existing = existingItemsMap.get(lookupKey);
 
-            // Update target cycle totals
-            const targetCycleRef = db.collection(`users/${userId}/cycles`).doc(targetCycleId);
-            batch.update(targetCycleRef, {
-              totalCommitted: FieldValue.increment(data.amount),
-              totalPaid: FieldValue.increment(payment.amount),
-              itemCount: FieldValue.increment(1),
-              updatedAt: FieldValue.serverTimestamp(),
-            });
-            batchCount++;
+            if (existing && existing.docId !== sourceDocId) {
+              // Add to existing item in DB
+              const existingPayments: Payment[] = existing.data.payments ?? [];
+              existingPayments.push(...paymentsToAdd);
+              const existingTotalPaid = existingPayments.reduce((sum, p) => sum + p.amount, 0);
+
+              const targetRef = db.collection(`users/${userId}/cycleItems`).doc(existing.docId);
+              batch.update(targetRef, {
+                payments: existingPayments,
+                totalPaidAmount: existingTotalPaid,
+                status: existingTotalPaid >= existing.data.amount ? 'paid' : 'partial',
+                updatedAt: FieldValue.serverTimestamp(),
+              });
+              batchCount++;
+
+              // Track for subsequent payments going to same target
+              pendingItems.set(lookupKey, { ref: targetRef, payments: existingPayments, amount: existing.data.amount });
+            } else {
+              // Create new item
+              const newItemRef = db.collection(`users/${userId}/cycleItems`).doc();
+              batch.set(newItemRef, {
+                cycleId: targetCycleId,
+                commitmentId: commitmentId || null,
+                label,
+                amount: sourceData.amount,
+                category: sourceData.category,
+                subCategory: sourceData.subCategory || null,
+                accountType: sourceData.accountType,
+                status: 'partial',
+                isVariable: sourceData.isVariable ?? false,
+                linkedGoalId: sourceData.linkedGoalId || null,
+                payments: paymentsToAdd,
+                totalPaidAmount: totalToAdd,
+                sortOrder: sourceData.sortOrder || 999,
+                createdAt: FieldValue.serverTimestamp(),
+                updatedAt: FieldValue.serverTimestamp(),
+              });
+              batchCount++;
+
+              // Track for subsequent payments
+              pendingItems.set(lookupKey, { ref: newItemRef, payments: paymentsToAdd, amount: sourceData.amount });
+
+              // Update target cycle totals
+              const targetCycleRef = db.collection(`users/${userId}/cycles`).doc(targetCycleId);
+              batch.update(targetCycleRef, {
+                totalCommitted: FieldValue.increment(sourceData.amount),
+                totalPaid: FieldValue.increment(totalToAdd),
+                itemCount: FieldValue.increment(1),
+                updatedAt: FieldValue.serverTimestamp(),
+              });
+              batchCount++;
+            }
           }
 
-          // Update source cycle totals (reduce paid amount)
+          // Update source cycle totals
           const sourceCycleRef = db.collection(`users/${userId}/cycles`).doc(currentCycleId);
           batch.update(sourceCycleRef, {
-            totalPaid: FieldValue.increment(-payment.amount),
+            totalPaid: FieldValue.increment(-totalToAdd),
             updatedAt: FieldValue.serverTimestamp(),
           });
           batchCount++;
         }
       }
-    }
 
-    if (!dryRun && batchCount > 0) {
+      // Update any pending items that accumulated multiple payment groups
+      for (const [key, pending] of pendingItems) {
+        const totalPaid = pending.payments.reduce((sum, p) => sum + p.amount, 0);
+        batch.update(pending.ref, {
+          payments: pending.payments,
+          totalPaidAmount: totalPaid,
+          status: totalPaid >= pending.amount ? 'paid' : 'partial',
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      }
+
       await batch.commit();
     }
 

@@ -431,9 +431,11 @@ function DataMaintenance() {
   const [diagnosing, setDiagnosing] = useState(false);
   const [fixing, setFixing] = useState(false);
   const [fixingDates, setFixingDates] = useState(false);
+  const [mergingDuplicates, setMergingDuplicates] = useState(false);
   const [result, setResult] = useState<DiagnosticResult | null>(null);
   const [fixResult, setFixResult] = useState<{ fixCount: number; message: string } | null>(null);
   const [datesFixResult, setDatesFixResult] = useState<{ fixedCount: number; totalCycles: number } | null>(null);
+  const [mergeResult, setMergeResult] = useState<{ mergedCount: number; deletedCount: number; message: string } | null>(null);
   const { toast, confirm } = useToast();
 
   const runDiagnostic = async () => {
@@ -506,6 +508,33 @@ function DataMaintenance() {
     );
   };
 
+  const mergeDuplicates = () => {
+    confirm(
+      'This will merge duplicate cycle items (same commitment in same cycle) into single items with all payments combined.',
+      async () => {
+        setMergingDuplicates(true);
+        setMergeResult(null);
+        try {
+          const res = await fetch('/api/cycle-items/fix-misaligned-payments?dryRun=false', { method: 'DELETE' });
+          if (!res.ok) throw new Error('Failed to merge duplicates');
+          const data = await res.json();
+          setMergeResult(data);
+          if (data.mergedCount > 0) {
+            toast(`Merged ${data.mergedCount} groups, deleted ${data.deletedCount} duplicates`, 'success');
+          } else {
+            toast('No duplicate items found', 'success');
+          }
+        } catch (err) {
+          console.error(err);
+          toast('Failed to merge duplicates', 'error');
+        } finally {
+          setMergingDuplicates(false);
+        }
+      },
+      { title: 'Merge Duplicate Items', confirmLabel: 'Merge' }
+    );
+  };
+
   const formatAmount = (cents: number) => `R${(cents / 100).toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`;
 
   return (
@@ -530,6 +559,29 @@ function DataMaintenance() {
           <p className="text-sm text-green-400">
             Fixed {datesFixResult.fixedCount} of {datesFixResult.totalCycles} cycles
           </p>
+        </div>
+      )}
+
+      <hr className="border-border" />
+
+      {/* Merge Duplicates */}
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-medium text-text-primary">Merge Duplicate Items</p>
+          <p className="text-xs text-text-secondary mt-0.5">Combine duplicate cycle items (same commitment) into one</p>
+        </div>
+        <button
+          onClick={mergeDuplicates}
+          disabled={mergingDuplicates}
+          className="px-4 py-2 bg-primary text-black font-medium rounded-lg text-sm hover:bg-primary/90 transition-colors disabled:opacity-50"
+        >
+          {mergingDuplicates ? 'Merging...' : 'Merge Duplicates'}
+        </button>
+      </div>
+
+      {mergeResult && (
+        <div className="p-3 bg-green-500/10 border border-green-500/30 rounded-lg">
+          <p className="text-sm text-green-400">{mergeResult.message}</p>
         </div>
       )}
 
