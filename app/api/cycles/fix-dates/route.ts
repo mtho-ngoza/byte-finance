@@ -10,19 +10,20 @@ import { getCycleDateRange } from '@/lib/payday-utils';
  * Recalculates and fixes dates for all cycles based on user's payday settings
  */
 export async function POST(request: NextRequest) {
-  const auth = await withAuth(request);
-  if (auth instanceof NextResponse) return auth;
-  const { userId } = auth;
+  try {
+    const auth = await withAuth(request);
+    if (auth instanceof NextResponse) return auth;
+    const { userId } = auth;
 
-  const db = getAdminDb();
-  const now = FieldValue.serverTimestamp();
+    const db = getAdminDb();
+    const now = FieldValue.serverTimestamp();
 
-  // Get user profile for payday settings
-  const userDoc = await db.doc(`users/${userId}`).get();
-  const userData = userDoc.data() || {};
-  const preferences = userData.preferences || {};
-  const payDayType = preferences.payDayType || 'last_working_day';
-  const payDayFixed = preferences.payDayFixed;
+    // Get user profile for payday settings
+    const userDoc = await db.doc(`users/${userId}`).get();
+    const userData = userDoc.data() || {};
+    const preferences = userData.preferences || {};
+    const payDayType = preferences.payDayType || 'last_working_day';
+    const payDayFixed = preferences.payDayFixed;
 
   // Get all cycles
   const cyclesSnap = await db
@@ -75,15 +76,22 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  if (fixes.length > 0) {
-    await batch.commit();
-  }
+    if (fixes.length > 0) {
+      await batch.commit();
+    }
 
-  return NextResponse.json({
-    success: true,
-    fixedCount: fixes.length,
-    totalCycles: cyclesSnap.size,
-    payDaySettings: { payDayType, payDayFixed },
-    fixes,
-  });
+    return NextResponse.json({
+      success: true,
+      fixedCount: fixes.length,
+      totalCycles: cyclesSnap.size,
+      payDaySettings: { payDayType, payDayFixed },
+      fixes,
+    });
+  } catch (error) {
+    console.error('Error fixing cycle dates:', error);
+    return NextResponse.json(
+      { error: 'Failed to fix cycle dates' },
+      { status: 500 }
+    );
+  }
 }
