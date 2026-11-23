@@ -402,6 +402,150 @@ function PaydaySettings() {
 }
 
 // ---------------------------------------------------------------------------
+// DataMaintenance
+// ---------------------------------------------------------------------------
+
+interface MisalignedItem {
+  cycleItemId: string;
+  label: string;
+  currentCycleId: string;
+  payments: Array<{
+    id: string;
+    amount: number;
+    date: string;
+    correctCycleId: string;
+  }>;
+}
+
+interface DiagnosticResult {
+  summary: {
+    itemsChecked: number;
+    paymentsChecked: number;
+    misalignedCount: number;
+    affectedItems: number;
+  };
+  misalignedItems: MisalignedItem[];
+}
+
+function DataMaintenance() {
+  const [diagnosing, setDiagnosing] = useState(false);
+  const [fixing, setFixing] = useState(false);
+  const [result, setResult] = useState<DiagnosticResult | null>(null);
+  const [fixResult, setFixResult] = useState<{ fixCount: number; message: string } | null>(null);
+  const { toast, confirm } = useToast();
+
+  const runDiagnostic = async () => {
+    setDiagnosing(true);
+    setResult(null);
+    setFixResult(null);
+    try {
+      const res = await fetch('/api/cycle-items/fix-misaligned-payments');
+      if (!res.ok) throw new Error('Failed to run diagnostic');
+      const data = await res.json();
+      setResult(data);
+      if (data.summary.misalignedCount === 0) {
+        toast('No misaligned payments found', 'success');
+      }
+    } catch (err) {
+      console.error(err);
+      toast('Failed to run diagnostic', 'error');
+    } finally {
+      setDiagnosing(false);
+    }
+  };
+
+  const applyFixes = () => {
+    confirm(
+      `This will move ${result?.summary.misalignedCount} payments to their correct cycles. This action cannot be undone.`,
+      async () => {
+        setFixing(true);
+        try {
+          const res = await fetch('/api/cycle-items/fix-misaligned-payments', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ dryRun: false }),
+          });
+          if (!res.ok) throw new Error('Failed to apply fixes');
+          const data = await res.json();
+          setFixResult(data);
+          setResult(null);
+          toast(`Fixed ${data.fixCount} misaligned payments`, 'success');
+        } catch (err) {
+          console.error(err);
+          toast('Failed to apply fixes', 'error');
+        } finally {
+          setFixing(false);
+        }
+      },
+      { title: 'Fix Misaligned Payments', confirmLabel: 'Apply Fixes', danger: true }
+    );
+  };
+
+  const formatAmount = (cents: number) => `R${(cents / 100).toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`;
+
+  return (
+    <div className="p-4 bg-surface border border-border rounded-lg space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-medium text-text-primary">Payment Alignment</p>
+          <p className="text-xs text-text-secondary mt-0.5">Find and fix payments dated outside their cycle&apos;s range</p>
+        </div>
+        <button
+          onClick={runDiagnostic}
+          disabled={diagnosing}
+          className="px-4 py-2 bg-primary text-black font-medium rounded-lg text-sm hover:bg-primary/90 transition-colors disabled:opacity-50"
+        >
+          {diagnosing ? 'Scanning...' : 'Run Diagnostic'}
+        </button>
+      </div>
+
+      {result && result.summary.misalignedCount > 0 && (
+        <div className="space-y-3">
+          <div className="p-3 bg-warning/10 border border-warning/30 rounded-lg">
+            <p className="text-sm text-warning">
+              Found {result.summary.misalignedCount} misaligned payments across {result.summary.affectedItems} items
+            </p>
+          </div>
+
+          <div className="max-h-64 overflow-y-auto space-y-2">
+            {result.misalignedItems.map((item) => (
+              <div key={item.cycleItemId} className="p-3 bg-background rounded-lg">
+                <p className="text-sm font-medium text-text-primary">{item.label}</p>
+                <p className="text-xs text-text-secondary">Currently in: {item.currentCycleId}</p>
+                <div className="mt-2 space-y-1">
+                  {item.payments.map((p) => (
+                    <div key={p.id} className="flex justify-between text-xs">
+                      <span className="text-text-secondary">
+                        {new Date(p.date).toLocaleDateString('en-ZA')} → {p.correctCycleId}
+                      </span>
+                      <span className="text-text-primary">{formatAmount(p.amount)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <button
+            onClick={applyFixes}
+            disabled={fixing}
+            className="w-full py-2 bg-warning text-black font-medium rounded-lg text-sm hover:bg-warning/90 transition-colors disabled:opacity-50"
+          >
+            {fixing ? 'Applying Fixes...' : 'Fix All Misaligned Payments'}
+          </button>
+        </div>
+      )}
+
+      {fixResult && (
+        <div className="p-3 bg-green-500/10 border border-green-500/30 rounded-lg">
+          <p className="text-sm text-green-400">{fixResult.message}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // ExportData
 // ---------------------------------------------------------------------------
 
@@ -553,6 +697,14 @@ export default function SettingsPage() {
             <svg className="w-5 h-5 text-text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
           </Link>
         </div>
+      </section>
+
+      <section>
+        <div className="mb-4">
+          <h2 className="text-base font-semibold text-text-primary">Data Maintenance</h2>
+          <p className="text-sm text-text-secondary mt-1">Diagnose and fix data alignment issues.</p>
+        </div>
+        <DataMaintenance />
       </section>
 
       <section>
