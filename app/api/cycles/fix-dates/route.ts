@@ -2,14 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/auth';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
-import { getPaydayForMonth } from '@/lib/payday-utils';
+import { getPaydayForMonth, getCycleDateRange } from '@/lib/payday-utils';
 
 /**
  * POST /api/cycles/fix-dates
  *
  * Recalculates and fixes dates for all cycles based on:
  * 1. Actual income.receivedDate if set (priority)
- * 2. Calculated last working day as fallback
+ * 2. Calculated using getCycleDateRange as fallback (tested utility)
  *
  * Logic:
  * - Cycle START = previous month's payday (actual or calculated)
@@ -31,39 +31,26 @@ export async function POST(request: NextRequest) {
     const payDayType = preferences.payDayType || 'last_working_day';
     const payDayFixed = preferences.payDayFixed;
 
-    // Get all cycles
+    // Get all cycles ordered by ID to process in sequence
     const cyclesSnap = await db
       .collection(`users/${userId}/cycles`)
+      .orderBy('__name__')
       .get();
 
     // Build a map of cycle ID to actual payday (from income.receivedDate)
-    const cyclePaydays = new Map<string, Date>();
+    // This is the payday that FUNDS/STARTS each cycle
+    const actualPaydays = new Map<string, Date>();
 
     for (const doc of cyclesSnap.docs) {
       const data = doc.data();
       const cycleId = doc.id;
 
-      // Parse cycle ID to get year and month
-      const match = cycleId.match(/^(\d{4})-(\d{2})$/);
-      if (!match) continue;
-
-      const cycleYear = parseInt(match[1], 10);
-      const cycleMonth = parseInt(match[2], 10);
-
-      // Priority 1: Use actual income.receivedDate if set
+      // Only store if actual income.receivedDate is set
       if (data.income?.receivedDate) {
         const receivedDate = data.income.receivedDate.toDate
           ? data.income.receivedDate.toDate()
           : new Date(data.income.receivedDate);
-        cyclePaydays.set(cycleId, receivedDate);
-      } else {
-        // Priority 2: Calculate based on user's payday settings
-        // For this cycle (e.g., September), the payday is the previous month's last working day
-        // which FUNDS this cycle. So September's payday is August's last working day.
-        const prevMonth = cycleMonth === 1 ? 12 : cycleMonth - 1;
-        const prevYear = cycleMonth === 1 ? cycleYear - 1 : cycleYear;
-        const calculatedPayday = getPaydayForMonth(prevYear, prevMonth, payDayType, payDayFixed);
-        cyclePaydays.set(cycleId, calculatedPayday);
+        actualPaydays.set(cycleId, receivedDate);
       }
     }
 
@@ -73,40 +60,6 @@ export async function POST(request: NextRequest) {
       const nextMonth = month === 12 ? 1 : month + 1;
       const nextYear = month === 12 ? year + 1 : year;
       return `${nextYear}-${String(nextMonth).padStart(2, '0')}`;
-    };
-
-    // Helper to get payday for a cycle (uses actual if set, otherwise calculates)
-    const getPaydayForCycle = (cycleId: string): Date => {
-      if (cyclePaydays.has(cycleId)) {
-        return cyclePaydays.get(cycleId)!;
-      }
-      // Calculate fallback
-      const [year, month] = cycleId.split('-').map(Number);
-      const prevMonth = month === 1 ? 12 : month - 1;
-      const prevYear = month === 1 ? year - 1 : year;
-      return getPaydayForMonth(prevYear, prevMonth, payDayType, payDayFixed);
-    };
-
-    // Helper to get the end date for a cycle (day before next cycle's payday)
-    const getEndDateForCycle = (cycleId: string): Date => {
-      const nextCycleId = getNextCycleId(cycleId);
-      const nextPayday = getPaydayForCycle(nextCycleId);
-
-      // If next cycle has actual receivedDate, use that; otherwise calculate
-      let nextActualPayday: Date;
-      if (cyclePaydays.has(nextCycleId)) {
-        nextActualPayday = cyclePaydays.get(nextCycleId)!;
-      } else {
-        // Calculate this month's payday (the one that ends this cycle)
-        const [year, month] = cycleId.split('-').map(Number);
-        nextActualPayday = getPaydayForMonth(year, month, payDayType, payDayFixed);
-      }
-
-      // End date = next payday - 1
-      const endDate = new Date(nextActualPayday);
-      endDate.setDate(endDate.getDate() - 1);
-      endDate.setHours(23, 59, 59, 999);
-      return endDate;
     };
 
     const batch = db.batch();
@@ -123,16 +76,41 @@ export async function POST(request: NextRequest) {
       const cycleId = doc.id;
       const data = doc.data();
 
-      // Parse cycle ID
+      // Parse cycle ID to get year and month
       const match = cycleId.match(/^(\d{4})-(\d{2})$/);
       if (!match) continue;
 
-      // Get start date (this cycle's payday from the map)
-      const startDate = new Date(cyclePaydays.get(cycleId)!);
-      startDate.setHours(0, 0, 0, 0);
+      const cycleYear = parseInt(match[1], 10);
+      const cycleMonth = parseInt(match[2], 10);
 
-      // Get end date (day before next cycle starts)
-      const endDate = getEndDateForCycle(cycleId);
+      let startDate: Date;
+      let endDate: Date;
+      const usedActualPayday = actualPaydays.has(cycleId);
+
+      if (usedActualPayday) {
+        // Use actual income.receivedDate for start
+        startDate = new Date(actualPaydays.get(cycleId)!);
+        startDate.setHours(0, 0, 0, 0);
+
+        // For end date: check if next cycle has actual payday, otherwise calculate
+        const nextCycleId = getNextCycleId(cycleId);
+        if (actualPaydays.has(nextCycleId)) {
+          // Next cycle has actual payday - end is day before that
+          endDate = new Date(actualPaydays.get(nextCycleId)!);
+          endDate.setDate(endDate.getDate() - 1);
+        } else {
+          // Calculate this month's payday for end date
+          const thisMonthPayday = getPaydayForMonth(cycleYear, cycleMonth, payDayType, payDayFixed);
+          endDate = new Date(thisMonthPayday);
+          endDate.setDate(endDate.getDate() - 1);
+        }
+        endDate.setHours(23, 59, 59, 999);
+      } else {
+        // Use the tested getCycleDateRange utility
+        const range = getCycleDateRange(cycleYear, cycleMonth, payDayType, payDayFixed);
+        startDate = range.startDate;
+        endDate = range.endDate;
+      }
 
       const oldStart = data.startDate?.toDate?.()?.toISOString?.() || 'unknown';
       const oldEnd = data.endDate?.toDate?.()?.toISOString?.() || 'unknown';
@@ -153,7 +131,7 @@ export async function POST(request: NextRequest) {
           oldEnd,
           newStart,
           newEnd,
-          usedActualPayday: !!data.income?.receivedDate,
+          usedActualPayday,
         });
       }
     }
