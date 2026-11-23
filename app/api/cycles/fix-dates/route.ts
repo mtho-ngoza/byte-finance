@@ -89,22 +89,22 @@ export async function POST(request: NextRequest) {
 
       if (usedActualPayday) {
         // Use actual income.receivedDate for start
-        startDate = new Date(actualPaydays.get(cycleId)!);
-        startDate.setHours(0, 0, 0, 0);
+        // Extract date components to avoid timezone issues
+        const actualStart = actualPaydays.get(cycleId)!;
+        startDate = new Date(actualStart.getFullYear(), actualStart.getMonth(), actualStart.getDate(), 0, 0, 0, 0);
 
         // For end date: check if next cycle has actual payday, otherwise calculate
         const nextCycleId = getNextCycleId(cycleId);
+        let nextPayday: Date;
         if (actualPaydays.has(nextCycleId)) {
-          // Next cycle has actual payday - end is day before that
-          endDate = new Date(actualPaydays.get(nextCycleId)!);
-          endDate.setDate(endDate.getDate() - 1);
+          // Next cycle has actual payday
+          nextPayday = actualPaydays.get(nextCycleId)!;
         } else {
           // Calculate this month's payday for end date
-          const thisMonthPayday = getPaydayForMonth(cycleYear, cycleMonth, payDayType, payDayFixed);
-          endDate = new Date(thisMonthPayday);
-          endDate.setDate(endDate.getDate() - 1);
+          nextPayday = getPaydayForMonth(cycleYear, cycleMonth, payDayType, payDayFixed);
         }
-        endDate.setHours(23, 59, 59, 999);
+        // End date = day BEFORE next payday (extract date parts to avoid timezone issues)
+        endDate = new Date(nextPayday.getFullYear(), nextPayday.getMonth(), nextPayday.getDate() - 1, 23, 59, 59, 999);
       } else {
         // Use the tested getCycleDateRange utility
         const range = getCycleDateRange(cycleYear, cycleMonth, payDayType, payDayFixed);
