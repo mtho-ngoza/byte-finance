@@ -140,74 +140,12 @@ export async function POST(request: NextRequest) {
       await batch.commit();
     }
 
-    // Debug: show what dates are being calculated for each cycle
-    const debugInfo: Array<{
-      cycleId: string;
-      hasActualPayday: boolean;
-      actualPaydayRaw?: string;
-      nextCycleId: string;
-      nextHasActualPayday: boolean;
-      nextActualPaydayRaw?: string;
-      calculatedStart: string;
-      calculatedEnd: string;
-      storedStart: string;
-      storedEnd: string;
-    }> = [];
-
-    for (const doc of cyclesSnap.docs) {
-      const cycleId = doc.id;
-      const data = doc.data();
-      const match = cycleId.match(/^(\d{4})-(\d{2})$/);
-      if (!match) continue;
-
-      const cycleYear = parseInt(match[1], 10);
-      const cycleMonth = parseInt(match[2], 10);
-      const nextCycleId = `${cycleMonth === 12 ? cycleYear + 1 : cycleYear}-${String(cycleMonth === 12 ? 1 : cycleMonth + 1).padStart(2, '0')}`;
-
-      const hasActual = actualPaydays.has(cycleId);
-      const nextHasActual = actualPaydays.has(nextCycleId);
-
-      let calcStart: Date;
-      let calcEnd: Date;
-
-      if (hasActual) {
-        const actualStart = actualPaydays.get(cycleId)!;
-        calcStart = new Date(actualStart.getFullYear(), actualStart.getMonth(), actualStart.getDate(), 0, 0, 0, 0);
-
-        let nextPayday: Date;
-        if (nextHasActual) {
-          nextPayday = actualPaydays.get(nextCycleId)!;
-        } else {
-          nextPayday = getPaydayForMonth(cycleYear, cycleMonth, payDayType, payDayFixed);
-        }
-        calcEnd = new Date(nextPayday.getFullYear(), nextPayday.getMonth(), nextPayday.getDate() - 1, 23, 59, 59, 999);
-      } else {
-        const range = getCycleDateRange(cycleYear, cycleMonth, payDayType, payDayFixed);
-        calcStart = range.startDate;
-        calcEnd = range.endDate;
-      }
-
-      debugInfo.push({
-        cycleId,
-        hasActualPayday: hasActual,
-        actualPaydayRaw: hasActual ? actualPaydays.get(cycleId)!.toISOString() : undefined,
-        nextCycleId,
-        nextHasActualPayday: nextHasActual,
-        nextActualPaydayRaw: nextHasActual ? actualPaydays.get(nextCycleId)!.toISOString() : undefined,
-        calculatedStart: calcStart.toISOString(),
-        calculatedEnd: calcEnd.toISOString(),
-        storedStart: data.startDate?.toDate?.()?.toISOString?.() || 'unknown',
-        storedEnd: data.endDate?.toDate?.()?.toISOString?.() || 'unknown',
-      });
-    }
-
     return NextResponse.json({
       success: true,
       fixedCount: fixes.length,
       totalCycles: cyclesSnap.size,
       payDaySettings: { payDayType, payDayFixed },
       fixes,
-      debug: debugInfo,
     });
   } catch (error) {
     console.error('Error fixing cycle dates:', error);

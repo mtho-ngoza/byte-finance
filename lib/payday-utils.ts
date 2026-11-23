@@ -177,13 +177,18 @@ export function getCycleDateRange(
 
 /**
  * Format a date range for display
+ * Uses UTC dates to avoid timezone shifts (dates are stored as midnight/end-of-day UTC)
  */
 export function formatCycleDateRange(startDate: Date, endDate: Date): string {
-  const formatDate = (d: Date) =>
-    d.toLocaleDateString('en-ZA', { month: 'short', day: 'numeric' });
+  const formatDate = (d: Date) => {
+    // Use UTC values to avoid timezone shifts
+    const day = d.getUTCDate();
+    const month = d.toLocaleDateString('en-ZA', { month: 'short', timeZone: 'UTC' });
+    return `${day} ${month}`;
+  };
 
-  const startYear = startDate.getFullYear();
-  const endYear = endDate.getFullYear();
+  const startYear = startDate.getUTCFullYear();
+  const endYear = endDate.getUTCFullYear();
 
   if (startYear === endYear) {
     return `${formatDate(startDate)} → ${formatDate(endDate)}`;
