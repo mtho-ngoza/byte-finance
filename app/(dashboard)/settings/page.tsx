@@ -430,8 +430,10 @@ interface DiagnosticResult {
 function DataMaintenance() {
   const [diagnosing, setDiagnosing] = useState(false);
   const [fixing, setFixing] = useState(false);
+  const [fixingDates, setFixingDates] = useState(false);
   const [result, setResult] = useState<DiagnosticResult | null>(null);
   const [fixResult, setFixResult] = useState<{ fixCount: number; message: string } | null>(null);
+  const [datesFixResult, setDatesFixResult] = useState<{ fixedCount: number; totalCycles: number } | null>(null);
   const { toast, confirm } = useToast();
 
   const runDiagnostic = async () => {
@@ -481,10 +483,59 @@ function DataMaintenance() {
     );
   };
 
+  const fixCycleDates = () => {
+    confirm(
+      'This will recalculate all cycle date ranges based on your payday settings. Run this if cycles are overlapping.',
+      async () => {
+        setFixingDates(true);
+        setDatesFixResult(null);
+        try {
+          const res = await fetch('/api/cycles/fix-dates', { method: 'POST' });
+          if (!res.ok) throw new Error('Failed to fix cycle dates');
+          const data = await res.json();
+          setDatesFixResult(data);
+          toast(`Fixed ${data.fixedCount} of ${data.totalCycles} cycles`, 'success');
+        } catch (err) {
+          console.error(err);
+          toast('Failed to fix cycle dates', 'error');
+        } finally {
+          setFixingDates(false);
+        }
+      },
+      { title: 'Fix Cycle Dates', confirmLabel: 'Fix Dates' }
+    );
+  };
+
   const formatAmount = (cents: number) => `R${(cents / 100).toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`;
 
   return (
-    <div className="p-4 bg-surface border border-border rounded-lg space-y-4">
+    <div className="p-4 bg-surface border border-border rounded-lg space-y-6">
+      {/* Cycle Dates Fix */}
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-medium text-text-primary">Cycle Date Ranges</p>
+          <p className="text-xs text-text-secondary mt-0.5">Fix overlapping cycle dates based on your payday settings</p>
+        </div>
+        <button
+          onClick={fixCycleDates}
+          disabled={fixingDates}
+          className="px-4 py-2 bg-primary text-black font-medium rounded-lg text-sm hover:bg-primary/90 transition-colors disabled:opacity-50"
+        >
+          {fixingDates ? 'Fixing...' : 'Fix Dates'}
+        </button>
+      </div>
+
+      {datesFixResult && (
+        <div className="p-3 bg-green-500/10 border border-green-500/30 rounded-lg">
+          <p className="text-sm text-green-400">
+            Fixed {datesFixResult.fixedCount} of {datesFixResult.totalCycles} cycles
+          </p>
+        </div>
+      )}
+
+      <hr className="border-border" />
+
+      {/* Payment Alignment */}
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm font-medium text-text-primary">Payment Alignment</p>

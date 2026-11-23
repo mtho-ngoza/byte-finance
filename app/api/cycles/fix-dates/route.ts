@@ -17,11 +17,12 @@ export async function POST(request: NextRequest) {
   const db = getAdminDb();
   const now = FieldValue.serverTimestamp();
 
-  // Get user settings for payday
-  const settingsSnap = await db.collection(`users/${userId}/settings`).doc('preferences').get();
-  const settings = settingsSnap.data() || {};
-  const payDayType = settings.payDayType || 'fixed';
-  const payDayFixed = settings.payDayFixed || 29;
+  // Get user profile for payday settings
+  const userDoc = await db.doc(`users/${userId}`).get();
+  const userData = userDoc.data() || {};
+  const preferences = userData.preferences || {};
+  const payDayType = preferences.payDayType || 'last_working_day';
+  const payDayFixed = preferences.payDayFixed;
 
   // Get all cycles
   const cyclesSnap = await db
