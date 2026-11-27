@@ -432,10 +432,14 @@ function DataMaintenance() {
   const [fixing, setFixing] = useState(false);
   const [fixingDates, setFixingDates] = useState(false);
   const [mergingDuplicates, setMergingDuplicates] = useState(false);
+  const [fixingOrphanedReceipts, setFixingOrphanedReceipts] = useState(false);
+  const [fixingTotals, setFixingTotals] = useState(false);
   const [result, setResult] = useState<DiagnosticResult | null>(null);
   const [fixResult, setFixResult] = useState<{ fixCount: number; message: string } | null>(null);
   const [datesFixResult, setDatesFixResult] = useState<{ fixedCount: number; totalCycles: number } | null>(null);
   const [mergeResult, setMergeResult] = useState<{ mergedCount: number; deletedCount: number; message: string } | null>(null);
+  const [orphanedResult, setOrphanedResult] = useState<{ fixedCount: number; totalLinkedReceipts: number } | null>(null);
+  const [totalsResult, setTotalsResult] = useState<{ fixedCount: number; totalItems: number } | null>(null);
   const { toast, confirm } = useToast();
 
   const runDiagnostic = async () => {
@@ -535,6 +539,60 @@ function DataMaintenance() {
     );
   };
 
+  const fixOrphanedReceipts = () => {
+    confirm(
+      'This will find receipts linked to payments that no longer exist and unlink them so they appear in the receipt picker.',
+      async () => {
+        setFixingOrphanedReceipts(true);
+        setOrphanedResult(null);
+        try {
+          const res = await fetch('/api/receipts/fix-orphaned', { method: 'POST' });
+          if (!res.ok) throw new Error('Failed to fix orphaned receipts');
+          const data = await res.json();
+          setOrphanedResult(data);
+          if (data.fixedCount > 0) {
+            toast(`Fixed ${data.fixedCount} orphaned receipts`, 'success');
+          } else {
+            toast('No orphaned receipts found', 'success');
+          }
+        } catch (err) {
+          console.error(err);
+          toast('Failed to fix orphaned receipts', 'error');
+        } finally {
+          setFixingOrphanedReceipts(false);
+        }
+      },
+      { title: 'Fix Orphaned Receipts', confirmLabel: 'Fix Receipts' }
+    );
+  };
+
+  const fixItemTotals = () => {
+    confirm(
+      'This will recalculate totalPaidAmount for all cycle items based on actual payments. Fixes items showing incorrect totals.',
+      async () => {
+        setFixingTotals(true);
+        setTotalsResult(null);
+        try {
+          const res = await fetch('/api/cycle-items/fix-totals', { method: 'POST' });
+          if (!res.ok) throw new Error('Failed to fix item totals');
+          const data = await res.json();
+          setTotalsResult(data);
+          if (data.fixedCount > 0) {
+            toast(`Fixed ${data.fixedCount} item totals`, 'success');
+          } else {
+            toast('All item totals are correct', 'success');
+          }
+        } catch (err) {
+          console.error(err);
+          toast('Failed to fix item totals', 'error');
+        } finally {
+          setFixingTotals(false);
+        }
+      },
+      { title: 'Fix Item Totals', confirmLabel: 'Fix Totals' }
+    );
+  };
+
   const formatAmount = (cents: number) => `R${(cents / 100).toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`;
 
   return (
@@ -582,6 +640,56 @@ function DataMaintenance() {
       {mergeResult && (
         <div className="p-3 bg-green-500/10 border border-green-500/30 rounded-lg">
           <p className="text-sm text-green-400">{mergeResult.message}</p>
+        </div>
+      )}
+
+      <hr className="border-border" />
+
+      {/* Fix Orphaned Receipts */}
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-medium text-text-primary">Orphaned Receipts</p>
+          <p className="text-xs text-text-secondary mt-0.5">Unlink receipts from deleted payments so they can be reused</p>
+        </div>
+        <button
+          onClick={fixOrphanedReceipts}
+          disabled={fixingOrphanedReceipts}
+          className="px-4 py-2 bg-primary text-black font-medium rounded-lg text-sm hover:bg-primary/90 transition-colors disabled:opacity-50"
+        >
+          {fixingOrphanedReceipts ? 'Fixing...' : 'Fix Receipts'}
+        </button>
+      </div>
+
+      {orphanedResult && (
+        <div className="p-3 bg-green-500/10 border border-green-500/30 rounded-lg">
+          <p className="text-sm text-green-400">
+            Fixed {orphanedResult.fixedCount} of {orphanedResult.totalLinkedReceipts} linked receipts
+          </p>
+        </div>
+      )}
+
+      <hr className="border-border" />
+
+      {/* Fix Item Totals */}
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-medium text-text-primary">Item Totals</p>
+          <p className="text-xs text-text-secondary mt-0.5">Recalculate totals from actual payments</p>
+        </div>
+        <button
+          onClick={fixItemTotals}
+          disabled={fixingTotals}
+          className="px-4 py-2 bg-primary text-black font-medium rounded-lg text-sm hover:bg-primary/90 transition-colors disabled:opacity-50"
+        >
+          {fixingTotals ? 'Fixing...' : 'Fix Totals'}
+        </button>
+      </div>
+
+      {totalsResult && (
+        <div className="p-3 bg-green-500/10 border border-green-500/30 rounded-lg">
+          <p className="text-sm text-green-400">
+            Fixed {totalsResult.fixedCount} of {totalsResult.totalItems} items
+          </p>
         </div>
       )}
 

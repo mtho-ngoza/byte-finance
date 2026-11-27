@@ -38,7 +38,7 @@ export async function POST(
   }
 
   const item = snap.data()!;
-  const payments: Array<{ id: string; amount: number; [key: string]: unknown }> = item.payments ?? [];
+  const payments: Array<{ id: string; amount: number; receiptId?: string; [key: string]: unknown }> = item.payments ?? [];
 
   const paymentToDelete = payments.find((p) => p.id === paymentId);
   if (!paymentToDelete) {
@@ -59,6 +59,20 @@ export async function POST(
     paidDate: null,
     updatedAt: now,
   });
+
+  // Unlink receipt if the deleted payment had one
+  if (paymentToDelete.receiptId) {
+    const receiptRef = db.collection(`users/${userId}/receipts`).doc(paymentToDelete.receiptId);
+    const receiptSnap = await receiptRef.get();
+    if (receiptSnap.exists) {
+      await receiptRef.update({
+        cycleItemId: null,
+        cycleId: null,
+        needsAttention: true,
+        updatedAt: now,
+      });
+    }
+  }
 
   // Update cycle totalPaid — subtract the deleted payment amount
   // Also decrement paidCount if item was previously marked as paid
