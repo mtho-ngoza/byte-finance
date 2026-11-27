@@ -135,6 +135,60 @@ export default function DashboardPage() {
     }
   };
 
+  // Start next cycle (for early paydays)
+  const [startingNextCycle, setStartingNextCycle] = useState(false);
+  const startNextCycle = async () => {
+    if (!currentCycleId) return;
+    setStartingNextCycle(true);
+    try {
+      // Calculate next cycle ID
+      const [year, month] = currentCycleId.split('-').map(Number);
+      const nextMonth = month === 12 ? 1 : month + 1;
+      const nextYear = month === 12 ? year + 1 : year;
+      const nextCycleId = `${nextYear}-${String(nextMonth).padStart(2, '0')}`;
+
+      // Check if it already exists
+      const existing = cycles.find((c) => c.id === nextCycleId);
+      if (existing) {
+        setCurrentCycleId(nextCycleId);
+        return;
+      }
+
+      // Get payday settings for date calculation
+      const payDayType = profile?.preferences?.payDayType ?? 'last_working_day';
+      const payDayFixed = profile?.preferences?.payDayFixed;
+      const { startDate, endDate } = getCycleDateRange(nextYear, nextMonth, payDayType, payDayFixed);
+
+      // Close current cycle
+      await fetch(`/api/cycles/${currentCycleId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'closed' }),
+      });
+
+      // Create new cycle
+      await fetch('/api/cycles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: nextCycleId,
+          startDate: startDate.toISOString(),
+          endDate: endDate.toISOString(),
+          status: 'active',
+        }),
+      });
+
+      // Navigate to the new cycle
+      setCurrentCycleId(nextCycleId);
+      toast('New cycle started! Add your income to set the actual start date.', 'success');
+    } catch (err) {
+      console.error('Failed to start next cycle:', err);
+      toast('Failed to start next cycle', 'error');
+    } finally {
+      setStartingNextCycle(false);
+    }
+  };
+
   const currentCycle = selectedCycle;
 
   const {
@@ -308,6 +362,17 @@ export default function DashboardPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
               </svg>
             </button>
+            {/* Start New Cycle button - shown when on most recent cycle */}
+            {!canGoNext && currentCycle?.status === 'active' && (
+              <button
+                onClick={startNextCycle}
+                disabled={startingNextCycle}
+                className="ml-1 px-2 py-1 text-xs bg-primary text-black font-medium rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
+                title="Start next cycle (got paid early?)"
+              >
+                {startingNextCycle ? '...' : '+ New'}
+              </button>
+            )}
           </div>
           <div className="text-right">
             {remaining < 0 ? (
