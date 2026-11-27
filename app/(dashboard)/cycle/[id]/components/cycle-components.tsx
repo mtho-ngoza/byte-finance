@@ -219,8 +219,7 @@ export function SortableItemRow({ item, cycleId, userId, onStatusChange, onAmoun
   const [editingItem, setEditingItem] = useState(false);
   const [attachingReceipt, setAttachingReceipt] = useState(false);
   const [showPaymentPrompt, setShowPaymentPrompt] = useState(false);
-  const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null);
-  const [editingPaymentDate, setEditingPaymentDate] = useState('');
+  const [editingPayment, setEditingPayment] = useState<{ id: string; amount: number; date: unknown; note?: string; receiptId?: string } | null>(null);
   const [showPayments, setShowPayments] = useState(false);
   const { toast, confirm } = useToast();
 
@@ -543,71 +542,36 @@ export function SortableItemRow({ item, cycleId, userId, onStatusChange, onAmoun
               ? (p.date as { toDate: () => Date }).toDate()
               : null;
             const dateStr = dateObj ? dateObj.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' }) : '';
-            const isEditing = editingPaymentId === p.id;
 
             return (
               <div key={p.id} className="flex items-center justify-between text-xs py-0.5 group">
-                {isEditing ? (
-                  <div className="flex items-center gap-2 flex-1">
-                    <DateInput
-                      value={editingPaymentDate}
-                      onChange={(e) => setEditingPaymentDate(e.target.value)}
-                      inputSize="sm"
-                      className="border-primary"
-                      autoFocus
-                    />
-                    <button
-                      onClick={async () => {
-                        if (editingPaymentDate) {
-                          await onEditPayment(item.id, p.id, p.amount, p.note, editingPaymentDate);
-                        }
-                        setEditingPaymentId(null);
-                      }}
-                      className="px-2 py-1 rounded bg-primary text-background text-xs font-medium"
-                    >
-                      Save
-                    </button>
-                    <button
-                      onClick={() => setEditingPaymentId(null)}
-                      className="px-2 py-1 rounded border border-border text-text-secondary text-xs"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    <span className="text-text-secondary flex-1 min-w-0 truncate">
-                      #{idx + 1} {dateStr}{p.note ? ` · ${p.note}` : ''}
-                      {p.receiptId && <span className="ml-1 text-primary">📷</span>}
-                    </span>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <span className="font-mono text-text-primary">R{(p.amount / 100).toFixed(2)}</span>
-                      <button
-                        onClick={() => {
-                          setEditingPaymentId(p.id);
-                          setEditingPaymentDate(dateObj ? dateObj.toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
-                        }}
-                        className="w-4 h-4 flex items-center justify-center rounded text-text-secondary hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity"
-                        aria-label="Edit payment date"
-                        title="Edit date"
-                      >
-                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                        </svg>
-                      </button>
-                      <button
-                        onClick={() => onDeletePayment(item.id, p.id)}
-                        className="w-4 h-4 flex items-center justify-center rounded text-text-secondary hover:text-error opacity-0 group-hover:opacity-100 transition-opacity"
-                        aria-label="Delete payment"
-                        title="Delete payment"
-                      >
-                        <svg className="w-3 h-3" fill="none" viewBox="0 0 12 12" stroke="currentColor" strokeWidth="2">
-                          <path strokeLinecap="round" d="M2 2l8 8M10 2l-8 8" />
-                        </svg>
-                      </button>
-                    </div>
-                  </>
-                )}
+                <span className="text-text-secondary flex-1 min-w-0 truncate">
+                  #{idx + 1} {dateStr}{p.note ? ` · ${p.note}` : ''}
+                  {p.receiptId && <span className="ml-1 text-primary">📷</span>}
+                </span>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <span className="font-mono text-text-primary">R{(p.amount / 100).toFixed(2)}</span>
+                  <button
+                    onClick={() => setEditingPayment(p)}
+                    className="w-4 h-4 flex items-center justify-center rounded text-text-secondary hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity"
+                    aria-label="Edit payment"
+                    title="Edit payment"
+                  >
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => onDeletePayment(item.id, p.id)}
+                    className="w-4 h-4 flex items-center justify-center rounded text-text-secondary hover:text-error opacity-0 group-hover:opacity-100 transition-opacity"
+                    aria-label="Delete payment"
+                    title="Delete payment"
+                  >
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 12 12" stroke="currentColor" strokeWidth="2">
+                      <path strokeLinecap="round" d="M2 2l8 8M10 2l-8 8" />
+                    </svg>
+                  </button>
+                </div>
               </div>
             );
           })}
@@ -656,6 +620,18 @@ export function SortableItemRow({ item, cycleId, userId, onStatusChange, onAmoun
             setAttachingReceipt(false);
             toast(detached ? 'Receipt detached' : 'Receipt attached', 'success');
           }}
+        />
+      )}
+
+      {/* Edit Payment Modal */}
+      {editingPayment && userId && (
+        <EditPaymentModal
+          item={item}
+          payment={editingPayment}
+          cycleId={cycleId}
+          userId={userId}
+          onClose={() => setEditingPayment(null)}
+          onSaved={() => setEditingPayment(null)}
         />
       )}
     </>
@@ -1020,6 +996,197 @@ export function ReceiptPickerModal({ item, cycleId, userId, onClose, onAttached 
           </>
         )}
       </div>
+    </Modal>
+  );
+}
+
+// ============================================================================
+// EditPaymentModal Component
+// ============================================================================
+
+interface EditPaymentModalProps {
+  item: CycleItem;
+  payment: { id: string; amount: number; date: unknown; note?: string; receiptId?: string };
+  cycleId: string;
+  userId: string;
+  onClose: () => void;
+  onSaved: () => void;
+}
+
+export function EditPaymentModal({ item, payment, cycleId, userId, onClose, onSaved }: EditPaymentModalProps) {
+  const { toast } = useToast();
+  const [saving, setSaving] = useState(false);
+  const [amount, setAmount] = useState(payment.amount);
+  const [note, setNote] = useState(payment.note ?? '');
+  const [date, setDate] = useState(() => {
+    if (payment.date && typeof (payment.date as { toDate?: () => Date }).toDate === 'function') {
+      return (payment.date as { toDate: () => Date }).toDate().toISOString().split('T')[0];
+    }
+    return new Date().toISOString().split('T')[0];
+  });
+  const [receiptId, setReceiptId] = useState<string | null>(payment.receiptId ?? null);
+  const [receipts, setReceipts] = useState<ReceiptItem[]>([]);
+  const [loadingReceipts, setLoadingReceipts] = useState(true);
+  const [showReceiptPicker, setShowReceiptPicker] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/receipts')
+      .then((r) => r.json())
+      .then((d) => { setReceipts(d.receipts ?? []); setLoadingReceipts(false); })
+      .catch(() => setLoadingReceipts(false));
+  }, []);
+
+  const currentReceipt = receipts.find((r) => r.id === receiptId);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/cycle-items/${item.id}/edit-payment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          paymentId: payment.id,
+          amount,
+          note: note.trim() || null,
+          date,
+          receiptId: receiptId === payment.receiptId ? undefined : (receiptId ?? null),
+        }),
+      });
+      if (!res.ok) throw new Error('Failed to update payment');
+      toast('Payment updated', 'success');
+      onSaved();
+    } catch (err) {
+      console.error('Edit payment failed:', err);
+      toast('Failed to update payment', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleReceiptCaptured = (id: string) => {
+    setReceipts((prev) => [{ id }, ...prev]);
+    setReceiptId(id);
+    setShowReceiptPicker(false);
+  };
+
+  const handleSelectReceipt = (id: string) => {
+    // Toggle: if same receipt clicked, detach it
+    setReceiptId(receiptId === id ? null : id);
+    setShowReceiptPicker(false);
+  };
+
+  return (
+    <Modal open={true} title="Edit Payment" onClose={onClose}>
+      <div className="space-y-4">
+        {/* Amount */}
+        <div>
+          <label className="block text-xs text-text-secondary mb-1">Amount</label>
+          <CurrencyInput
+            value={amount}
+            onChange={setAmount}
+          />
+        </div>
+
+        {/* Date */}
+        <div>
+          <label className="block text-xs text-text-secondary mb-1">Date</label>
+          <DateInput
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+          />
+        </div>
+
+        {/* Note */}
+        <div>
+          <label className="block text-xs text-text-secondary mb-1">Note (optional)</label>
+          <input
+            type="text"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="e.g., Engen, Pick n Pay"
+            className="w-full px-3 py-2 bg-background border border-border rounded-lg text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-primary text-sm"
+          />
+        </div>
+
+        {/* Receipt */}
+        <div>
+          <label className="block text-xs text-text-secondary mb-1">Receipt</label>
+          {!showReceiptPicker ? (
+            <div className="flex items-center gap-2">
+              {currentReceipt ? (
+                <div className="flex items-center gap-2 flex-1 p-2 bg-background border border-border rounded-lg">
+                  {currentReceipt.thumbnailUrl && (
+                    <img src={currentReceipt.thumbnailUrl} alt="" className="w-10 h-10 object-cover rounded" />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-text-primary truncate">{currentReceipt.vendor || 'Receipt'}</p>
+                    {currentReceipt.amountInCents && (
+                      <p className="text-xs text-text-secondary">R{(currentReceipt.amountInCents / 100).toFixed(2)}</p>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => setReceiptId(null)}
+                    className="p-1 text-text-secondary hover:text-error"
+                    title="Remove receipt"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowReceiptPicker(true)}
+                  className="flex-1 px-3 py-2 border border-dashed border-border rounded-lg text-text-secondary hover:border-primary hover:text-primary transition-colors text-sm"
+                >
+                  + Attach receipt
+                </button>
+              )}
+              {currentReceipt && (
+                <button
+                  onClick={() => setShowReceiptPicker(true)}
+                  className="px-3 py-2 border border-border rounded-lg text-text-secondary hover:border-primary hover:text-primary transition-colors text-sm"
+                >
+                  Change
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <InlineReceiptCapture
+                onCaptured={handleReceiptCaptured}
+              />
+              {loadingReceipts ? (
+                <div className="grid grid-cols-3 gap-2 animate-pulse">
+                  {[1,2,3].map((i) => <div key={i} className="aspect-square bg-background rounded-lg" />)}
+                </div>
+              ) : (
+                <GroupedReceiptPicker
+                  receipts={receipts}
+                  selectedId={receiptId ?? undefined}
+                  onSelect={handleSelectReceipt}
+                  filterLinked={true}
+                  currentReceiptId={receiptId ?? undefined}
+                />
+              )}
+              <button
+                onClick={() => setShowReceiptPicker(false)}
+                className="w-full px-3 py-2 text-sm text-text-secondary hover:text-text-primary"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <ModalActions
+        onCancel={onClose}
+        onConfirm={handleSave}
+        confirmLabel={saving ? 'Saving...' : 'Save'}
+        confirmDisabled={saving || amount <= 0}
+        confirmLoading={saving}
+      />
     </Modal>
   );
 }

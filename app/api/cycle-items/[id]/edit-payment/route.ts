@@ -5,10 +5,11 @@ import { FieldValue } from 'firebase-admin/firestore';
 
 /**
  * POST /api/cycle-items/[id]/edit-payment
- * Body: { paymentId: string, amount: number, note?: string, date?: string }
+ * Body: { paymentId: string, amount: number, note?: string, date?: string, receiptId?: string | null }
  *
- * Updates a specific payment's amount, note, and/or date.
+ * Updates a specific payment's amount, note, date, and/or receipt.
  * Recalculates totalPaidAmount and updates cycle totalPaid accordingly.
+ * If receiptId is provided, links/unlinks the receipt.
  */
 export async function POST(
   request: NextRequest,
@@ -20,7 +21,7 @@ export async function POST(
 
   const { id } = await params;
   const body = await request.json();
-  const { paymentId, amount, note, date } = body;
+  const { paymentId, amount, note, date, receiptId } = body;
 
   if (!paymentId || typeof paymentId !== 'string') {
     return NextResponse.json({ error: 'paymentId is required' }, { status: 400 });
@@ -38,7 +39,7 @@ export async function POST(
   }
 
   const item = snap.data()!;
-  const payments: Array<{ id: string; amount: number; note?: string; date?: Date; [key: string]: unknown }> = item.payments ?? [];
+  const payments: Array<{ id: string; amount: number; note?: string; date?: Date; receiptId?: string; [key: string]: unknown }> = item.payments ?? [];
 
   const paymentToEdit = payments.find((p) => p.id === paymentId);
   if (!paymentToEdit) {
@@ -48,11 +49,20 @@ export async function POST(
   const oldAmount = paymentToEdit.amount;
   const amountDiff = amount - oldAmount;
 
+  // Track old receiptId for unlinking
+  const oldReceiptId = paymentToEdit.receiptId as string | undefined;
+
   const updatedPayments = payments.map((p) => {
     if (p.id !== paymentId) return p;
     const updated = { ...p, amount };
     if (note !== undefined) updated.note = note || null;
     if (date !== undefined) updated.date = new Date(date);
+    // Handle receipt: null = remove, string = set, undefined = keep existing
+    if (receiptId === null) {
+      delete updated.receiptId;
+    } else if (receiptId !== undefined) {
+      updated.receiptId = receiptId;
+    }
     return updated;
   });
 
@@ -72,6 +82,37 @@ export async function POST(
       totalPaid: FieldValue.increment(amountDiff),
       updatedAt: now,
     });
+  }
+
+  // Handle receipt linking/unlinking
+  if (receiptId !== undefined) {
+    // Unlink old receipt if it changed
+    if (oldReceiptId && oldReceiptId !== receiptId) {
+      const oldReceiptRef = db.collection(`users/${userId}/receipts`).doc(oldReceiptId);
+      const oldReceiptSnap = await oldReceiptRef.get();
+      if (oldReceiptSnap.exists) {
+        await oldReceiptRef.update({
+          cycleItemId: null,
+          cycleId: null,
+          needsAttention: true,
+          updatedAt: now,
+        });
+      }
+    }
+
+    // Link new receipt
+    if (receiptId && receiptId !== oldReceiptId) {
+      const newReceiptRef = db.collection(`users/${userId}/receipts`).doc(receiptId);
+      const newReceiptSnap = await newReceiptRef.get();
+      if (newReceiptSnap.exists) {
+        await newReceiptRef.update({
+          cycleItemId: id,
+          cycleId: item.cycleId,
+          needsAttention: false,
+          updatedAt: now,
+        });
+      }
+    }
   }
 
   // Update goal contribution if cycle item is linked to a goal and amount changed
