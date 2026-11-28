@@ -33,6 +33,55 @@ export default function DashboardPage() {
   const { insights, dismiss: dismissInsight, snooze: snoozeInsight } = useInsights(currentCycleId ?? undefined);
   const [creatingCycle, setCreatingCycle] = useState(false);
 
+  // Shared function to create a new cycle (used by auto-create and manual "+ New")
+  const createNewCycle = useCallback(async (
+    cycleId: string,
+    startDate: Date,
+    endDate: Date,
+    options?: { closePreviousCycleId?: string; closePreviousEndDate?: Date }
+  ) => {
+    // Close previous cycle if specified (with custom end date for early paydays)
+    if (options?.closePreviousCycleId) {
+      await fetch(`/api/cycles/${options.closePreviousCycleId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'closed',
+          ...(options.closePreviousEndDate && { endDate: options.closePreviousEndDate.toISOString() }),
+        }),
+      });
+    }
+
+    // Close any other active cycles
+    const otherActiveCycles = cycles.filter((c) => c.status === 'active' && c.id !== options?.closePreviousCycleId);
+    for (const ac of otherActiveCycles) {
+      await fetch(`/api/cycles/${ac.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'closed' }),
+      });
+    }
+
+    // Create new cycle (POST also spawns items from commitments)
+    const res = await fetch('/api/cycles', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: cycleId,
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString(),
+        status: 'active',
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to create cycle');
+    }
+
+    return res.json();
+  }, [cycles]);
+
   // Auto-create current cycle if it doesn't exist
   const ensureCurrentCycleExists = useCallback(async () => {
     if (cyclesLoading || creatingCycle || profileLoading) return;
@@ -54,34 +103,14 @@ export default function DashboardPage() {
     if (!cycleExists) {
       setCreatingCycle(true);
       try {
-        // Close any previous active cycles
-        const activeCycles = cycles.filter((c) => c.status === 'active');
-        for (const ac of activeCycles) {
-          await fetch(`/api/cycles/${ac.id}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ status: 'closed' }),
-          });
-        }
-
-        // Create new cycle with payday-based dates
-        await fetch('/api/cycles', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            id: expectedCycleId,
-            startDate: startDate.toISOString(),
-            endDate: endDate.toISOString(),
-            status: 'active',
-          }),
-        });
+        await createNewCycle(expectedCycleId, startDate, endDate);
       } catch (err) {
         console.error('Failed to auto-create cycle:', err);
       } finally {
         setCreatingCycle(false);
       }
     }
-  }, [cycles, cyclesLoading, creatingCycle, profileLoading, profile]);
+  }, [cycles, cyclesLoading, creatingCycle, profileLoading, profile, createNewCycle]);
 
   // Run auto-create check when profile and cycles are loaded
   useEffect(() => {
@@ -150,7 +179,7 @@ export default function DashboardPage() {
       const nextYear = month === 12 ? year + 1 : year;
       const nextCycleId = `${nextYear}-${String(nextMonth).padStart(2, '0')}`;
 
-      // Check if it already exists
+      // Check if it already exists - just navigate to it
       const existing = cycles.find((c) => c.id === nextCycleId);
       if (existing) {
         setCurrentCycleId(nextCycleId);
@@ -173,46 +202,18 @@ export default function DashboardPage() {
       const payDayFixed = profile?.preferences?.payDayFixed;
       const { endDate: newEndDate } = getCycleDateRange(nextYear, nextMonth, payDayType, payDayFixed);
 
-      // Update current cycle: close it and set end date to day before payday
-      await fetch(`/api/cycles/${currentCycleId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          status: 'closed',
-          endDate: prevEndDate.toISOString(),
-        }),
+      // Use shared createNewCycle function (same as auto-create)
+      const created = await createNewCycle(nextCycleId, newStartDate, newEndDate, {
+        closePreviousCycleId: currentCycleId,
+        closePreviousEndDate: prevEndDate,
       });
 
-      // Create new cycle with correct start date (this also spawns items from commitments)
-      const createRes = await fetch('/api/cycles', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: nextCycleId,
-          startDate: newStartDate.toISOString(),
-          endDate: newEndDate.toISOString(),
-          status: 'active',
-        }),
-      });
-
-      if (!createRes.ok) {
-        const err = await createRes.json();
-        throw new Error(err.error || 'Failed to create cycle');
-      }
-
-      const created = await createRes.json();
       console.log('[Start New Cycle] Created:', created);
-
-      // Always regenerate to ensure items exist (safe operation - only creates missing items)
-      console.log('[Start New Cycle] Regenerating items from commitments...');
-      const regenRes = await fetch(`/api/cycles/${nextCycleId}/regenerate`, { method: 'POST' });
-      const regenData = await regenRes.json();
-      console.log('[Start New Cycle] Regenerate result:', regenData);
 
       // Navigate to the new cycle
       setCurrentCycleId(nextCycleId);
       setShowNewCycleModal(false);
-      toast(`New cycle started with ${regenData.existingCount + regenData.regeneratedCount} items!`, 'success');
+      toast(`New cycle started with ${created.itemCount ?? 0} items!`, 'success');
     } catch (err) {
       console.error('Failed to start next cycle:', err);
       toast('Failed to start next cycle', 'error');

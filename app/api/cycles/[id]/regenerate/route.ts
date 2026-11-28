@@ -33,6 +33,10 @@ export async function POST(
   const cycle = cycleSnap.data();
   const startDate = cycle?.startDate?.toDate?.() || new Date();
 
+  // Check for activeOnly query param (default: false for recovery, true for new cycle creation)
+  const { searchParams } = new URL(request.url);
+  const activeOnly = searchParams.get('activeOnly') === 'true';
+
   // Check existing items for this cycle
   const existingItemsSnap = await db
     .collection(`users/${userId}/cycleItems`)
@@ -43,11 +47,14 @@ export async function POST(
     existingItemsSnap.docs.map(d => d.data().commitmentId).filter(Boolean)
   );
 
-  // Get all commitments (active and inactive - we want to regenerate what might have been there)
-  const commitmentsSnap = await db
-    .collection(`users/${userId}/commitments`)
-    .orderBy('sortOrder')
-    .get();
+  // Get commitments (optionally filtered by isActive)
+  let commitmentsQuery = db.collection(`users/${userId}/commitments`).orderBy('sortOrder');
+  if (activeOnly) {
+    commitmentsQuery = db.collection(`users/${userId}/commitments`)
+      .where('isActive', '==', true)
+      .orderBy('sortOrder');
+  }
+  const commitmentsSnap = await commitmentsQuery.get();
 
   const commitments = commitmentsSnap.docs.map(d => ({
     id: d.id,
