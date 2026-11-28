@@ -137,6 +137,9 @@ export default function DashboardPage() {
 
   // Start next cycle (for early paydays)
   const [startingNextCycle, setStartingNextCycle] = useState(false);
+  const [showNewCycleModal, setShowNewCycleModal] = useState(false);
+  const [newCyclePayday, setNewCyclePayday] = useState(() => new Date().toISOString().split('T')[0]);
+
   const startNextCycle = async () => {
     if (!currentCycleId) return;
     setStartingNextCycle(true);
@@ -151,36 +154,65 @@ export default function DashboardPage() {
       const existing = cycles.find((c) => c.id === nextCycleId);
       if (existing) {
         setCurrentCycleId(nextCycleId);
+        setShowNewCycleModal(false);
         return;
       }
 
-      // Get payday settings for date calculation
+      const payday = new Date(newCyclePayday);
+
+      // Calculate dates: new cycle starts on payday, previous ends day before
+      const newStartDate = new Date(payday);
+      newStartDate.setHours(0, 0, 0, 0);
+
+      const prevEndDate = new Date(payday);
+      prevEndDate.setDate(prevEndDate.getDate() - 1);
+      prevEndDate.setHours(23, 59, 59, 999);
+
+      // Get payday settings for end date calculation
       const payDayType = profile?.preferences?.payDayType ?? 'last_working_day';
       const payDayFixed = profile?.preferences?.payDayFixed;
-      const { startDate, endDate } = getCycleDateRange(nextYear, nextMonth, payDayType, payDayFixed);
+      const { endDate: newEndDate } = getCycleDateRange(nextYear, nextMonth, payDayType, payDayFixed);
 
-      // Close current cycle
+      // Update current cycle: close it and set end date to day before payday
       await fetch(`/api/cycles/${currentCycleId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'closed' }),
+        body: JSON.stringify({
+          status: 'closed',
+          endDate: prevEndDate.toISOString(),
+        }),
       });
 
-      // Create new cycle
-      await fetch('/api/cycles', {
+      // Create new cycle with correct start date (this also spawns items from commitments)
+      const createRes = await fetch('/api/cycles', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: nextCycleId,
-          startDate: startDate.toISOString(),
-          endDate: endDate.toISOString(),
+          startDate: newStartDate.toISOString(),
+          endDate: newEndDate.toISOString(),
           status: 'active',
         }),
       });
 
+      if (!createRes.ok) {
+        const err = await createRes.json();
+        throw new Error(err.error || 'Failed to create cycle');
+      }
+
+      const created = await createRes.json();
+      console.log('[Start New Cycle] Created:', created);
+
+      // Always regenerate to ensure items exist (safe operation - only creates missing items)
+      console.log('[Start New Cycle] Regenerating items from commitments...');
+      const regenRes = await fetch(`/api/cycles/${nextCycleId}/regenerate`, { method: 'POST' });
+      const regenData = await regenRes.json();
+      console.log('[Start New Cycle] Regenerate result:', regenData);
+
       // Navigate to the new cycle
       setCurrentCycleId(nextCycleId);
-      toast('New cycle started! Add your income to set the actual start date.', 'success');
+      setShowNewCycleModal(false);
+      toast(`New cycle started with ${regenData.existingCount + regenData.regeneratedCount} items!`, 'success');
     } catch (err) {
       console.error('Failed to start next cycle:', err);
       toast('Failed to start next cycle', 'error');
@@ -365,12 +397,11 @@ export default function DashboardPage() {
             {/* Start New Cycle button - shown when on most recent cycle */}
             {!canGoNext && currentCycle?.status === 'active' && (
               <button
-                onClick={startNextCycle}
-                disabled={startingNextCycle}
-                className="ml-1 px-2 py-1 text-xs bg-primary text-black font-medium rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
+                onClick={() => setShowNewCycleModal(true)}
+                className="ml-1 px-2 py-1 text-xs bg-primary text-black font-medium rounded-lg hover:bg-primary/90 transition-colors"
                 title="Start next cycle (got paid early?)"
               >
-                {startingNextCycle ? '...' : '+ New'}
+                + New
               </button>
             )}
           </div>
@@ -593,6 +624,35 @@ export default function DashboardPage() {
 
       {/* Floating Add Button */}
       <AddItemButton cycleId={currentCycle.id} />
+
+      {/* New Cycle Modal */}
+      {showNewCycleModal && (
+        <Modal open onClose={() => setShowNewCycleModal(false)} title="Start New Cycle">
+          <div className="space-y-4">
+            <p className="text-sm text-text-secondary">
+              Got paid early? Enter the date you received your salary to start the next budget cycle.
+            </p>
+            <div>
+              <label className="block text-xs text-text-secondary mb-1">Payday Date</label>
+              <input
+                type="date"
+                value={newCyclePayday}
+                onChange={(e) => setNewCyclePayday(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-border bg-background text-text-primary focus:outline-none focus:border-primary"
+              />
+            </div>
+            <p className="text-xs text-text-secondary">
+              This will close the current cycle (ending the day before) and start a new one.
+            </p>
+          </div>
+          <ModalActions
+            onCancel={() => setShowNewCycleModal(false)}
+            onConfirm={startNextCycle}
+            confirmLabel={startingNextCycle ? 'Starting...' : 'Start New Cycle'}
+            confirmDisabled={startingNextCycle || !newCyclePayday}
+          />
+        </Modal>
+      )}
     </div>
   );
 }
