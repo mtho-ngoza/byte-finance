@@ -105,8 +105,9 @@ export async function POST(request: NextRequest) {
 
     // Find unpaid items from previous cycles for these commitments and mark them PAID
     // When a new cycle starts (payday), all previous items are considered paid
-    // Firestore 'in' queries support max 30 items, so we chunk
-    const chunkSize = 30;
+    // Firestore 'in' queries: max 30 disjunctions after normalization
+    // Since we use 2 'in' clauses (commitmentId × status), chunk size must be 15 (15 × 2 = 30)
+    const chunkSize = 15;
 
     // Collect all unpaid items first
     const allUnpaidItems: Array<{ ref: FirebaseFirestore.DocumentReference; data: FirebaseFirestore.DocumentData }> = [];
